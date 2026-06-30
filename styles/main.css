@@ -8422,18 +8422,8 @@ button.bar1-drilldown-card:focus-visible {
 
 .physical-dashboard-horizontal-bar {
   align-items: center;
-  display: grid;
-  gap: 0.45rem;
-  grid-template-columns: 2.8rem minmax(0, 1fr);
+  display: block;
   min-width: 0;
-}
-
-.physical-dashboard-horizontal-bar small {
-  color: var(--app-text-muted);
-  font-size: 0.66rem;
-  font-weight: 900;
-  line-height: 1;
-  text-transform: uppercase;
 }
 
 .physical-dashboard-horizontal-bar i {
@@ -8503,6 +8493,51 @@ button.bar1-drilldown-card:focus-visible {
 .physical-dashboard-province-table th,
 .physical-dashboard-province-table td {
   vertical-align: middle;
+}
+
+.physical-dashboard-province-header {
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.physical-dashboard-section-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.physical-dashboard-sort-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 900;
+  gap: 0.35rem;
+  justify-content: center;
+  min-width: 0;
+  padding: 0;
+  text-align: inherit;
+  width: 100%;
+}
+
+.physical-dashboard-sort-button span {
+  overflow-wrap: anywhere;
+}
+
+.physical-dashboard-sort-button small {
+  color: var(--app-text-muted);
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.physical-dashboard-sort-button:hover,
+.physical-dashboard-sort-button.is-active {
+  color: var(--brand-green-700);
 }
 
 .physical-dashboard-row-toggle {
@@ -8946,6 +8981,15 @@ button.bar1-drilldown-card:focus-visible {
   .physical-dashboard-detail-card__header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .physical-dashboard-section-actions {
+    justify-content: stretch;
+  }
+
+  .physical-dashboard-section-actions .btn {
+    justify-content: center;
+    width: 100%;
   }
 
   .physical-dashboard-controls {
