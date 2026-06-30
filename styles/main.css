@@ -8199,6 +8199,12 @@ button.bar1-drilldown-card:focus-visible {
   min-width: 8.5rem;
 }
 
+.physical-dashboard-ppt-button {
+  align-self: end;
+  min-height: 2.75rem;
+  white-space: nowrap;
+}
+
 .physical-dashboard-section-header {
   align-items: center;
   display: flex;
@@ -8998,6 +9004,11 @@ button.bar1-drilldown-card:focus-visible {
 
   .physical-dashboard-controls label {
     min-width: min(100%, 12rem);
+  }
+
+  .physical-dashboard-ppt-button {
+    justify-content: center;
+    width: 100%;
   }
 
   .physical-dashboard-horizontal-row {

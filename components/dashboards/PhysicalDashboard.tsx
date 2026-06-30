@@ -20,6 +20,8 @@ import { isMonthTargetOverdue } from '../../lib/dateStatus';
 import { parseLocation } from '../LocationPicker';
 import { ModalItem } from './DashboardComponents';
 
+declare const PptxGenJS: any;
+
 interface PhysicalDashboardProps {
     data: {
         subprojects: Subproject[];
@@ -71,6 +73,7 @@ type Metric = {
     icon: React.ReactNode;
     annual: MetricScope;
     monthly: MetricScope;
+    quarterly: MetricScope;
     cumulative: MetricScope;
 };
 
@@ -174,6 +177,10 @@ const formatDateTime = (dateString?: string) => {
     });
 };
 
+const sanitizeFileSegment = (value: string) => (
+    value.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'All'
+);
+
 const parseDate = (dateString?: string) => {
     if (!dateString) return null;
     const date = new Date(`${dateString}T00:00:00`);
@@ -187,6 +194,32 @@ const getDateMonth = (dateString?: string) => {
 };
 
 const getActivityTargetDate = (activity: Training | OtherActivity) => activity.endDate || activity.date;
+
+const getQuarterBounds = (monthIndex: number) => {
+    const start = Math.floor(Math.max(0, Math.min(11, monthIndex)) / 3) * 3;
+    return { start, end: start + 2, label: `Q${Math.floor(start / 3) + 1}` };
+};
+
+const isDateInMonthRange = (dateString: string | undefined, startMonth: number, endMonth: number) => {
+    const month = getDateMonth(dateString);
+    return month >= startMonth && month <= endMonth;
+};
+
+const toDataUri = async (url: string) => {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) return '';
+        const blob = await response.blob();
+        return await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(blob);
+        });
+    } catch {
+        return '';
+    }
+};
 
 const getSelectedAsOfCutoff = (selectedYear: string, asOfMonth: number) => {
     const safeMonth = Math.max(0, Math.min(11, asOfMonth));
@@ -424,6 +457,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
     const [summaryPage, setSummaryPage] = useState(1);
     const [summaryItemsPerPage, setSummaryItemsPerPage] = useState(10);
     const [summarySort, setSummarySort] = useState<{ key: SummarySortKey; direction: SortDirection } | null>(null);
+    const [isPowerPointExporting, setIsPowerPointExporting] = useState(false);
     const [localModal, setLocalModal] = useState<{
         title: string;
         type: ModalType;
@@ -459,11 +493,16 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             isCompletedTraining(training) && matchesSelectedYear(training.actualDate, selectedYear)
         );
         const cumulativeCutoff = getSelectedAsOfCutoff(selectedYear, asOfMonth);
+        const quarterBounds = getQuarterBounds(asOfMonth);
 
         const monthTargetSubprojects = targetSubprojects.filter(sp => getDateMonth(sp.estimatedCompletionDate) === asOfMonth);
         const monthTargetTrainings = targetTrainings.filter(training => getDateMonth(getActivityTargetDate(training)) === asOfMonth);
         const monthActualSubprojects = actualSubprojects.filter(sp => getDateMonth(sp.actualCompletionDate) === asOfMonth);
         const monthActualTrainings = actualTrainings.filter(training => getDateMonth(training.actualDate) === asOfMonth);
+        const quarterTargetSubprojects = targetSubprojects.filter(sp => isDateInMonthRange(sp.estimatedCompletionDate, quarterBounds.start, quarterBounds.end));
+        const quarterTargetTrainings = targetTrainings.filter(training => isDateInMonthRange(getActivityTargetDate(training), quarterBounds.start, quarterBounds.end));
+        const quarterActualSubprojects = actualSubprojects.filter(sp => isDateInMonthRange(sp.actualCompletionDate, quarterBounds.start, quarterBounds.end));
+        const quarterActualTrainings = actualTrainings.filter(training => isDateInMonthRange(training.actualDate, quarterBounds.start, quarterBounds.end));
         const cumulativeTargetSubprojects = targetSubprojects.filter(sp => isDueByCutoff(sp.estimatedCompletionDate, cumulativeCutoff));
         const cumulativeTargetTrainings = targetTrainings.filter(training => isDueByCutoff(getActivityTargetDate(training), cumulativeCutoff));
         const cumulativeActualSubprojects = actualSubprojects.filter(sp => isDueByCutoff(sp.actualCompletionDate, cumulativeCutoff));
@@ -633,11 +672,21 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         const monthlyActualIposTrained = getIpoSetFromTrainings(monthActualTrainings);
         const monthlyTargetIpos = unionSets(monthlyTargetIposWithSp, monthlyTargetIposTrained);
         const monthlyActualIpos = unionSets(monthlyActualIposWithSp, monthlyActualIposTrained);
+
+        const quarterlyTargetIposWithSp = getIpoSetFromSubprojects(quarterTargetSubprojects);
+        const quarterlyActualIposWithSp = getIpoSetFromSubprojects(quarterActualSubprojects);
+        const quarterlyTargetIposTrained = getIpoSetFromTrainings(quarterTargetTrainings);
+        const quarterlyActualIposTrained = getIpoSetFromTrainings(quarterActualTrainings);
+        const quarterlyTargetIpos = unionSets(quarterlyTargetIposWithSp, quarterlyTargetIposTrained);
+        const quarterlyActualIpos = unionSets(quarterlyActualIposWithSp, quarterlyActualIposTrained);
+
         const annualActualSubprojectIds = new Set<number>(actualSubprojects.map(sp => sp.id));
         const monthlyActualSubprojectIds = new Set<number>(monthActualSubprojects.map(sp => sp.id));
+        const quarterlyActualSubprojectIds = new Set<number>(quarterActualSubprojects.map(sp => sp.id));
         const cumulativeActualSubprojectIds = new Set<number>(cumulativeActualSubprojects.map(sp => sp.id));
         const annualActualTrainingIds = new Set<number>(actualTrainings.map(training => training.id));
         const monthlyActualTrainingIds = new Set<number>(monthActualTrainings.map(training => training.id));
+        const quarterlyActualTrainingIds = new Set<number>(quarterActualTrainings.map(training => training.id));
         const cumulativeActualTrainingIds = new Set<number>(cumulativeActualTrainings.map(training => training.id));
 
         const metrics: Metric[] = [
@@ -659,6 +708,12 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     makeIpoItems(monthlyTargetIpos, { completedNames: monthlyActualIpos, targetSubprojects: monthTargetSubprojects, targetTrainings: monthTargetTrainings }),
                     makeIpoItems(monthlyActualIpos)
                 ),
+                quarterly: makeMetricScope(
+                    quarterlyTargetIpos.size,
+                    quarterlyActualIpos.size,
+                    makeIpoItems(quarterlyTargetIpos, { completedNames: quarterlyActualIpos, targetSubprojects: quarterTargetSubprojects, targetTrainings: quarterTargetTrainings }),
+                    makeIpoItems(quarterlyActualIpos)
+                ),
                 cumulative: makeMetricScope(
                     cumulativeTargetIpos.size,
                     cumulativeActualIpos.size,
@@ -674,6 +729,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 icon: <Briefcase />,
                 annual: makeMetricScope(targetSubprojects.length, actualSubprojects.length, makeSubprojectItems(targetSubprojects, annualActualSubprojectIds), makeSubprojectItems(actualSubprojects)),
                 monthly: makeMetricScope(monthTargetSubprojects.length, monthActualSubprojects.length, makeSubprojectItems(monthTargetSubprojects, monthlyActualSubprojectIds), makeSubprojectItems(monthActualSubprojects)),
+                quarterly: makeMetricScope(quarterTargetSubprojects.length, quarterActualSubprojects.length, makeSubprojectItems(quarterTargetSubprojects, quarterlyActualSubprojectIds), makeSubprojectItems(quarterActualSubprojects)),
                 cumulative: makeMetricScope(cumulativeTargetSubprojects.length, cumulativeActualSubprojects.length, makeSubprojectItems(cumulativeTargetSubprojects, cumulativeActualSubprojectIds), makeSubprojectItems(cumulativeActualSubprojects)),
             },
             {
@@ -694,6 +750,12 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     makeIpoItems(monthlyTargetIposWithSp, { completedNames: monthlyActualIposWithSp, targetSubprojects: monthTargetSubprojects }),
                     makeIpoItems(monthlyActualIposWithSp)
                 ),
+                quarterly: makeMetricScope(
+                    quarterlyTargetIposWithSp.size,
+                    quarterlyActualIposWithSp.size,
+                    makeIpoItems(quarterlyTargetIposWithSp, { completedNames: quarterlyActualIposWithSp, targetSubprojects: quarterTargetSubprojects }),
+                    makeIpoItems(quarterlyActualIposWithSp)
+                ),
                 cumulative: makeMetricScope(
                     cumulativeTargetIposWithSp.size,
                     cumulativeActualIposWithSp.size,
@@ -709,6 +771,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 icon: <BookOpen />,
                 annual: makeMetricScope(targetTrainings.length, actualTrainings.length, makeTrainingItems(targetTrainings, annualActualTrainingIds), makeTrainingItems(actualTrainings)),
                 monthly: makeMetricScope(monthTargetTrainings.length, monthActualTrainings.length, makeTrainingItems(monthTargetTrainings, monthlyActualTrainingIds), makeTrainingItems(monthActualTrainings)),
+                quarterly: makeMetricScope(quarterTargetTrainings.length, quarterActualTrainings.length, makeTrainingItems(quarterTargetTrainings, quarterlyActualTrainingIds), makeTrainingItems(quarterActualTrainings)),
                 cumulative: makeMetricScope(cumulativeTargetTrainings.length, cumulativeActualTrainings.length, makeTrainingItems(cumulativeTargetTrainings, cumulativeActualTrainingIds), makeTrainingItems(cumulativeActualTrainings)),
             },
             {
@@ -728,6 +791,12 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     monthlyActualIposTrained.size,
                     makeIpoItems(monthlyTargetIposTrained, { completedNames: monthlyActualIposTrained, targetTrainings: monthTargetTrainings }),
                     makeIpoItems(monthlyActualIposTrained)
+                ),
+                quarterly: makeMetricScope(
+                    quarterlyTargetIposTrained.size,
+                    quarterlyActualIposTrained.size,
+                    makeIpoItems(quarterlyTargetIposTrained, { completedNames: quarterlyActualIposTrained, targetTrainings: quarterTargetTrainings }),
+                    makeIpoItems(quarterlyActualIposTrained)
                 ),
                 cumulative: makeMetricScope(
                     cumulativeTargetIposTrained.size,
@@ -753,6 +822,12 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     makeAdScope(monthlyActualIpos).length,
                     makeAdScope(monthlyTargetIpos, { completedIpoNames: monthlyActualIpos, targetSubprojects: monthTargetSubprojects, targetTrainings: monthTargetTrainings }),
                     makeAdScope(monthlyActualIpos)
+                ),
+                quarterly: makeMetricScope(
+                    makeAdScope(quarterlyTargetIpos).length,
+                    makeAdScope(quarterlyActualIpos).length,
+                    makeAdScope(quarterlyTargetIpos, { completedIpoNames: quarterlyActualIpos, targetSubprojects: quarterTargetSubprojects, targetTrainings: quarterTargetTrainings }),
+                    makeAdScope(quarterlyActualIpos)
                 ),
                 cumulative: makeMetricScope(
                     makeAdScope(cumulativeTargetIpos).length,
@@ -1143,7 +1218,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 aria-label={`Sort by ${label}`}
             >
                 <span>{label}</span>
-                <small aria-hidden="true">{isActive ? (summarySort.direction === 'asc' ? '↑' : '↓') : '↕'}</small>
+                <small aria-hidden="true">{isActive ? (summarySort.direction === 'asc' ? 'Asc' : 'Desc') : 'Sort'}</small>
             </button>
         );
     };
@@ -1285,6 +1360,226 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         XLSX.writeFile(wb, `Physical_Dashboard_${detailView}_${selectedYear}.xlsx`);
     };
 
+    const handleExportPowerPoint = async () => {
+        if (typeof PptxGenJS === 'undefined' || isPowerPointExporting) return;
+        setIsPowerPointExporting(true);
+        try {
+            const pptx = new PptxGenJS();
+            pptx.layout = 'LAYOUT_WIDE';
+            pptx.author = '4K Information System';
+            pptx.subject = 'Physical Accomplishment Dashboard';
+            pptx.title = 'Physical Accomplishment Dashboard';
+            pptx.company = 'Department of Agriculture - 4K Program';
+            pptx.lang = 'en-US';
+            pptx.theme = {
+                headFontFace: 'Aptos Display',
+                bodyFontFace: 'Aptos',
+                lang: 'en-US',
+            };
+
+            const logoData = await toDataUri('/assets/4klogo.png');
+            const green = '0F8A4B';
+            const darkText = '0F172A';
+            const mutedText = '64748B';
+            const lightGreen = 'E8F7EE';
+            const grayFill = 'F1F5F9';
+            const borderColor = 'CBD5E1';
+            const slideW = 13.333;
+            const slideH = 7.5;
+            const scopeLabel = selectedOu === 'All' ? 'All OUs' : selectedOu;
+            const quarter = getQuarterBounds(asOfMonth);
+            const quarterLabel = `${quarter.label} (${monthNames[quarter.start]}-${monthNames[quarter.end]})`;
+            const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            const cell = (text: string | number, options: Record<string, unknown> = {}) => ({
+                text: String(text),
+                options: {
+                    margin: 0.05,
+                    fontSize: 8,
+                    color: darkText,
+                    valign: 'mid',
+                    ...options,
+                },
+            });
+            const addHeader = (slide: any, title: string, subtitle?: string) => {
+                slide.background = { color: 'FFFFFF' };
+                slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: slideW, h: 0.58, fill: { color: green }, line: { color: green } });
+                if (logoData) {
+                    slide.addImage({ data: logoData, x: 0.25, y: 0.08, w: 0.38, h: 0.38 });
+                }
+                slide.addText(title, { x: 0.75, y: 0.13, w: 8.2, h: 0.3, fontSize: 15, bold: true, color: 'FFFFFF', margin: 0 });
+                slide.addText(generatedDate, { x: 10.2, y: 0.16, w: 2.8, h: 0.25, fontSize: 8, color: 'FFFFFF', align: 'right', margin: 0 });
+                if (subtitle) {
+                    slide.addText(subtitle, { x: 0.5, y: 0.75, w: 12.2, h: 0.25, fontSize: 8.5, color: mutedText, margin: 0 });
+                }
+            };
+            const addFooter = (slide: any) => {
+                slide.addShape(pptx.ShapeType.line, { x: 0.5, y: slideH - 0.35, w: 12.3, h: 0, line: { color: borderColor, transparency: 35 } });
+                slide.addText('4K Information System', { x: 0.5, y: slideH - 0.27, w: 4, h: 0.15, fontSize: 6.5, color: mutedText, margin: 0 });
+            };
+            const addTable = (slide: any, rows: any[], x: number, y: number, w: number, h?: number) => {
+                slide.addTable(rows, {
+                    x,
+                    y,
+                    w,
+                    h,
+                    border: { type: 'solid', color: borderColor, pt: 0.5 },
+                    color: darkText,
+                    fontSize: 8,
+                    valign: 'mid',
+                    margin: 0.04,
+                });
+            };
+            const formatScopeCell = (scope: MetricScope) => {
+                const rate = percent(scope.actual, scope.target);
+                const status = getStatus(scope.actual, scope.target).label;
+                return `${scope.actual.toLocaleString()} / ${scope.target.toLocaleString()}\n${rate}% | ${status}`;
+            };
+
+            const titleSlide = pptx.addSlide();
+            titleSlide.background = { color: 'FFFFFF' };
+            titleSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: slideW, h: slideH, fill: { color: 'FFFFFF' }, line: { color: 'FFFFFF' } });
+            titleSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: slideW, h: 1.0, fill: { color: green }, line: { color: green } });
+            if (logoData) titleSlide.addImage({ data: logoData, x: 0.65, y: 1.55, w: 1.15, h: 1.15 });
+            titleSlide.addText('Physical Accomplishment Dashboard', { x: 2.0, y: 1.45, w: 9.8, h: 0.5, fontSize: 26, bold: true, color: darkText, margin: 0 });
+            titleSlide.addText('4K Program Implementation Briefing', { x: 2.0, y: 2.0, w: 8.5, h: 0.3, fontSize: 14, color: green, bold: true, margin: 0 });
+            addTable(titleSlide, [
+                [cell('Fund Year', { bold: true, fill: { color: grayFill } }), cell(selectedYear)],
+                [cell('Scope', { bold: true, fill: { color: grayFill } }), cell(scopeLabel)],
+                [cell('View Mode', { bold: true, fill: { color: grayFill } }), cell(viewMode)],
+                [cell('As of Month', { bold: true, fill: { color: grayFill } }), cell(monthNames[asOfMonth])],
+                [cell('Quarter Scope', { bold: true, fill: { color: grayFill } }), cell(quarterLabel)],
+                [cell('Generated', { bold: true, fill: { color: grayFill } }), cell(generatedDate)],
+            ], 2.0, 2.75, 5.2, 2.2);
+            addFooter(titleSlide);
+
+            const executiveSlide = pptx.addSlide();
+            addHeader(executiveSlide, 'Executive Summary', `${scopeLabel} | Fund Year ${selectedYear} | As of ${monthNames[asOfMonth]}`);
+            const executiveRows = [
+                [
+                    cell('Indicator', { bold: true, color: 'FFFFFF', fill: { color: green } }),
+                    cell('Annual', { bold: true, color: 'FFFFFF', fill: { color: green } }),
+                    cell(monthNames[asOfMonth], { bold: true, color: 'FFFFFF', fill: { color: green } }),
+                    cell(quarter.label, { bold: true, color: 'FFFFFF', fill: { color: green } }),
+                    cell(`Cumulative as of ${monthNames[asOfMonth]}`, { bold: true, color: 'FFFFFF', fill: { color: green } }),
+                ],
+                ...analytics.metrics.map(metric => [
+                    cell(metric.label, { bold: true }),
+                    cell(formatScopeCell(metric.annual)),
+                    cell(formatScopeCell(metric.monthly)),
+                    cell(formatScopeCell(metric.quarterly)),
+                    cell(formatScopeCell(metric.cumulative)),
+                ]),
+            ];
+            addTable(executiveSlide, executiveRows, 0.45, 1.15, 12.45, 5.45);
+            addFooter(executiveSlide);
+
+            const nationalSlide = pptx.addSlide();
+            addHeader(nationalSlide, 'National Target vs Accomplishment', `${viewMode} view | ${scopeLabel} | Fund Year ${selectedYear}`);
+            const activeMetricScopes = analytics.metrics.map(metric => ({ metric, scope: activeScope(metric) }));
+            const nationalChartData = [
+                { name: 'Target', labels: activeMetricScopes.map(row => row.metric.label), values: activeMetricScopes.map(row => row.scope.target) },
+                { name: 'Accomplishment', labels: activeMetricScopes.map(row => row.metric.label), values: activeMetricScopes.map(row => row.scope.actual) },
+            ];
+            nationalSlide.addChart(pptx.ChartType.bar, nationalChartData, {
+                x: 0.5,
+                y: 1.25,
+                w: 7.0,
+                h: 4.7,
+                showLegend: true,
+                legendPos: 'b',
+                barDir: 'bar',
+                chartColors: ['CBD5E1', '16A34A'],
+                catAxisLabelFontFace: 'Aptos',
+                catAxisLabelFontSize: 8,
+                valAxisLabelFontSize: 8,
+            });
+            addTable(nationalSlide, [
+                [cell('Indicator', { bold: true, fill: { color: lightGreen } }), cell('Target', { bold: true, fill: { color: lightGreen } }), cell('Actual', { bold: true, fill: { color: lightGreen } }), cell('Rate', { bold: true, fill: { color: lightGreen } })],
+                ...activeMetricScopes.map(row => [
+                    cell(row.metric.label),
+                    cell(row.scope.target.toLocaleString(), { align: 'right' }),
+                    cell(row.scope.actual.toLocaleString(), { align: 'right' }),
+                    cell(`${percent(row.scope.actual, row.scope.target)}%`, { align: 'right' }),
+                ]),
+            ], 7.85, 1.25, 4.95, 4.7);
+            addFooter(nationalSlide);
+
+            const trendSlide = pptx.addSlide();
+            addHeader(trendSlide, 'Cumulative Trend', `${activeTrendLabel} | Jan-Dec ${selectedYear}`);
+            const trendChartData = [
+                { name: 'Cumulative Target', labels: activeTrendRows.map(row => row.monthShort), values: activeTrendRows.map(row => row.target) },
+                { name: 'Cumulative Accomplishment', labels: activeTrendRows.map(row => row.monthShort), values: activeTrendRows.map(row => row.actual) },
+            ];
+            trendSlide.addChart(pptx.ChartType.line, trendChartData, {
+                x: 0.55,
+                y: 1.25,
+                w: 7.5,
+                h: 4.7,
+                showLegend: true,
+                legendPos: 'b',
+                chartColors: ['64748B', '16A34A'],
+                valAxisLabelFontSize: 8,
+                catAxisLabelFontSize: 8,
+            });
+            addTable(trendSlide, [
+                [cell('Month', { bold: true, fill: { color: lightGreen } }), cell('Target', { bold: true, fill: { color: lightGreen } }), cell('Actual', { bold: true, fill: { color: lightGreen } }), cell('Rate', { bold: true, fill: { color: lightGreen } })],
+                ...activeTrendRows.map(row => [
+                    cell(row.monthShort),
+                    cell(row.target.toLocaleString(), { align: 'right' }),
+                    cell(row.actual.toLocaleString(), { align: 'right' }),
+                    cell(`${row.rate}%`, { align: 'right' }),
+                ]),
+            ], 8.35, 1.0, 4.4, 5.75);
+            addFooter(trendSlide);
+
+            const summarySlide = pptx.addSlide();
+            const summaryRows = allOuMode ? analytics.ouRows : analytics.provinceRows;
+            addHeader(summarySlide, allOuMode ? 'OU Performance Summary' : 'Province Performance Summary', `${scopeLabel} | Fund Year ${selectedYear}`);
+            const tableRows = [
+                [
+                    cell(allOuMode ? 'OU' : 'Province', { bold: true, color: 'FFFFFF', fill: { color: green } }),
+                    cell('IPOs', { bold: true, color: 'FFFFFF', fill: { color: green } }),
+                    cell('Subprojects', { bold: true, color: 'FFFFFF', fill: { color: green } }),
+                    cell('Trainings', { bold: true, color: 'FFFFFF', fill: { color: green } }),
+                    cell('Total', { bold: true, color: 'FFFFFF', fill: { color: green } }),
+                    cell('Rate', { bold: true, color: 'FFFFFF', fill: { color: green } }),
+                    cell('Status', { bold: true, color: 'FFFFFF', fill: { color: green } }),
+                ],
+                ...summaryRows.map(row => {
+                    const targetTotal = getSummaryTargetTotal(row);
+                    const actualTotal = getSummaryActualTotal(row);
+                    return [
+                        cell(allOuMode ? row.ou : row.province, { bold: true }),
+                        cell(`${row.actualIpos} / ${row.targetIpos}`, { align: 'right' }),
+                        cell(`${row.actualSubprojects} / ${row.targetSubprojects}`, { align: 'right' }),
+                        cell(`${row.actualTrainings} / ${row.targetTrainings}`, { align: 'right' }),
+                        cell(`${actualTotal} / ${targetTotal}`, { align: 'right' }),
+                        cell(`${row.rate}%`, { align: 'right' }),
+                        cell(getSummaryStatusLabel(row)),
+                    ];
+                }),
+            ];
+            addTable(summarySlide, tableRows.slice(0, 18), 0.35, 1.05, 12.65, 5.95);
+            if (tableRows.length > 18) {
+                summarySlide.addText(`Showing first 17 of ${summaryRows.length} rows. Use the dashboard table for the full list.`, {
+                    x: 0.45,
+                    y: 6.95,
+                    w: 8.2,
+                    h: 0.18,
+                    fontSize: 7,
+                    color: mutedText,
+                    margin: 0,
+                });
+            }
+            addFooter(summarySlide);
+
+            const fileName = `4K_Physical_Accomplishment_Dashboard_${sanitizeFileSegment(selectedYear)}_${sanitizeFileSegment(scopeLabel)}_${new Date().toISOString().split('T')[0]}.pptx`;
+            await pptx.writeFile({ fileName });
+        } finally {
+            setIsPowerPointExporting(false);
+        }
+    };
+
     const chartMax = Math.max(1, ...analytics.metrics.map(metric => activeScope(metric).target));
     const trendMax = trendIndicator === 'physicalPercentage'
         ? 100
@@ -1382,6 +1677,15 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     <h2>Physical Accomplishment Dashboard</h2>
                 </div>
                 <div className="physical-dashboard-controls">
+                    <button
+                        type="button"
+                        className="btn btn-primary btn-responsive physical-dashboard-ppt-button"
+                        onClick={handleExportPowerPoint}
+                        disabled={isPowerPointExporting}
+                    >
+                        <Download className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">{isPowerPointExporting ? 'Generating...' : 'Generate PowerPoint'}</span>
+                    </button>
                     <label>
                         <span>View</span>
                         <select value={viewMode} onChange={event => setViewMode(event.target.value as ViewMode)} className="form-control">
