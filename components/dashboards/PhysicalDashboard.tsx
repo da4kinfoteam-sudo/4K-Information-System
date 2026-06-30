@@ -1,5 +1,5 @@
 // Author: 4K
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
     AlertTriangle,
@@ -9,14 +9,13 @@ import {
     Building2,
     ChevronDown,
     ChevronRight,
-    Clock,
     Download,
     GraduationCap,
     Landmark,
     Search,
     Users,
 } from 'lucide-react';
-import { Subproject, IPO, Training, OtherActivity, OfficeRequirement, StaffingRequirement, ouToRegionMap } from '../../constants';
+import { Subproject, IPO, Training, OtherActivity, OfficeRequirement, StaffingRequirement, operatingUnits, ouToRegionMap } from '../../constants';
 import { isMonthTargetOverdue } from '../../lib/dateStatus';
 import { parseLocation } from '../LocationPicker';
 import { ModalItem } from './DashboardComponents';
@@ -42,7 +41,7 @@ interface PhysicalDashboardProps {
 }
 
 type ViewMode = 'Annual' | 'Monthly';
-type DetailView = 'national' | 'provinces' | 'trend' | 'alerts' | 'rankings' | 'submissions';
+type DetailView = 'national' | 'provinces' | 'trend' | 'alerts' | 'submissions';
 type ModalType = 'ipos' | 'subprojects' | 'trainings' | 'ads' | 'provinces';
 type MetricId = 'ipos' | 'subprojects' | 'iposWithSubprojects' | 'trainings' | 'iposTrained' | 'ads';
 type TrendIndicatorId = 'physicalPercentage' | 'ipos' | 'subprojects' | 'trainings' | 'ads';
@@ -119,6 +118,40 @@ const monthNames = [
 
 const shortMonthNames = monthNames.map(month => month.slice(0, 3));
 
+const OU_DISPLAY_ORDER = [
+    'NPMO',
+    'RPMO CAR',
+    'RPMO 1',
+    'RPMO 2',
+    'RPMO 3',
+    'RPMO 4A',
+    'RPMO 4B',
+    'RPMO 5',
+    'RPMO 6',
+    'RPMO 7',
+    'RPMO NIR',
+    'RPMO 8',
+    'RPMO 9',
+    'RPMO 10',
+    'RPMO 11',
+    'RPMO 12',
+    'RPMO 13',
+];
+
+const getOuSortIndex = (ou?: string) => {
+    if (!ou) return 9999;
+    const preferredIndex = OU_DISPLAY_ORDER.indexOf(ou);
+    if (preferredIndex >= 0) return preferredIndex;
+    const canonicalIndex = operatingUnits.indexOf(ou);
+    return canonicalIndex >= 0 ? 1000 + canonicalIndex : 9999;
+};
+
+const compareOuThenName = (a?: string, b?: string, aName = '', bName = '') => {
+    const orderDiff = getOuSortIndex(a) - getOuSortIndex(b);
+    if (orderDiff !== 0) return orderDiff;
+    return (a || '').localeCompare(b || '') || aName.localeCompare(bName);
+};
+
 const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     const date = new Date(`${dateString}T00:00:00Z`);
@@ -153,46 +186,26 @@ const getDateMonth = (dateString?: string) => {
 
 const getActivityTargetDate = (activity: Training | OtherActivity) => activity.endDate || activity.date;
 
-const getCumulativeCutoff = (selectedYear: string) => {
-    if (selectedYear === 'All') {
-        return { month: 11, label: 'Full year', cutoffDate: null as Date | null };
-    }
-
+const getSelectedAsOfCutoff = (selectedYear: string, asOfMonth: number) => {
+    const safeMonth = Math.max(0, Math.min(11, asOfMonth));
     const selectedYearNumber = Number(selectedYear);
-    if (!Number.isFinite(selectedYearNumber)) {
-        return { month: 11, label: 'Full year', cutoffDate: null as Date | null };
-    }
-
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    if (selectedYearNumber < currentYear) {
-        return {
-            month: 11,
-            label: 'December',
-            cutoffDate: new Date(selectedYearNumber, 11, 31, 23, 59, 59, 999),
-        };
-    }
-    if (selectedYearNumber > currentYear) {
-        return {
-            month: -1,
-            label: 'Not yet due',
-            cutoffDate: new Date(selectedYearNumber, 0, 0, 23, 59, 59, 999),
-        };
-    }
-
-    const month = now.getMonth();
     return {
-        month,
-        label: monthNames[month],
-        cutoffDate: new Date(selectedYearNumber, month + 1, 0, 23, 59, 59, 999),
+        month: safeMonth,
+        label: monthNames[safeMonth],
+        cutoffDate: Number.isFinite(selectedYearNumber)
+            ? new Date(selectedYearNumber, safeMonth + 1, 0, 23, 59, 59, 999)
+            : null as Date | null,
     };
 };
 
-const isDueByCutoff = (dateString: string | undefined, cutoffDate: Date | null) => {
+const isDueByCutoff = (dateString: string | undefined, cutoff: ReturnType<typeof getSelectedAsOfCutoff>) => {
     if (!dateString) return false;
-    if (!cutoffDate) return true;
+    if (!cutoff.cutoffDate) {
+        const month = getDateMonth(dateString);
+        return month >= 0 && month <= cutoff.month;
+    }
     const parsed = parseDate(dateString);
-    return !!parsed && parsed.getTime() <= cutoffDate.getTime();
+    return !!parsed && parsed.getTime() <= cutoff.cutoffDate.getTime();
 };
 
 const matchesSelectedYear = (dateString: string | undefined, selectedYear: string) => {
@@ -331,9 +344,56 @@ const ProgressPill: React.FC<{ actual: number; target: number }> = ({ actual, ta
     );
 };
 
-const StatusBadge: React.FC<{ actual: number; target: number }> = ({ actual, target }) => {
+const StatusText: React.FC<{ actual: number; target: number }> = ({ actual, target }) => {
     const status = getStatus(actual, target);
-    return <span className={`physical-dashboard-status physical-dashboard-status--${status.tone}`}>{status.label}</span>;
+    return <span className={`physical-dashboard-status-text physical-dashboard-status-text--${status.tone}`}>{status.label}</span>;
+};
+
+const DashboardPagination: React.FC<{
+    totalItems: number;
+    currentPage: number;
+    itemsPerPage: number;
+    itemLabel: string;
+    onPageChange: (page: number) => void;
+    onItemsPerPageChange: (size: number) => void;
+}> = ({ totalItems, currentPage, itemsPerPage, itemLabel, onPageChange, onItemsPerPageChange }) => {
+    const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+    const safePage = Math.min(currentPage, totalPages);
+    const firstItem = totalItems === 0 ? 0 : ((safePage - 1) * itemsPerPage) + 1;
+    const lastItem = Math.min(totalItems, safePage * itemsPerPage);
+
+    return (
+        <div className="data-table-pagination physical-dashboard-pagination">
+            <div className="data-table-pagination__page-size">
+                <span>Show</span>
+                <select
+                    value={itemsPerPage}
+                    onChange={event => onItemsPerPageChange(Number(event.target.value))}
+                    aria-label={`Rows per page for ${itemLabel}`}
+                >
+                    {[10, 25, 50].map(size => <option key={size} value={size}>{size}</option>)}
+                </select>
+                <span className="data-table-pagination__entries-label">per page</span>
+            </div>
+            <div className="data-table-pagination__status">
+                <span className="data-table-pagination__range">
+                    Showing {firstItem} to {lastItem} of {totalItems} {itemLabel}
+                </span>
+                <span className="data-table-pagination__compact-range">
+                    {firstItem}-{lastItem} of {totalItems}
+                </span>
+            </div>
+            <div className="data-table-pagination__controls">
+                <button type="button" onClick={() => onPageChange(Math.max(1, safePage - 1))} disabled={safePage <= 1}>
+                    Previous
+                </button>
+                <span>{safePage} / {totalPages}</span>
+                <button type="button" onClick={() => onPageChange(Math.min(totalPages, safePage + 1))} disabled={safePage >= totalPages}>
+                    Next
+                </button>
+            </div>
+        </div>
+    );
 };
 
 const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
@@ -355,6 +415,10 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
     const [expandedOus, setExpandedOus] = useState<Set<string>>(new Set());
     const [detailView, setDetailView] = useState<DetailView | null>(null);
     const [detailSearch, setDetailSearch] = useState('');
+    const [detailPage, setDetailPage] = useState(1);
+    const [detailItemsPerPage, setDetailItemsPerPage] = useState(10);
+    const [submissionPage, setSubmissionPage] = useState(1);
+    const [submissionItemsPerPage, setSubmissionItemsPerPage] = useState(10);
     const [localModal, setLocalModal] = useState<{
         title: string;
         type: ModalType;
@@ -362,6 +426,14 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         accomplishments: ModalItemWithOu[];
     } | null>(null);
     const [modalTab, setModalTab] = useState<'targets' | 'accomplishments'>('accomplishments');
+
+    useEffect(() => {
+        setDetailPage(1);
+    }, [detailView, detailSearch, detailItemsPerPage]);
+
+    useEffect(() => {
+        setSubmissionPage(1);
+    }, [submissionItemsPerPage, selectedOu, selectedYear]);
 
     const regionToOuMap = useMemo(() => {
         const map: Record<string, string> = {};
@@ -381,16 +453,16 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         const actualTrainings = (data.trainings || []).filter(training =>
             isCompletedTraining(training) && matchesSelectedYear(training.actualDate, selectedYear)
         );
-        const cumulativeCutoff = getCumulativeCutoff(selectedYear);
+        const cumulativeCutoff = getSelectedAsOfCutoff(selectedYear, asOfMonth);
 
         const monthTargetSubprojects = targetSubprojects.filter(sp => getDateMonth(sp.estimatedCompletionDate) === asOfMonth);
         const monthTargetTrainings = targetTrainings.filter(training => getDateMonth(getActivityTargetDate(training)) === asOfMonth);
         const monthActualSubprojects = actualSubprojects.filter(sp => getDateMonth(sp.actualCompletionDate) === asOfMonth);
         const monthActualTrainings = actualTrainings.filter(training => getDateMonth(training.actualDate) === asOfMonth);
-        const cumulativeTargetSubprojects = targetSubprojects.filter(sp => isDueByCutoff(sp.estimatedCompletionDate, cumulativeCutoff.cutoffDate));
-        const cumulativeTargetTrainings = targetTrainings.filter(training => isDueByCutoff(getActivityTargetDate(training), cumulativeCutoff.cutoffDate));
-        const cumulativeActualSubprojects = actualSubprojects.filter(sp => isDueByCutoff(sp.actualCompletionDate, cumulativeCutoff.cutoffDate));
-        const cumulativeActualTrainings = actualTrainings.filter(training => isDueByCutoff(training.actualDate, cumulativeCutoff.cutoffDate));
+        const cumulativeTargetSubprojects = targetSubprojects.filter(sp => isDueByCutoff(sp.estimatedCompletionDate, cumulativeCutoff));
+        const cumulativeTargetTrainings = targetTrainings.filter(training => isDueByCutoff(getActivityTargetDate(training), cumulativeCutoff));
+        const cumulativeActualSubprojects = actualSubprojects.filter(sp => isDueByCutoff(sp.actualCompletionDate, cumulativeCutoff));
+        const cumulativeActualTrainings = actualTrainings.filter(training => isDueByCutoff(training.actualDate, cumulativeCutoff));
 
         const getIpoSetFromSubprojects = (items: Subproject[]): Set<string> =>
             new Set(items.map(sp => sp.indigenousPeopleOrganization).filter((name): name is string => !!name));
@@ -447,7 +519,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 };
             })
             .filter((item): item is NonNullable<typeof item> => !!item)
-            .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
+            .sort((a, b) => compareOuThenName(a.operatingUnit, b.operatingUnit, a.name, b.name));
 
         const makeSubprojectItems = (items: Subproject[], completedIds?: Set<number>) => items
             .map(sp => {
@@ -463,7 +535,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     isOverdue: !isCompleted && isMonthTargetOverdue(sp.estimatedCompletionDate),
                 };
             })
-            .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
+            .sort((a, b) => compareOuThenName(a.operatingUnit, b.operatingUnit, a.name, b.name));
 
         const makeTrainingItems = (items: Training[], completedIds?: Set<number>) => items
             .map(training => {
@@ -480,7 +552,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     isOverdue: !isCompleted && isMonthTargetOverdue(targetDate),
                 };
             })
-            .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
+            .sort((a, b) => compareOuThenName(a.operatingUnit, b.operatingUnit, a.name, b.name));
 
         const makeAdScope = (
             ipoNames: Set<string>,
@@ -526,7 +598,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                         isOverdue: !isCompleted && areAllLinkedTargetsOverdueAndIncomplete(item.linkedTargets),
                     };
                 })
-                .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
+                .sort((a, b) => compareOuThenName(a.operatingUnit, b.operatingUnit, a.name, b.name));
         };
 
         const makeMetricScope = (
@@ -636,7 +708,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             },
             {
                 id: 'iposTrained',
-                label: 'IPOs Trained',
+                label: 'IPOs with Trainings',
                 variant: 'cyan',
                 modalType: 'ipos',
                 icon: <GraduationCap />,
@@ -783,6 +855,25 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         };
 
         const provinceMap = new Map<string, MutableProvince>();
+        const ouMap = new Map<string, MutableProvince>();
+        const ensureOu = (ou: string) => {
+            const normalizedOu = ou || 'Unknown OU';
+            if (!ouMap.has(normalizedOu)) {
+                ouMap.set(normalizedOu, {
+                    ou: normalizedOu,
+                    province: 'All Provinces',
+                    targetIpos: new Set(),
+                    actualIpos: new Set(),
+                    targetSubprojects: new Set(),
+                    actualSubprojects: new Set(),
+                    targetTrainings: new Set(),
+                    actualTrainings: new Set(),
+                });
+            }
+            return ouMap.get(normalizedOu)!;
+        };
+        operatingUnits.forEach(ou => ensureOu(ou));
+
         const ensureProvince = (ou: string, province: string) => {
             const key = `${ou || 'Unknown OU'}|${province || 'Unspecified Province'}`;
             if (!provinceMap.has(key)) {
@@ -805,27 +896,41 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             const row = ensureProvince(sp.operatingUnit, getProvinceForIpo(ipo));
             row.targetSubprojects.add(sp.id);
             if (sp.indigenousPeopleOrganization) row.targetIpos.add(sp.indigenousPeopleOrganization);
+
+            const ouRow = ensureOu(sp.operatingUnit);
+            ouRow.targetSubprojects.add(sp.id);
+            if (sp.indigenousPeopleOrganization) ouRow.targetIpos.add(sp.indigenousPeopleOrganization);
         });
         actualSubprojects.forEach(sp => {
             const ipo = ipoMap.get(sp.indigenousPeopleOrganization);
             const row = ensureProvince(sp.operatingUnit, getProvinceForIpo(ipo));
             row.actualSubprojects.add(sp.id);
             if (sp.indigenousPeopleOrganization) row.actualIpos.add(sp.indigenousPeopleOrganization);
+
+            const ouRow = ensureOu(sp.operatingUnit);
+            ouRow.actualSubprojects.add(sp.id);
+            if (sp.indigenousPeopleOrganization) ouRow.actualIpos.add(sp.indigenousPeopleOrganization);
         });
         targetTrainings.forEach(training => {
+            const ouRow = ensureOu(training.operatingUnit);
+            ouRow.targetTrainings.add(training.id);
             (training.participatingIpos || []).forEach(ipoName => {
                 const ipo = ipoMap.get(ipoName);
                 const row = ensureProvince(training.operatingUnit, getProvinceForIpo(ipo));
                 row.targetTrainings.add(training.id);
                 row.targetIpos.add(ipoName);
+                ouRow.targetIpos.add(ipoName);
             });
         });
         actualTrainings.forEach(training => {
+            const ouRow = ensureOu(training.operatingUnit);
+            ouRow.actualTrainings.add(training.id);
             (training.participatingIpos || []).forEach(ipoName => {
                 const ipo = ipoMap.get(ipoName);
                 const row = ensureProvince(training.operatingUnit, getProvinceForIpo(ipo));
                 row.actualTrainings.add(training.id);
                 row.actualIpos.add(ipoName);
+                ouRow.actualIpos.add(ipoName);
             });
         });
 
@@ -846,33 +951,26 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     rate: percent(actualTotal, targetTotal),
                 };
             })
-            .sort((a, b) => a.ou.localeCompare(b.ou) || b.rate - a.rate || a.province.localeCompare(b.province));
+            .sort((a, b) => getOuSortIndex(a.ou) - getOuSortIndex(b.ou) || b.rate - a.rate || a.province.localeCompare(b.province));
 
-        const ouRows = Array.from(provinceRows.reduce((map, row) => {
-            const current = map.get(row.ou) || {
-                key: row.ou,
-                ou: row.ou,
-                province: 'All Provinces',
-                targetIpos: 0,
-                actualIpos: 0,
-                targetSubprojects: 0,
-                actualSubprojects: 0,
-                targetTrainings: 0,
-                actualTrainings: 0,
-                rate: 0,
-            };
-            current.targetIpos += row.targetIpos;
-            current.actualIpos += row.actualIpos;
-            current.targetSubprojects += row.targetSubprojects;
-            current.actualSubprojects += row.actualSubprojects;
-            current.targetTrainings += row.targetTrainings;
-            current.actualTrainings += row.actualTrainings;
-            const targetTotal = current.targetIpos + current.targetSubprojects + current.targetTrainings;
-            const actualTotal = current.actualIpos + current.actualSubprojects + current.actualTrainings;
-            current.rate = percent(actualTotal, targetTotal);
-            map.set(row.ou, current);
-            return map;
-        }, new Map<string, ProvincePerformance>()).values()).sort((a, b) => b.rate - a.rate || a.ou.localeCompare(b.ou));
+        const ouRows: ProvincePerformance[] = Array.from(ouMap.entries())
+            .map(([key, row]) => {
+                const targetTotal = row.targetIpos.size + row.targetSubprojects.size + row.targetTrainings.size;
+                const actualTotal = row.actualIpos.size + row.actualSubprojects.size + row.actualTrainings.size;
+                return {
+                    key,
+                    ou: row.ou,
+                    province: row.province,
+                    targetIpos: row.targetIpos.size,
+                    actualIpos: row.actualIpos.size,
+                    targetSubprojects: row.targetSubprojects.size,
+                    actualSubprojects: row.actualSubprojects.size,
+                    targetTrainings: row.targetTrainings.size,
+                    actualTrainings: row.actualTrainings.size,
+                    rate: percent(actualTotal, targetTotal),
+                };
+            })
+            .sort((a, b) => getOuSortIndex(a.ou) - getOuSortIndex(b.ou) || a.ou.localeCompare(b.ou));
 
         const alerts = [
             ...provinceRows
@@ -962,7 +1060,6 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             ouRows,
             alerts,
             submissions,
-            topPerformers: [...provinceRows].filter(row => row.rate > 0).sort((a, b) => b.rate - a.rate).slice(0, 5),
         };
     }, [asOfMonth, data.ipos, data.officeReqs, data.otherActivities, data.staffingReqs, data.subprojects, data.trainings, regionToOuMap, selectedYear]);
 
@@ -1042,12 +1139,18 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             });
         }
         if (detailView === 'provinces') {
-            return analytics.provinceRows.map(row => ({
+            const rows = allOuMode ? analytics.ouRows : analytics.provinceRows;
+            return rows.map(row => ({
                 OU: row.ou,
-                Province: row.province,
-                'IPOs Target/Accomp': `${row.actualIpos} / ${row.targetIpos}`,
-                'Subprojects Target/Accomp': `${row.actualSubprojects} / ${row.targetSubprojects}`,
-                'Trainings Target/Accomp': `${row.actualTrainings} / ${row.targetTrainings}`,
+                ...(allOuMode ? {} : { Province: row.province }),
+                'IPOs Target': row.targetIpos,
+                'IPOs Accomplished': row.actualIpos,
+                'Subprojects Target': row.targetSubprojects,
+                'Subprojects Accomplished': row.actualSubprojects,
+                'Trainings Target': row.targetTrainings,
+                'Trainings Accomplished': row.actualTrainings,
+                'Total Target': row.targetIpos + row.targetSubprojects + row.targetTrainings,
+                'Total Accomplishment': row.actualIpos + row.actualSubprojects + row.actualTrainings,
                 Rate: `${row.rate}%`,
                 Status: getStatus(row.actualIpos + row.actualSubprojects + row.actualTrainings, row.targetIpos + row.targetSubprojects + row.targetTrainings).label,
             }));
@@ -1065,17 +1168,6 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 Alert: row.title,
                 Details: row.details,
                 Type: row.tone,
-            }));
-        }
-        if (detailView === 'rankings') {
-            return analytics.topPerformers.map((row, index) => ({
-                Rank: index + 1,
-                OU: row.ou,
-                Province: row.province,
-                Rate: `${row.rate}%`,
-                'IPOs Target/Accomp': `${row.actualIpos} / ${row.targetIpos}`,
-                'Subprojects Target/Accomp': `${row.actualSubprojects} / ${row.targetSubprojects}`,
-                'Trainings Target/Accomp': `${row.actualTrainings} / ${row.targetTrainings}`,
             }));
         }
         if (detailView === 'submissions') {
@@ -1096,6 +1188,19 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         !detailSearch.trim() || Object.values(row).some(value =>
             String(value ?? '').toLowerCase().includes(detailSearch.trim().toLowerCase())
         )
+    );
+    const detailTotalPages = Math.max(1, Math.ceil(filteredDetailRows.length / detailItemsPerPage));
+    const safeDetailPage = Math.min(detailPage, detailTotalPages);
+    const paginatedDetailRows = filteredDetailRows.slice(
+        (safeDetailPage - 1) * detailItemsPerPage,
+        safeDetailPage * detailItemsPerPage
+    );
+
+    const submissionTotalPages = Math.max(1, Math.ceil(analytics.submissions.length / submissionItemsPerPage));
+    const safeSubmissionPage = Math.min(submissionPage, submissionTotalPages);
+    const paginatedSubmissions = analytics.submissions.slice(
+        (safeSubmissionPage - 1) * submissionItemsPerPage,
+        safeSubmissionPage * submissionItemsPerPage
     );
 
     const downloadDetailView = () => {
@@ -1126,10 +1231,9 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
     if (detailView) {
         const titleMap: Record<DetailView, string> = {
             national: 'National Target vs Accomplishment',
-            provinces: allOuMode ? 'OU and Province Performance Summary' : 'Province Performance Summary',
+            provinces: allOuMode ? 'OU Performance Summary' : 'Province Performance Summary',
             trend: 'Cumulative Accomplishment Trend',
             alerts: 'Key Insights and Alerts',
-            rankings: 'Top Performers',
             submissions: 'Recent Data Submissions',
         };
         const headers = Object.keys(filteredDetailRows[0] || detailRows[0] || { Notice: 'No records' });
@@ -1169,7 +1273,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredDetailRows.length > 0 ? filteredDetailRows.map((row, index) => (
+                                {filteredDetailRows.length > 0 ? paginatedDetailRows.map((row, index) => (
                                     <tr key={index}>
                                         {headers.map(header => <td key={header}>{String((row as any)[header] ?? '')}</td>)}
                                     </tr>
@@ -1183,6 +1287,14 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                             </tbody>
                         </table>
                     </div>
+                    <DashboardPagination
+                        totalItems={filteredDetailRows.length}
+                        currentPage={safeDetailPage}
+                        itemsPerPage={detailItemsPerPage}
+                        itemLabel="records"
+                        onPageChange={setDetailPage}
+                        onItemsPerPageChange={setDetailItemsPerPage}
+                    />
                 </section>
             </div>
         );
@@ -1242,8 +1354,6 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     <SectionHeader
                         title="National Target vs Accomplishment"
                         meta={viewMode}
-                        actionLabel="View Full Report"
-                        onAction={() => openDetailView('national')}
                     />
                     <div className="physical-dashboard-horizontal-chart">
                         {analytics.metrics.slice(0, 6).map(metric => {
@@ -1251,9 +1361,15 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                             return (
                                 <div key={metric.id} className="physical-dashboard-horizontal-row">
                                     <span>{metric.label}</span>
-                                    <div>
-                                        <i className="physical-dashboard-horizontal-row__target" style={{ width: `${Math.max(4, (scope.target / chartMax) * 100)}%` }} />
-                                        <i className="physical-dashboard-horizontal-row__actual" style={{ width: `${Math.max(scope.actual > 0 ? 4 : 0, (scope.actual / chartMax) * 100)}%` }} />
+                                    <div className="physical-dashboard-horizontal-bars">
+                                        <div className="physical-dashboard-horizontal-bar">
+                                            <small>Target</small>
+                                            <i><b className="physical-dashboard-horizontal-row__target" style={{ width: `${Math.max(scope.target > 0 ? 4 : 0, (scope.target / chartMax) * 100)}%` }} /></i>
+                                        </div>
+                                        <div className="physical-dashboard-horizontal-bar">
+                                            <small>Actual</small>
+                                            <i><b className="physical-dashboard-horizontal-row__actual" style={{ width: `${Math.max(scope.actual > 0 ? 4 : 0, (scope.actual / chartMax) * 100)}%` }} /></i>
+                                        </div>
                                     </div>
                                     <strong>{scope.actual.toLocaleString()} / {scope.target.toLocaleString()}</strong>
                                 </div>
@@ -1285,7 +1401,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                                 </tr>
                             </thead>
                             <tbody>
-                                {allOuMode ? analytics.ouRows.slice(0, 8).map(row => {
+                                {allOuMode ? analytics.ouRows.map(row => {
                                     const isExpanded = expandedOus.has(row.ou);
                                     const childRows = analytics.provinceRows.filter(province => province.ou === row.ou);
                                     return (
@@ -1310,7 +1426,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                                                 <td>{row.actualSubprojects} / {row.targetSubprojects}</td>
                                                 <td>{row.actualTrainings} / {row.targetTrainings}</td>
                                                 <td><ProgressPill actual={row.actualIpos + row.actualSubprojects + row.actualTrainings} target={row.targetIpos + row.targetSubprojects + row.targetTrainings} /></td>
-                                                <td><StatusBadge actual={row.actualIpos + row.actualSubprojects + row.actualTrainings} target={row.targetIpos + row.targetSubprojects + row.targetTrainings} /></td>
+                                                <td><StatusText actual={row.actualIpos + row.actualSubprojects + row.actualTrainings} target={row.targetIpos + row.targetSubprojects + row.targetTrainings} /></td>
                                             </tr>
                                             {isExpanded && childRows.map(child => (
                                                 <tr key={child.key} className="physical-dashboard-province-child-row">
@@ -1319,7 +1435,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                                                     <td>{child.actualSubprojects} / {child.targetSubprojects}</td>
                                                     <td>{child.actualTrainings} / {child.targetTrainings}</td>
                                                     <td><ProgressPill actual={child.actualIpos + child.actualSubprojects + child.actualTrainings} target={child.targetIpos + child.targetSubprojects + child.targetTrainings} /></td>
-                                                    <td><StatusBadge actual={child.actualIpos + child.actualSubprojects + child.actualTrainings} target={child.targetIpos + child.targetSubprojects + child.targetTrainings} /></td>
+                                                    <td><StatusText actual={child.actualIpos + child.actualSubprojects + child.actualTrainings} target={child.targetIpos + child.targetSubprojects + child.targetTrainings} /></td>
                                                 </tr>
                                             ))}
                                         </React.Fragment>
@@ -1331,10 +1447,10 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                                         <td>{row.actualSubprojects} / {row.targetSubprojects}</td>
                                         <td>{row.actualTrainings} / {row.targetTrainings}</td>
                                         <td><ProgressPill actual={row.actualIpos + row.actualSubprojects + row.actualTrainings} target={row.targetIpos + row.targetSubprojects + row.targetTrainings} /></td>
-                                        <td><StatusBadge actual={row.actualIpos + row.actualSubprojects + row.actualTrainings} target={row.targetIpos + row.targetSubprojects + row.targetTrainings} /></td>
+                                        <td><StatusText actual={row.actualIpos + row.actualSubprojects + row.actualTrainings} target={row.targetIpos + row.targetSubprojects + row.targetTrainings} /></td>
                                     </tr>
                                 ))}
-                                {analytics.provinceRows.length === 0 && (
+                                {!allOuMode && analytics.provinceRows.length === 0 && (
                                     <tr>
                                         <td colSpan={6} className="text-center italic text-gray-500 dark:text-gray-400">No province data available.</td>
                                     </tr>
@@ -1424,41 +1540,49 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 </article>
             </section>
 
-            <section className="physical-dashboard-footer-grid">
-                <article className="report-card physical-dashboard-list-card">
-                    <SectionHeader title="Top Performers" actionLabel="View All Rankings" onAction={() => openDetailView('rankings')} />
-                    <div className="physical-dashboard-performer-list">
-                        {analytics.topPerformers.slice(0, 4).map((row, index) => (
-                            <div key={row.key} className="physical-dashboard-performer">
-                                <span>{index + 1}</span>
-                                <div>
-                                    <strong>{row.province}</strong>
-                                    <small>{row.ou}</small>
-                                    <ProgressPill actual={row.actualIpos + row.actualSubprojects + row.actualTrainings} target={row.targetIpos + row.targetSubprojects + row.targetTrainings} />
-                                </div>
-                                <b>{row.rate}%</b>
-                            </div>
-                        ))}
-                        {analytics.topPerformers.length === 0 && <p className="dashboard-empty">No performer data available.</p>}
-                    </div>
-                </article>
-
-                <article className="report-card physical-dashboard-list-card">
+            <section className="physical-dashboard-footer-grid physical-dashboard-footer-grid--submissions">
+                <article className="report-card physical-dashboard-list-card physical-dashboard-list-card--wide">
                     <SectionHeader title="Recent Data Submissions" actionLabel="View All Submissions" onAction={() => openDetailView('submissions')} />
-                    <div className="physical-dashboard-submission-list">
-                        {analytics.submissions.slice(0, 5).map(row => (
-                            <div key={row.id} className="physical-dashboard-submission">
-                                <Clock aria-hidden="true" />
-                                <div>
-                                    <strong>{row.name}</strong>
-                                    <span>{row.type} | {row.component} | {row.operatingUnit}</span>
-                                    <span>Completed: {formatDate(row.completionDate)}</span>
-                                </div>
-                                <time>{formatDateTime(row.editedAt)}</time>
-                            </div>
-                        ))}
-                        {analytics.submissions.length === 0 && <p className="dashboard-empty">No recent submissions available.</p>}
+                    <div className="data-table-scroll custom-scrollbar physical-dashboard-submissions-table-wrap">
+                        <table className="data-table physical-dashboard-submissions-table">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Type</th>
+                                    <th>Component</th>
+                                    <th>OU</th>
+                                    <th>Completion Date</th>
+                                    <th>Submitted / Edited</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {paginatedSubmissions.length > 0 ? paginatedSubmissions.map(row => (
+                                    <tr key={row.id}>
+                                        <td><strong>{row.name}</strong></td>
+                                        <td>{row.type}</td>
+                                        <td>{row.component}</td>
+                                        <td>{row.operatingUnit}</td>
+                                        <td>{formatDate(row.completionDate)}</td>
+                                        <td>{formatDateTime(row.editedAt)}</td>
+                                    </tr>
+                                )) : (
+                                    <tr>
+                                        <td colSpan={6} className="text-center italic text-gray-500 dark:text-gray-400">
+                                            No recent submissions available.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
                     </div>
+                    <DashboardPagination
+                        totalItems={analytics.submissions.length}
+                        currentPage={safeSubmissionPage}
+                        itemsPerPage={submissionItemsPerPage}
+                        itemLabel="submissions"
+                        onPageChange={setSubmissionPage}
+                        onItemsPerPageChange={setSubmissionItemsPerPage}
+                    />
                 </article>
             </section>
 
@@ -1498,7 +1622,9 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                                         if (!acc[ou]) acc[ou] = [];
                                         acc[ou].push(item);
                                         return acc;
-                                    }, {} as Record<string, ModalItemWithOu[]>)).sort(([a], [b]) => a.localeCompare(b)).map(([ou, groupedItems]) => {
+                                    }, {} as Record<string, ModalItemWithOu[]>))
+                                        .sort(([a], [b]) => getOuSortIndex(a) - getOuSortIndex(b) || a.localeCompare(b))
+                                        .map(([ou, groupedItems]) => {
                                         const items = groupedItems as ModalItemWithOu[];
                                         return (
                                             <div key={ou} className="dashboard-modal-group">
