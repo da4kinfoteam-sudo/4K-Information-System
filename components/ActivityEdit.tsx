@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
 import { getMonetaryChanges } from '../lib/logUtils';
 import { useIpoHistory } from '../hooks/useIpoHistory';
+import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 import { supabase } from '../supabaseClient';
 import { Pencil, Trash2 } from 'lucide-react';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
@@ -88,9 +89,10 @@ const defaultFormData: Activity = {
 const ActivityEdit: React.FC<ActivityEditProps> = ({ 
     mode, activity, ipos, onBack, onUpdateActivity, uacsCodes, referenceActivities = [], forcedType 
 }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, hasAccess } = useAuth();
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
+    const { getStatusDecision, getMonthDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
     const isAdmin = currentUser?.role === 'Administrator';
 
     const [formData, setFormData] = useState<Activity>(activity || defaultFormData);
@@ -541,8 +543,68 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         }));
     };
 
+    const validateActivityActualMonth = async (month?: string) => {
+        if (!month || !activity) return true;
+        const decision = getMonthDecision(month);
+        return ensureDecisionAllowed(decision, {
+            moduleKey: 'activities',
+            item: activity,
+            itemId: activity.id,
+            itemName: activity.name,
+            status: activity.status,
+            action: 'editPhysicalAccomplishment',
+            month,
+            entityType: 'activity',
+        });
+    };
+
+    const validateActivityAccomplishmentMonthsForSave = async () => {
+        if (mode !== 'accomplishment') return true;
+        const months = [
+            formData.actualDate,
+            formData.actualEndDate,
+            ...formData.expenses.flatMap(exp => [
+                ...(exp.obligations || []).map(record => record.date),
+                ...(exp.disbursements || []).map(record => record.date),
+            ]),
+        ].filter(Boolean);
+        for (const month of months) {
+            if (!(await validateActivityActualMonth(month))) return false;
+        }
+        return true;
+    };
+
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
+
+        if (mode !== 'create' && activity) {
+            const action = mode === 'details'
+                ? 'editDetails'
+                : mode === 'expenses'
+                    ? 'editBudget'
+                    : 'editPhysicalAccomplishment';
+            const hasModuleAccess = mode === 'accomplishment'
+                ? hasAccess('Accomplishment - Physical', 'edit') || hasAccess('Accomplishment - Financial', 'edit')
+                : hasAccess('Activities', 'edit');
+            const decision = getStatusDecision({
+                moduleKey: 'activities',
+                item: activity,
+                action,
+                hasModuleAccess,
+            });
+            const allowed = await ensureDecisionAllowed(decision, {
+                moduleKey: 'activities',
+                item: activity,
+                itemId: activity.id,
+                itemName: activity.name,
+                status: activity.status,
+                action,
+                entityType: 'activity',
+            });
+            if (!allowed) return;
+        }
+
+        if (!(await validateActivityAccomplishmentMonthsForSave())) return;
         
         if ((mode === 'create' && activeTab === 'details') || mode === 'details') {
             const requiredFields = ['component', 'type', 'date', 'location'];
@@ -1187,12 +1249,18 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                             <div className="form-grid">
                                 <div>
                                     <label className="form-label">Actual Start Date</label>
-                                    <input type="date" name="actualDate" value={formData.actualDate || ''} onChange={handleInputChange} className={commonInputClasses} />
+                                    <input type="date" name="actualDate" value={formData.actualDate || ''} onChange={async (event) => {
+                                        if (event.target.value && !(await validateActivityActualMonth(event.target.value))) return;
+                                        handleInputChange(event);
+                                    }} className={commonInputClasses} />
                                 </div>
                                 {conductType === 'Multi-day' && (
                                     <div>
                                         <label className="form-label">Actual End Date</label>
-                                        <input type="date" name="actualEndDate" value={formData.actualEndDate || ''} onChange={handleInputChange} className={commonInputClasses} />
+                                        <input type="date" name="actualEndDate" value={formData.actualEndDate || ''} onChange={async (event) => {
+                                            if (event.target.value && !(await validateActivityActualMonth(event.target.value))) return;
+                                            handleInputChange(event);
+                                        }} className={commonInputClasses} />
                                     </div>
                                 )}
                                 <div><label className="form-label">Actual Male</label><input type="number" name="actualParticipantsMale" value={formData.actualParticipantsMale} onChange={handleNumericChange} className={commonInputClasses} /></div>
@@ -1221,6 +1289,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                                     handleExpenseAccomplishmentChange(exp.id, 'actualObligationAmount', total);
                                                 }}
                                                 defaultYear={formData.fundingYear}
+                                                validateMonthChange={validateActivityActualMonth}
                                             />
                                         </div>
 
@@ -1234,6 +1303,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                                     handleExpenseAccomplishmentChange(exp.id, 'actualDisbursementAmount', total);
                                                 }}
                                                 defaultYear={formData.fundingYear}
+                                                validateMonthChange={validateActivityActualMonth}
                                             />
                                         </div>
                                     </div>

@@ -9,9 +9,10 @@ interface ObligationsEditorProps {
     onChange: (obligations: ObligationRecord[], totalAmount: number) => void;
     defaultYear?: string;
     readOnly?: boolean;
+    validateMonthChange?: (month: string) => boolean | Promise<boolean>;
 }
 
-export const ObligationsEditor: React.FC<ObligationsEditorProps> = ({ obligations = [], onChange, defaultYear, readOnly = false }) => {
+export const ObligationsEditor: React.FC<ObligationsEditorProps> = ({ obligations = [], onChange, defaultYear, readOnly = false, validateMonthChange }) => {
     const getTotal = (items: ObligationRecord[]) => items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
     const handleAdd = () => {
@@ -22,7 +23,11 @@ export const ObligationsEditor: React.FC<ObligationsEditorProps> = ({ obligation
         onChange(updated, getTotal(updated));
     };
 
-    const handleUpdate = (id: number, field: keyof ObligationRecord, value: any) => {
+    const handleUpdate = async (id: number, field: keyof ObligationRecord, value: any) => {
+        if (field === 'date' && value && validateMonthChange) {
+            const allowed = await validateMonthChange(value);
+            if (!allowed) return;
+        }
         const updated = obligations.map(ob => ob.id === id ? { ...ob, [field]: value } : ob);
         onChange(updated, getTotal(updated));
     };

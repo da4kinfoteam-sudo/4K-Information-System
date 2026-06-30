@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
 import { getMonetaryChanges } from '../lib/logUtils';
 import { useIpoHistory } from '../hooks/useIpoHistory';
+import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 import { supabase } from '../supabaseClient';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
 import { isMonthTargetOverdue } from '../lib/dateStatus';
@@ -82,9 +83,10 @@ const formatMonthYear = (dateString?: string) => {
 const SubprojectEdit: React.FC<SubprojectEditProps> = ({ 
     subproject, ipos, setIpos, onBack, onUpdateSubproject, uacsCodes, particularTypes, commodityCategories, refCommodities, refLivestock
 }): React.ReactNode => {
-    const { currentUser } = useAuth();
+    const { currentUser, hasAccess } = useAuth();
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
+    const { getStatusDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
     
     const [formData, setFormData] = useState<Subproject>(subproject || defaultFormData);
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget' | 'summary'>('details');
@@ -482,6 +484,25 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
 
         if (!isNew && activeTab !== 'budget' && activeTab !== 'summary') {
             return;
+        }
+
+        if (!isNew && subproject) {
+            const decision = getStatusDecision({
+                moduleKey: 'subprojects',
+                item: subproject,
+                action: 'editDetails',
+                hasModuleAccess: hasAccess('Subprojects', 'edit'),
+            });
+            const allowed = await ensureDecisionAllowed(decision, {
+                moduleKey: 'subprojects',
+                item: subproject,
+                itemId: subproject.id,
+                itemName: subproject.name,
+                status: subproject.status,
+                action: 'editDetails',
+                entityType: 'subproject',
+            });
+            if (!allowed) return;
         }
 
         if (isNew && validationErrors.length > 0) {

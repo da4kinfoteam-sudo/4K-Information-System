@@ -9,9 +9,10 @@ interface DisbursementsEditorProps {
     onChange: (disbursements: DisbursementRecord[], totalAmount: number) => void;
     defaultYear?: string;
     readOnly?: boolean;
+    validateMonthChange?: (month: string) => boolean | Promise<boolean>;
 }
 
-export const DisbursementsEditor: React.FC<DisbursementsEditorProps> = ({ disbursements = [], onChange, defaultYear, readOnly = false }) => {
+export const DisbursementsEditor: React.FC<DisbursementsEditorProps> = ({ disbursements = [], onChange, defaultYear, readOnly = false, validateMonthChange }) => {
     const getTotal = (items: DisbursementRecord[]) => items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
     const handleAdd = () => {
@@ -22,7 +23,11 @@ export const DisbursementsEditor: React.FC<DisbursementsEditorProps> = ({ disbur
         onChange(updated, getTotal(updated));
     };
 
-    const handleUpdate = (id: number, field: keyof DisbursementRecord, value: any) => {
+    const handleUpdate = async (id: number, field: keyof DisbursementRecord, value: any) => {
+        if (field === 'date' && value && validateMonthChange) {
+            const allowed = await validateMonthChange(value);
+            if (!allowed) return;
+        }
         const updated = disbursements.map(db => db.id === id ? { ...db, [field]: value } : db);
         onChange(updated, getTotal(updated));
     };

@@ -11,6 +11,7 @@ import { downloadActivitiesReport, downloadActivitiesTemplate, handleActivitiesU
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { fetchAll } from '../hooks/useSupabaseTable';
 import useLocalStorageState from '../hooks/useLocalStorageState';
+import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 import type { DataScope } from '../lib/scopedDataFetch';
 import { DcfScopeFilterPanel, DcfScopeFilterToggle, matchesDcfScope, useDcfScopeFilters } from './ui/DcfScopeFilters';
 
@@ -203,6 +204,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
+    const { getDeleteDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<Activity | null>(null);
@@ -432,17 +434,31 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         setExpandedRowId(prevId => (prevId === activityId ? null : activityId));
     };
 
+    const canDeleteActivityByPolicy = (activity: Activity) => getDeleteDecision({
+        moduleKey: 'activities',
+        item: activity,
+        hasModuleAccess: canEdit,
+    });
+
     // ... (Deletion, Cloning, formatDate handlers remain the same)
     const confirmMultiDelete = async () => {
         if (selectedIds.length > 0) {
             const itemsToDelete = activities.filter(a => selectedIds.includes(a.id));
-            const deletedItems = itemsToDelete.map(a => a.name).join(', ');
-            logAction('Deleted Activities', `Bulk deleted ${selectedIds.length} items: ${deletedItems}`);
+            const deletableItems = itemsToDelete.filter(item => canDeleteActivityByPolicy(item).allowed);
+            const skippedCount = itemsToDelete.length - deletableItems.length;
+            if (deletableItems.length === 0) {
+                alert('None of the selected activities can be deleted under the current DCF editing policy.');
+                resetSelection();
+                return;
+            }
+            const deletableIds = deletableItems.map(item => item.id);
+            const deletedItems = deletableItems.map(a => a.name).join(', ');
+            logAction('Deleted Activities', `Bulk deleted ${deletableItems.length} items: ${deletedItems}${skippedCount ? ` (${skippedCount} skipped by policy)` : ''}`);
 
             if (supabase) {
                 try {
                     // Archive each item
-                    const archivePayload = itemsToDelete.map(item => ({
+                    const archivePayload = deletableItems.map(item => ({
                         entity_type: 'activity',
                         original_id: item.id,
                         data: item,
@@ -453,17 +469,18 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                     const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
                     if (archiveError) throw archiveError;
 
-                    const { error: deleteError } = await supabase.from('activities').delete().in('id', selectedIds);
+                    const { error: deleteError } = await supabase.from('activities').delete().in('id', deletableIds);
                     if (deleteError) throw deleteError;
 
-                    setActivities(prev => prev.filter(a => !selectedIds.includes(a.id)));
+                    setActivities(prev => prev.filter(a => !deletableIds.includes(a.id)));
                 } catch (error: any) {
                     console.error("Error archiving/deleting:", error);
                     alert("Failed to delete selected items: " + error.message);
                 }
             } else {
-                setActivities(prev => prev.filter(a => !selectedIds.includes(a.id)));
+                setActivities(prev => prev.filter(a => !deletableIds.includes(a.id)));
             }
+            if (skippedCount) alert(`${skippedCount} selected activit${skippedCount === 1 ? 'y was' : 'ies were'} skipped by DCF editing policy.`);
         }
         resetSelection();
     };
@@ -552,6 +569,16 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
 
     const confirmDelete = async () => {
         if (itemToDelete) {
+            const allowed = await ensureDecisionAllowed(canDeleteActivityByPolicy(itemToDelete), {
+                moduleKey: 'activities',
+                item: itemToDelete,
+                itemId: itemToDelete.id,
+                itemName: itemToDelete.name,
+                status: itemToDelete.status,
+                action: 'delete',
+                entityType: 'activity',
+            });
+            if (!allowed) return;
             logAction(`Deleted ${itemToDelete.type}`, itemToDelete.name, itemToDelete.participatingIpos.join(', '), itemToDelete.type, String(itemToDelete.id));
 
              for (const ipoName of itemToDelete.participatingIpos) {

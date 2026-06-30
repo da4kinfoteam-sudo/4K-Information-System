@@ -12,6 +12,7 @@ import { parseLocation } from '../LocationPicker';
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Check, Download, FileSpreadsheet, Plus, Upload } from 'lucide-react';
+import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 
 declare const XLSX: any;
 
@@ -192,7 +193,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
-    const isAdmin = currentUser?.role === 'Administrator';
+    const { getDeleteDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
     
     // Local State
     const [view, setView] = useState<'list' | 'form'>('list');
@@ -477,13 +478,21 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
     const handleDelete = async () => {
         if (!itemToDelete) return;
-        const isProposed = itemToDelete.status === 'Proposed';
-        const canDeleteThis = isAdmin || (canEdit && isProposed);
-        
-        if (!canDeleteThis) {
-            alert("You do not have permission to delete this item based on its current status.");
-            return;
-        }
+        const decision = getDeleteDecision({
+            moduleKey: 'office_requirements',
+            item: itemToDelete,
+            hasModuleAccess: canEdit,
+        });
+        const allowed = await ensureDecisionAllowed(decision, {
+            moduleKey: 'office_requirements',
+            item: itemToDelete,
+            itemId: itemToDelete.id,
+            itemName: itemToDelete.equipment,
+            status: itemToDelete.status,
+            action: 'delete',
+            entityType: 'office_requirement',
+        });
+        if (!allowed) return;
 
         if (supabase) {
             try {
@@ -514,7 +523,11 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
     const handleMultiDelete = async () => {
         const itemsToDelete = items.filter(i => selectedIds.includes(i.id));
-        const deletableItems = itemsToDelete.filter(i => isAdmin || (canEdit && i.status === 'Proposed'));
+        const deletableItems = itemsToDelete.filter(item => getDeleteDecision({
+            moduleKey: 'office_requirements',
+            item,
+            hasModuleAccess: canEdit,
+        }).allowed);
         const deletableIds = deletableItems.map(i => i.id);
         
         if (deletableIds.length === 0) {
@@ -1176,8 +1189,11 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                     </thead>
                     <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                         {paginatedData.map((item) => {
-                            const isProposed = item.status === 'Proposed';
-                            const canDeleteThis = isAdmin || (canEdit && isProposed);
+                            const canDeleteThis = getDeleteDecision({
+                                moduleKey: 'office_requirements',
+                                item,
+                                hasModuleAccess: canEdit,
+                            }).allowed;
                             
                             return (
                                 <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">

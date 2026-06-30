@@ -10,9 +10,10 @@ interface Props {
     onChange: (obligations: ObligationRecord[]) => void;
     readOnly?: boolean;
     hideHeaderAddButton?: boolean;
+    validateMonthChange?: (month: string) => boolean | Promise<boolean>;
 }
 
-export const ObligationListEditor: React.FC<Props> = ({ obligations = [], onChange, readOnly = false, hideHeaderAddButton = false }) => {
+export const ObligationListEditor: React.FC<Props> = ({ obligations = [], onChange, readOnly = false, hideHeaderAddButton = false, validateMonthChange }) => {
     const handleAdd = () => {
         if (readOnly) return;
         const newRecord: ObligationRecord = {
@@ -28,8 +29,12 @@ export const ObligationListEditor: React.FC<Props> = ({ obligations = [], onChan
         onChange(obligations.filter(o => o.id !== id));
     };
 
-    const handleUpdate = (id: number, updates: Partial<ObligationRecord>) => {
+    const handleUpdate = async (id: number, updates: Partial<ObligationRecord>) => {
         if (readOnly) return;
+        if (updates.date && validateMonthChange) {
+            const allowed = await validateMonthChange(updates.date);
+            if (!allowed) return;
+        }
         onChange(obligations.map(o => o.id === id ? { ...o, ...updates } : o));
     };
 

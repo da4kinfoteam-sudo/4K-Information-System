@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { getMonetaryChanges } from '../../lib/logUtils';
 import { useUserAccess } from '../mainfunctions/TableHooks';
+import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
@@ -79,7 +80,56 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
-    const isAdmin = currentUser?.role === 'Administrator';
+    const { getStatusDecision, getMonthDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const detailsDecision = getStatusDecision({
+        moduleKey: 'staffing_requirements',
+        item,
+        action: 'editDetails',
+        hasModuleAccess: canEdit,
+    });
+    const accomplishmentDecision = getStatusDecision({
+        moduleKey: 'staffing_requirements',
+        item,
+        action: 'editPhysicalAccomplishment',
+        hasModuleAccess: canEdit,
+    });
+    const canEditDetails = detailsDecision.allowed;
+    const canEditAccomplishment = accomplishmentDecision.allowed;
+
+    const validateActualMonth = async (month?: string) => {
+        if (!month) return true;
+        const decision = getMonthDecision(month);
+        return ensureDecisionAllowed(decision, {
+            moduleKey: 'staffing_requirements',
+            item,
+            itemId: item.id,
+            itemName: item.personnelPosition,
+            status: item.hiringStatus,
+            action: 'editPhysicalAccomplishment',
+            month,
+            entityType: 'staffing_requirement',
+        });
+    };
+
+    const validateAccomplishmentMonthsForSave = async () => {
+        if (editMode !== 'accomplishment') return true;
+        const monthsToCheck: string[] = [];
+        if (formData.actualObligationDate) monthsToCheck.push(formData.actualObligationDate);
+        expensesList.forEach(expense => {
+            (expense.obligations || []).forEach(record => {
+                if (record.date) monthsToCheck.push(record.date);
+            });
+            months.forEach((month, index) => {
+                if (Number((expense as any)[`actualDisbursement${month}`]) > 0) {
+                    monthsToCheck.push(`${formData.fundYear}-${String(index + 1).padStart(2, '0')}`);
+                }
+            });
+        });
+        for (const month of monthsToCheck) {
+            if (!(await validateActualMonth(month))) return false;
+        }
+        return true;
+    };
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<StaffingRequirement>(item);
@@ -502,6 +552,20 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        const action = editMode === 'details' ? 'editDetails' : 'editPhysicalAccomplishment';
+        const decision = editMode === 'details' ? detailsDecision : accomplishmentDecision;
+        const allowed = await ensureDecisionAllowed(decision, {
+            moduleKey: 'staffing_requirements',
+            item,
+            itemId: item.id,
+            itemName: item.personnelPosition,
+            status: item.hiringStatus,
+            action,
+            entityType: 'staffing_requirement',
+        });
+        if (!allowed) return;
+        if (!(await validateAccomplishmentMonthsForSave())) return;
         
         const requiredFields = [
             { name: 'operatingUnit', label: 'Operating Unit' },
@@ -1014,7 +1078,10 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         <fieldset className="form-fieldset">
                             <legend className="form-legend">Physical Accomplishment</legend>
                             <div className="form-grid">
-                                <div><label className="form-label">Date Hired</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div><label className="form-label">Date Hired</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={async (event) => {
+                                    if (event.target.value && !(await validateActualMonth(event.target.value))) return;
+                                    handleInputChange(event);
+                                }} className={commonInputClasses} /></div>
                             </div>
                         </fieldset>
 
@@ -1033,6 +1100,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                                 handleExpenseAccomplishmentChange(expense.id, 'actualObligationAmount', total);
                                             }}
                                             defaultYear={formData.fundYear?.toString()}
+                                            validateMonthChange={validateActualMonth}
                                         />
                                     </div>
 
@@ -1093,16 +1161,38 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                     <p className="detail-subtitle">{item.operatingUnit} | {item.uid}</p>
                 </div>
                 <div className="detail-actions">
-                    {canEdit && (
-                        <button onClick={() => setEditMode('details')} className="btn btn-primary btn-responsive">
+                    {(canEdit || canEditDetails) && (
+                        <button onClick={async () => {
+                            const allowed = await ensureDecisionAllowed(detailsDecision, {
+                                moduleKey: 'staffing_requirements',
+                                item,
+                                itemId: item.id,
+                                itemName: item.personnelPosition,
+                                status: item.hiringStatus,
+                                action: 'editDetails',
+                                entityType: 'staffing_requirement',
+                            });
+                            if (allowed) setEditMode('details');
+                        }} disabled={!canEditDetails} className={`btn btn-primary btn-responsive ${!canEditDetails ? 'is-disabled' : ''}`} title={canEditDetails ? 'Edit Details' : detailsDecision.message}>
                             <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                             <span className="btn-text">
                             Edit Details
                             </span>
                         </button>
                     )}
-                    {canEdit && (
-                        <button onClick={() => setEditMode('accomplishment')} className="btn btn-primary btn-responsive">
+                    {(canEdit || canEditAccomplishment) && (
+                        <button onClick={async () => {
+                            const allowed = await ensureDecisionAllowed(accomplishmentDecision, {
+                                moduleKey: 'staffing_requirements',
+                                item,
+                                itemId: item.id,
+                                itemName: item.personnelPosition,
+                                status: item.hiringStatus,
+                                action: 'editPhysicalAccomplishment',
+                                entityType: 'staffing_requirement',
+                            });
+                            if (allowed) setEditMode('accomplishment');
+                        }} disabled={!canEditAccomplishment} className={`btn btn-primary btn-responsive ${!canEditAccomplishment ? 'is-disabled' : ''}`} title={canEditAccomplishment ? 'Edit Accomplishment' : accomplishmentDecision.message}>
                             <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             <span className="btn-text">
                             Edit Accomplishment
