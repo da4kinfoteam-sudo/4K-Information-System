@@ -574,6 +574,18 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         return true;
     };
 
+    const handleActualConductDateChange = async (field: 'actualDate' | 'actualEndDate', value: string) => {
+        if (value && !(await validateActivityActualMonth(value))) return;
+        setFormData(prev => ({
+            ...prev,
+            [field]: value,
+            ...(field === 'actualDate' && conductType === 'Single' ? { actualEndDate: value } : {}),
+        }));
+        if (missingFields.includes(field)) {
+            setMissingFields(prev => prev.filter(item => item !== field));
+        }
+    };
+
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
 
@@ -1249,18 +1261,24 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                             <div className="form-grid">
                                 <div>
                                     <label className="form-label">Actual Start Date</label>
-                                    <input type="date" name="actualDate" value={formData.actualDate || ''} onChange={async (event) => {
-                                        if (event.target.value && !(await validateActivityActualMonth(event.target.value))) return;
-                                        handleInputChange(event);
-                                    }} className={commonInputClasses} />
+                                    <input
+                                        type="date"
+                                        name="actualDate"
+                                        value={formData.actualDate || ''}
+                                        onChange={(event) => { void handleActualConductDateChange('actualDate', event.currentTarget.value); }}
+                                        className={commonInputClasses}
+                                    />
                                 </div>
                                 {conductType === 'Multi-day' && (
                                     <div>
                                         <label className="form-label">Actual End Date</label>
-                                        <input type="date" name="actualEndDate" value={formData.actualEndDate || ''} onChange={async (event) => {
-                                            if (event.target.value && !(await validateActivityActualMonth(event.target.value))) return;
-                                            handleInputChange(event);
-                                        }} className={commonInputClasses} />
+                                        <input
+                                            type="date"
+                                            name="actualEndDate"
+                                            value={formData.actualEndDate || ''}
+                                            onChange={(event) => { void handleActualConductDateChange('actualEndDate', event.currentTarget.value); }}
+                                            className={commonInputClasses}
+                                        />
                                     </div>
                                 )}
                                 <div><label className="form-label">Actual Male</label><input type="number" name="actualParticipantsMale" value={formData.actualParticipantsMale} onChange={handleNumericChange} className={commonInputClasses} /></div>
