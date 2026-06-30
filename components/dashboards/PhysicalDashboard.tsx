@@ -45,6 +45,8 @@ type DetailView = 'national' | 'provinces' | 'trend' | 'alerts' | 'submissions';
 type ModalType = 'ipos' | 'subprojects' | 'trainings' | 'ads' | 'provinces';
 type MetricId = 'ipos' | 'subprojects' | 'iposWithSubprojects' | 'trainings' | 'iposTrained' | 'ads';
 type TrendIndicatorId = 'physicalPercentage' | 'ipos' | 'subprojects' | 'trainings' | 'ads';
+type SummarySortKey = 'name' | 'ipos' | 'subprojects' | 'trainings' | 'rate' | 'status';
+type SortDirection = 'asc' | 'desc';
 
 type ModalItemWithOu = ModalItem & {
     operatingUnit?: string;
@@ -419,6 +421,9 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
     const [detailItemsPerPage, setDetailItemsPerPage] = useState(10);
     const [submissionPage, setSubmissionPage] = useState(1);
     const [submissionItemsPerPage, setSubmissionItemsPerPage] = useState(10);
+    const [summaryPage, setSummaryPage] = useState(1);
+    const [summaryItemsPerPage, setSummaryItemsPerPage] = useState(10);
+    const [summarySort, setSummarySort] = useState<{ key: SummarySortKey; direction: SortDirection } | null>(null);
     const [localModal, setLocalModal] = useState<{
         title: string;
         type: ModalType;
@@ -1073,6 +1078,76 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
     };
     const allOuMode = isAllOuView ?? selectedOu === 'All';
 
+    useEffect(() => {
+        setSummaryPage(1);
+    }, [allOuMode, summaryItemsPerPage, summarySort, selectedOu, selectedYear]);
+
+    const getSummaryActualTotal = (row: ProvincePerformance) => row.actualIpos + row.actualSubprojects + row.actualTrainings;
+    const getSummaryTargetTotal = (row: ProvincePerformance) => row.targetIpos + row.targetSubprojects + row.targetTrainings;
+    const getSummaryStatusLabel = (row: ProvincePerformance) => getStatus(getSummaryActualTotal(row), getSummaryTargetTotal(row)).label;
+    const summaryBaseRows = allOuMode ? analytics.ouRows : analytics.provinceRows;
+    const sortedSummaryRows = useMemo(() => {
+        if (!summarySort) return summaryBaseRows;
+        const directionMultiplier = summarySort.direction === 'asc' ? 1 : -1;
+        const compareMetric = (
+            aActual: number,
+            aTarget: number,
+            bActual: number,
+            bTarget: number
+        ) => (aActual - bActual) || (aTarget - bTarget);
+
+        return [...summaryBaseRows].sort((a, b) => {
+            let comparison = 0;
+            if (summarySort.key === 'name') {
+                comparison = allOuMode
+                    ? compareOuThenName(a.ou, b.ou)
+                    : a.province.localeCompare(b.province) || compareOuThenName(a.ou, b.ou);
+            } else if (summarySort.key === 'ipos') {
+                comparison = compareMetric(a.actualIpos, a.targetIpos, b.actualIpos, b.targetIpos);
+            } else if (summarySort.key === 'subprojects') {
+                comparison = compareMetric(a.actualSubprojects, a.targetSubprojects, b.actualSubprojects, b.targetSubprojects);
+            } else if (summarySort.key === 'trainings') {
+                comparison = compareMetric(a.actualTrainings, a.targetTrainings, b.actualTrainings, b.targetTrainings);
+            } else if (summarySort.key === 'rate') {
+                comparison = a.rate - b.rate;
+            } else if (summarySort.key === 'status') {
+                comparison = getSummaryStatusLabel(a).localeCompare(getSummaryStatusLabel(b));
+            }
+            return (comparison * directionMultiplier) || compareOuThenName(a.ou, b.ou, a.province, b.province);
+        });
+    }, [allOuMode, summaryBaseRows, summarySort]);
+    const summaryTotalPages = Math.max(1, Math.ceil(sortedSummaryRows.length / summaryItemsPerPage));
+    const safeSummaryPage = Math.min(summaryPage, summaryTotalPages);
+    const paginatedSummaryRows = sortedSummaryRows.slice(
+        (safeSummaryPage - 1) * summaryItemsPerPage,
+        safeSummaryPage * summaryItemsPerPage
+    );
+    const toggleSummarySort = (key: SummarySortKey) => {
+        setSummarySort(prev => {
+            if (!prev || prev.key !== key) {
+                return {
+                    key,
+                    direction: key === 'name' || key === 'status' ? 'asc' : 'desc',
+                };
+            }
+            return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+        });
+    };
+    const renderSummarySortHeader = (key: SummarySortKey, label: string) => {
+        const isActive = summarySort?.key === key;
+        return (
+            <button
+                type="button"
+                className={`physical-dashboard-sort-button ${isActive ? 'is-active' : ''}`}
+                onClick={() => toggleSummarySort(key)}
+                aria-label={`Sort by ${label}`}
+            >
+                <span>{label}</span>
+                <small aria-hidden="true">{isActive ? (summarySort.direction === 'asc' ? '↑' : '↓') : '↕'}</small>
+            </button>
+        );
+    };
+
     const openMetricModal = (metric: Metric) => {
         const scope = activeScope(metric);
         setLocalModal({
@@ -1305,7 +1380,6 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             <section className="physical-dashboard-hero report-card">
                 <div>
                     <h2>Physical Accomplishment Dashboard</h2>
-                    <p>Monitoring targets and accomplishments of 4K Program implementation</p>
                 </div>
                 <div className="physical-dashboard-controls">
                     <label>
@@ -1325,7 +1399,6 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             </section>
 
             <section className="dashboard-section" aria-labelledby="physical-executive-summary">
-                <SectionHeader title="Executive Summary" meta={`${selectedOu === 'All' ? 'All OUs' : selectedOu} / ${selectedYear}`} />
                 <div className="physical-dashboard-kpi-grid">
                     {analytics.metrics.map(metric => (
                         <PhysicalMetricCard
@@ -1363,11 +1436,9 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                                     <span>{metric.label}</span>
                                     <div className="physical-dashboard-horizontal-bars">
                                         <div className="physical-dashboard-horizontal-bar">
-                                            <small>Target</small>
                                             <i><b className="physical-dashboard-horizontal-row__target" style={{ width: `${Math.max(scope.target > 0 ? 4 : 0, (scope.target / chartMax) * 100)}%` }} /></i>
                                         </div>
                                         <div className="physical-dashboard-horizontal-bar">
-                                            <small>Actual</small>
                                             <i><b className="physical-dashboard-horizontal-row__actual" style={{ width: `${Math.max(scope.actual > 0 ? 4 : 0, (scope.actual / chartMax) * 100)}%` }} /></i>
                                         </div>
                                     </div>
@@ -1383,25 +1454,36 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 </article>
 
                 <article className="report-card physical-dashboard-province-card">
-                    <SectionHeader
-                        title={allOuMode ? 'OU / Province Performance Summary' : 'Province Performance Summary'}
-                        actionLabel={allOuMode ? 'View All OUs' : 'View All Provinces'}
-                        onAction={() => openDetailView('provinces')}
-                    />
+                    <div className="physical-dashboard-section-header physical-dashboard-province-header">
+                        <div>
+                            <h3>{allOuMode ? 'OU / Province Performance Summary' : 'Province Performance Summary'}</h3>
+                        </div>
+                        <div className="physical-dashboard-section-actions">
+                            {summarySort && (
+                                <button type="button" className="btn btn-secondary btn-responsive" onClick={() => setSummarySort(null)}>
+                                    <span className="btn-text">Reset Sort</span>
+                                </button>
+                            )}
+                            <button type="button" className="btn btn-secondary btn-responsive" onClick={() => openDetailView('provinces')}>
+                                <span className="btn-text">{allOuMode ? 'View All OUs' : 'View All Provinces'}</span>
+                                <ChevronRight className="btn-symbol" aria-hidden="true" />
+                            </button>
+                        </div>
+                    </div>
                     <div className="data-table-scroll custom-scrollbar">
                         <table className="data-table physical-dashboard-province-table">
                             <thead>
                                 <tr>
-                                    <th>{allOuMode ? 'OU / Province' : 'Province'}</th>
-                                    <th>IPOs</th>
-                                    <th>Subprojects</th>
-                                    <th>Trainings</th>
-                                    <th>Rate</th>
-                                    <th>Status</th>
+                                    <th>{renderSummarySortHeader('name', allOuMode ? 'OU / Province' : 'Province')}</th>
+                                    <th>{renderSummarySortHeader('ipos', 'IPOs')}</th>
+                                    <th>{renderSummarySortHeader('subprojects', 'Subprojects')}</th>
+                                    <th>{renderSummarySortHeader('trainings', 'Trainings')}</th>
+                                    <th>{renderSummarySortHeader('rate', 'Rate')}</th>
+                                    <th>{renderSummarySortHeader('status', 'Status')}</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {allOuMode ? analytics.ouRows.map(row => {
+                                {allOuMode ? paginatedSummaryRows.map(row => {
                                     const isExpanded = expandedOus.has(row.ou);
                                     const childRows = analytics.provinceRows.filter(province => province.ou === row.ou);
                                     return (
@@ -1440,7 +1522,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                                             ))}
                                         </React.Fragment>
                                     );
-                                }) : analytics.provinceRows.slice(0, 8).map(row => (
+                                }) : paginatedSummaryRows.map(row => (
                                     <tr key={row.key}>
                                         <td><strong>{row.province}</strong></td>
                                         <td>{row.actualIpos} / {row.targetIpos}</td>
@@ -1450,7 +1532,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                                         <td><StatusText actual={row.actualIpos + row.actualSubprojects + row.actualTrainings} target={row.targetIpos + row.targetSubprojects + row.targetTrainings} /></td>
                                     </tr>
                                 ))}
-                                {!allOuMode && analytics.provinceRows.length === 0 && (
+                                {summaryBaseRows.length === 0 && (
                                     <tr>
                                         <td colSpan={6} className="text-center italic text-gray-500 dark:text-gray-400">No province data available.</td>
                                     </tr>
@@ -1458,6 +1540,14 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                             </tbody>
                         </table>
                     </div>
+                    <DashboardPagination
+                        totalItems={sortedSummaryRows.length}
+                        currentPage={safeSummaryPage}
+                        itemsPerPage={summaryItemsPerPage}
+                        itemLabel={allOuMode ? 'OUs' : 'provinces'}
+                        onPageChange={setSummaryPage}
+                        onItemsPerPageChange={setSummaryItemsPerPage}
+                    />
                 </article>
             </section>
 
