@@ -1,13 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDcfPolicy } from '../../contexts/DcfPolicyContext';
 import { RoleConfig, appModules, UserRole } from '../../constants';
-import { Save, AlertTriangle, Info, Check, X } from 'lucide-react';
+import { Save, AlertTriangle, Info, Check, ChevronDown, RotateCcw, ShieldCheck } from 'lucide-react';
+import {
+    canEditDcfSection,
+    canUseAccomplishmentMonth,
+    DCF_MODULES,
+    DCF_POLICY_ACTIONS,
+    DCF_POLICY_ROLES,
+    DCF_POLICY_SETTINGS_KEY,
+    DEFAULT_DCF_POLICY_SETTINGS,
+    DcfModuleKey,
+    DcfPolicyAction,
+    DcfPolicySettings,
+    DcfPolicyStatus,
+    getDcfRuleValue,
+    normalizeDcfPolicySettings,
+    setDcfRuleValue,
+} from '../../lib/dcfPolicy';
 
 const allRoles: UserRole[] = ['Super Admin', 'Administrator', 'Management', 'Focal - User', 'RFO - User', 'User', 'Guest'];
 const isGuestWriteField = (role: string, field: 'can_view' | 'can_edit' | 'can_delete') => (
     role === 'Guest' && (field === 'can_edit' || field === 'can_delete')
 );
+
+const policyEqual = (a: DcfPolicySettings, b: DcfPolicySettings) => JSON.stringify(a) === JSON.stringify(b);
 
 const UserControlCenterTab: React.FC = () => {
     const [configs, setConfigs] = useState<RoleConfig[]>([]);
@@ -21,11 +40,41 @@ const UserControlCenterTab: React.FC = () => {
 
     const [success, setSuccess] = useState<boolean>(false);
 
-    const { refreshPermissions } = useAuth();
+    const { currentUser, refreshPermissions } = useAuth();
+    const { policy: activeDcfPolicy, serverDate, loading: dcfPolicyLoading, error: dcfPolicyLoadError, refreshPolicy } = useDcfPolicy();
+    const [roleControlOpen, setRoleControlOpen] = useState(true);
+    const [dcfRulesOpen, setDcfRulesOpen] = useState(false);
+    const [monthLockOpen, setMonthLockOpen] = useState(false);
+    const [pendingDcfPolicy, setPendingDcfPolicy] = useState<DcfPolicySettings>(DEFAULT_DCF_POLICY_SETTINGS);
+    const [savingDcfPolicy, setSavingDcfPolicy] = useState(false);
+    const [dcfPolicyMessage, setDcfPolicyMessage] = useState<string | null>(null);
+    const [dcfPolicyError, setDcfPolicyError] = useState<string | null>(null);
+    const [selectedDcfRole, setSelectedDcfRole] = useState<UserRole>('User');
+    const [selectedDcfModule, setSelectedDcfModule] = useState<DcfModuleKey>('subprojects');
+    const [previewStatus, setPreviewStatus] = useState<DcfPolicyStatus>('Proposed');
+    const [previewAction, setPreviewAction] = useState<DcfPolicyAction>('editDetails');
+    const [previewMonth, setPreviewMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
     useEffect(() => {
         fetchConfigs();
     }, []);
+
+    useEffect(() => {
+        setPendingDcfPolicy(activeDcfPolicy);
+    }, [activeDcfPolicy]);
+
+    useEffect(() => {
+        if (serverDate) {
+            setPreviewMonth(serverDate.slice(0, 7));
+        }
+    }, [serverDate]);
+
+    useEffect(() => {
+        const moduleMeta = DCF_MODULES.find(module => module.key === selectedDcfModule);
+        if (moduleMeta && !moduleMeta.statuses.includes(previewStatus)) {
+            setPreviewStatus(moduleMeta.statuses[0]);
+        }
+    }, [selectedDcfModule, previewStatus]);
 
     const fetchConfigs = async () => {
         if (!supabase) {
@@ -179,15 +228,114 @@ const UserControlCenterTab: React.FC = () => {
         setSaving(false);
     };
 
+    const getPendingRoleAccess = (role: UserRole, module: string, field: 'can_edit' | 'can_delete') => {
+        if (['Super Admin', 'Administrator'].includes(role)) return true;
+        if (role === 'Guest') return false;
+        const roleConfig = pendingConfigs.find(c => c.role === role && c.module === module);
+        return !!roleConfig?.[field];
+    };
+
+    const getPreviewModuleAccess = (role: UserRole, moduleKey: DcfModuleKey, action: DcfPolicyAction) => {
+        const moduleMeta = DCF_MODULES.find(module => module.key === moduleKey);
+        const moduleName = moduleMeta?.moduleName || 'Subprojects';
+        if (action === 'delete') return getPendingRoleAccess(role, moduleName, 'can_delete');
+        if (action === 'editPhysicalAccomplishment') {
+            return getPendingRoleAccess(role, moduleName, 'can_edit') || getPendingRoleAccess(role, 'Accomplishment - Physical', 'can_edit');
+        }
+        if (action === 'editFinancialAccomplishment') {
+            return getPendingRoleAccess(role, moduleName, 'can_edit') || getPendingRoleAccess(role, 'Accomplishment - Financial', 'can_edit');
+        }
+        return getPendingRoleAccess(role, moduleName, 'can_edit');
+    };
+
+    const handleDcfRuleToggle = (role: UserRole, moduleKey: DcfModuleKey, status: DcfPolicyStatus, action: DcfPolicyAction) => {
+        if (role === 'Super Admin' || role === 'Guest') return;
+        setDcfPolicyMessage(null);
+        setDcfPolicyError(null);
+        const currentValue = getDcfRuleValue(pendingDcfPolicy, role, moduleKey, status, action);
+        setPendingDcfPolicy(prev => setDcfRuleValue(prev, role, moduleKey, status, action, !currentValue));
+    };
+
+    const updateMonthLock = <K extends keyof DcfPolicySettings['monthLock']>(field: K, value: DcfPolicySettings['monthLock'][K]) => {
+        setDcfPolicyMessage(null);
+        setDcfPolicyError(null);
+        setPendingDcfPolicy(prev => normalizeDcfPolicySettings({
+            ...prev,
+            monthLock: {
+                ...prev.monthLock,
+                [field]: value,
+            },
+        }));
+    };
+
+    const handleSaveDcfPolicy = async () => {
+        if (!supabase) return;
+        setSavingDcfPolicy(true);
+        setDcfPolicyMessage(null);
+        setDcfPolicyError(null);
+        const normalized = normalizeDcfPolicySettings(pendingDcfPolicy);
+
+        try {
+            const { error } = await supabase.from('dcf_policy_settings').upsert({
+                settings_key: DCF_POLICY_SETTINGS_KEY,
+                settings: normalized,
+                updated_by: currentUser?.id || null,
+                updated_by_name: currentUser?.fullName || currentUser?.username || null,
+            }, { onConflict: 'settings_key' });
+
+            if (error) throw error;
+            setPendingDcfPolicy(normalized);
+            await refreshPolicy();
+            setDcfPolicyMessage('DCF policy saved.');
+            setTimeout(() => setDcfPolicyMessage(null), 5000);
+        } catch (err: any) {
+            console.error('Unable to save DCF policy:', err);
+            setDcfPolicyError(err.message || 'Unable to save DCF policy.');
+        } finally {
+            setSavingDcfPolicy(false);
+        }
+    };
+
+    const selectedModuleMeta = DCF_MODULES.find(module => module.key === selectedDcfModule) || DCF_MODULES[0];
+    const statusPreview = canEditDcfSection({
+        user: { role: selectedDcfRole } as any,
+        hasModuleAccess: getPreviewModuleAccess(selectedDcfRole, selectedDcfModule, previewAction),
+        policy: pendingDcfPolicy,
+        moduleKey: selectedDcfModule,
+        status: previewStatus,
+        action: previewAction,
+    });
+    const isAccomplishmentAction = previewAction === 'editPhysicalAccomplishment' || previewAction === 'editFinancialAccomplishment';
+    const monthPreview = isAccomplishmentAction
+        ? canUseAccomplishmentMonth({
+            user: { role: selectedDcfRole } as any,
+            policy: pendingDcfPolicy,
+            targetMonth: previewMonth,
+            serverDate,
+        })
+        : null;
+    const effectivePreview = !statusPreview.allowed
+        ? statusPreview
+        : (monthPreview && !monthPreview.allowed ? monthPreview : (monthPreview?.code === 'allowed_by_override' ? monthPreview : statusPreview));
+
     const hasChanges = JSON.stringify(configs) !== JSON.stringify(pendingConfigs);
+    const hasDcfPolicyChanges = !policyEqual(normalizeDcfPolicySettings(activeDcfPolicy), normalizeDcfPolicySettings(pendingDcfPolicy));
 
     if (loading) return <div className="p-4">Loading control center...</div>;
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div className="flex justify-between items-center gap-4 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
                 <div>
-                    <h3 className="text-xl font-bold text-gray-800 dark:text-white">Role-Level UX Control</h3>
+                    <button
+                        type="button"
+                        onClick={() => setRoleControlOpen(prev => !prev)}
+                        className="flex items-center gap-2 text-left"
+                        aria-expanded={roleControlOpen}
+                    >
+                        <ChevronDown className={`h-5 w-5 text-gray-500 transition-transform ${roleControlOpen ? 'rotate-180' : ''}`} />
+                        <h3 className="text-xl font-bold text-gray-800 dark:text-white">Role-Level UX Control</h3>
+                    </button>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage global view, edit, and delete permissions for each role.</p>
                 </div>
                 <div className="flex items-center gap-4">
@@ -242,6 +390,8 @@ const UserControlCenterTab: React.FC = () => {
                 </div>
             )}
 
+            {roleControlOpen && (
+                <>
             <div className="relative overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm bg-white dark:bg-gray-900">
                 <div className="overflow-auto max-h-[720px] scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">
                     <table className="min-w-max w-full text-sm text-left border-collapse">
@@ -362,6 +512,235 @@ const UserControlCenterTab: React.FC = () => {
                     <p>Changing these toggles affects all users with that specific role. <strong>Super Admin</strong> always retains full systemic control and cannot be locked out. If you assign an override on a specific user in User Management, that override will supersede these defaults.</p>
                 </div>
             </div>
+                </>
+            )}
+
+            <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 bg-emerald-50/70 dark:bg-emerald-900/20 border-b border-emerald-100 dark:border-emerald-800/50">
+                    <div>
+                        <button
+                            type="button"
+                            onClick={() => setDcfRulesOpen(prev => !prev)}
+                            className="flex items-center gap-2 text-left"
+                            aria-expanded={dcfRulesOpen}
+                        >
+                            <ChevronDown className={`h-5 w-5 text-emerald-700 dark:text-emerald-300 transition-transform ${dcfRulesOpen ? 'rotate-180' : ''}`} />
+                            <h3 className="text-xl font-bold text-gray-900 dark:text-white">DCF Editing Rules</h3>
+                        </button>
+                        <p className="text-sm text-emerald-800/80 dark:text-emerald-200/80 mt-1">
+                            Configure active status-based edit, accomplishment, and delete rules for DCF detail, edit, and accomplishment pages.
+                        </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {dcfPolicyMessage && <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300 px-3 py-2">{dcfPolicyMessage}</span>}
+                        <button
+                            type="button"
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                            onClick={() => setPendingDcfPolicy(activeDcfPolicy)}
+                            disabled={!hasDcfPolicyChanges || savingDcfPolicy}
+                        >
+                            Cancel Changes
+                        </button>
+                        <button
+                            type="button"
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                            onClick={() => setPendingDcfPolicy(DEFAULT_DCF_POLICY_SETTINGS)}
+                            disabled={savingDcfPolicy}
+                        >
+                            <RotateCcw className="h-4 w-4" />
+                            Reset Defaults
+                        </button>
+                        <button
+                            type="button"
+                            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-white text-sm font-bold ${hasDcfPolicyChanges && !savingDcfPolicy ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                            onClick={handleSaveDcfPolicy}
+                            disabled={!hasDcfPolicyChanges || savingDcfPolicy}
+                        >
+                            <Save className="h-4 w-4" />
+                            {savingDcfPolicy ? 'Saving...' : 'Save DCF Policy'}
+                        </button>
+                    </div>
+                </div>
+
+                {(dcfPolicyLoadError || dcfPolicyError) && (
+                    <div className="m-4 p-4 bg-red-50 text-red-700 rounded-lg flex items-start gap-3 border border-red-200">
+                        <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                        <div>
+                            <p className="font-bold">DCF Policy Notice</p>
+                            <p className="text-sm">{dcfPolicyError || dcfPolicyLoadError}</p>
+                        </div>
+                    </div>
+                )}
+
+                {dcfRulesOpen && (
+                    <div className="p-4 space-y-5">
+                        <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+                            <div className="space-y-3">
+                                <label className="block">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Module</span>
+                                    <select
+                                        value={selectedDcfModule}
+                                        onChange={event => setSelectedDcfModule(event.target.value as DcfModuleKey)}
+                                        className="mt-1 block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                                    >
+                                        {DCF_MODULES.map(module => <option key={module.key} value={module.key}>{module.label}</option>)}
+                                    </select>
+                                </label>
+                                <div className="rounded-lg border border-blue-100 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-900/20 p-3 text-sm text-blue-800 dark:text-blue-200">
+                                    <p className="font-bold mb-1">Two-gate policy</p>
+                                    <p>Module permissions apply first. DCF status and period rules then decide whether that already-authorized user can edit details, edit accomplishments, or delete the selected status.</p>
+                                </div>
+                            </div>
+
+                            <div className="overflow-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                                <table className="min-w-max w-full text-sm border-collapse">
+                                    <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                                        <tr>
+                                            <th className="sticky left-0 z-20 bg-gray-100 dark:bg-gray-800 px-4 py-3 text-left font-bold min-w-[150px]">Role / Status</th>
+                                            {DCF_POLICY_ACTIONS.map(action => (
+                                                <th key={action.key} className="px-4 py-3 text-center font-bold min-w-[150px]">{action.shortLabel}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                        {DCF_POLICY_ROLES.map(role => (
+                                            <React.Fragment key={role}>
+                                                <tr className="bg-gray-50 dark:bg-gray-800/60">
+                                                    <td colSpan={DCF_POLICY_ACTIONS.length + 1} className="sticky left-0 px-4 py-2 text-xs font-black uppercase tracking-widest text-gray-600 dark:text-gray-300">
+                                                        {role}
+                                                        {role === 'Super Admin' && <span className="ml-2 text-emerald-600 normal-case tracking-normal">always protected</span>}
+                                                    </td>
+                                                </tr>
+                                                {selectedModuleMeta.statuses.map(status => (
+                                                    <tr key={`${role}-${status}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                                        <td className="sticky left-0 z-10 bg-white dark:bg-gray-900 px-4 py-3 font-bold text-gray-800 dark:text-gray-100 border-r border-gray-100 dark:border-gray-800">
+                                                            {status}
+                                                        </td>
+                                                        {DCF_POLICY_ACTIONS.map(action => {
+                                                            const checked = getDcfRuleValue(pendingDcfPolicy, role, selectedDcfModule, status, action.key);
+                                                            const disabled = role === 'Super Admin' || role === 'Guest';
+                                                            return (
+                                                                <td key={action.key} className="px-4 py-3 text-center">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleDcfRuleToggle(role, selectedDcfModule, status, action.key)}
+                                                                        disabled={disabled}
+                                                                        className={`mx-auto w-10 h-5 rounded-full relative transition-colors ${checked ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'} ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:ring-2 hover:ring-emerald-200'}`}
+                                                                        aria-label={`${role} ${status} ${action.label}`}
+                                                                    >
+                                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${checked ? 'translate-x-5' : 'translate-x-0'}`}></span>
+                                                                    </button>
+                                                                </td>
+                                                            );
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                            </React.Fragment>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800/50">
+                            <div className="flex items-center gap-2 mb-4">
+                                <ShieldCheck className="h-5 w-5 text-emerald-600" />
+                                <h4 className="font-black text-gray-900 dark:text-white">Policy Preview</h4>
+                                <span className="text-xs text-gray-500">Server date: {dcfPolicyLoading ? 'Loading...' : serverDate}</span>
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-5">
+                                <select value={selectedDcfRole} onChange={event => setSelectedDcfRole(event.target.value as UserRole)} className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
+                                    {DCF_POLICY_ROLES.map(role => <option key={role} value={role}>{role}</option>)}
+                                </select>
+                                <select value={selectedDcfModule} onChange={event => setSelectedDcfModule(event.target.value as DcfModuleKey)} className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
+                                    {DCF_MODULES.map(module => <option key={module.key} value={module.key}>{module.label}</option>)}
+                                </select>
+                                <select value={previewStatus} onChange={event => setPreviewStatus(event.target.value as DcfPolicyStatus)} className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
+                                    {selectedModuleMeta.statuses.map(status => <option key={status} value={status}>{status}</option>)}
+                                </select>
+                                <select value={previewAction} onChange={event => setPreviewAction(event.target.value as DcfPolicyAction)} className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
+                                    {DCF_POLICY_ACTIONS.map(action => <option key={action.key} value={action.key}>{action.label}</option>)}
+                                </select>
+                                <input type="month" value={previewMonth} onChange={event => setPreviewMonth(event.target.value)} className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                            </div>
+                            <div className={`mt-4 rounded-lg px-4 py-3 text-sm font-bold ${effectivePreview.allowed ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200'}`}>
+                                {effectivePreview.allowed ? 'Allowed' : 'Blocked'}: {effectivePreview.message}
+                                {effectivePreview.requiresOverrideReason && <span className="ml-2 font-semibold">(override reason required)</span>}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </section>
+
+            <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+                <button
+                    type="button"
+                    onClick={() => setMonthLockOpen(prev => !prev)}
+                    className="w-full flex items-center justify-between gap-4 p-4 bg-amber-50/70 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800/50 text-left"
+                    aria-expanded={monthLockOpen}
+                >
+                    <div>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white">Accomplishment Period Locking</h3>
+                        <p className="text-sm text-amber-800/80 dark:text-amber-200/80 mt-1">Control the monthly window used for physical and financial accomplishment entries.</p>
+                    </div>
+                    <ChevronDown className={`h-5 w-5 text-amber-700 dark:text-amber-300 transition-transform ${monthLockOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {monthLockOpen && (
+                    <div className="p-4 grid gap-4 lg:grid-cols-3">
+                        <label className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                            <span>
+                                <span className="block font-bold text-gray-900 dark:text-white">Enable month lock</span>
+                                <span className="text-sm text-gray-500 dark:text-gray-400">Restrict ordinary users to open periods.</span>
+                            </span>
+                            <input
+                                type="checkbox"
+                                checked={pendingDcfPolicy.monthLock.enabled}
+                                onChange={event => updateMonthLock('enabled', event.target.checked)}
+                                className="h-5 w-5"
+                            />
+                        </label>
+                        <label className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                            <span className="block font-bold text-gray-900 dark:text-white">Previous-month grace days</span>
+                            <input
+                                type="number"
+                                min={0}
+                                value={pendingDcfPolicy.monthLock.graceDays}
+                                onChange={event => updateMonthLock('graceDays', Number(event.target.value) || 0)}
+                                className="mt-2 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                            />
+                        </label>
+                        <label className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                            <span>
+                                <span className="block font-bold text-gray-900 dark:text-white">Require override reason</span>
+                                <span className="text-sm text-gray-500 dark:text-gray-400">Applies to Super Admin/Admin period overrides.</span>
+                            </span>
+                            <input
+                                type="checkbox"
+                                checked={pendingDcfPolicy.monthLock.requireOverrideReason}
+                                onChange={event => updateMonthLock('requireOverrideReason', event.target.checked)}
+                                className="h-5 w-5"
+                            />
+                        </label>
+                        <div className="lg:col-span-3 grid gap-3 md:grid-cols-3">
+                            <div className="rounded-xl bg-gray-50 dark:bg-gray-800 p-4">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Date Source</p>
+                                <p className="font-bold text-gray-900 dark:text-white mt-1">Server date, Asia/Manila</p>
+                            </div>
+                            <div className="rounded-xl bg-gray-50 dark:bg-gray-800 p-4">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Past Months</p>
+                                <p className="font-bold text-gray-900 dark:text-white mt-1">Blocked after grace period</p>
+                            </div>
+                            <div className="rounded-xl bg-gray-50 dark:bg-gray-800 p-4">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Future Months</p>
+                                <p className="font-bold text-gray-900 dark:text-white mt-1">Blocked for ordinary users</p>
+                            </div>
+                        </div>
+                        <div className="lg:col-span-3 rounded-xl border border-amber-100 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-900/20 p-4 text-sm text-amber-900 dark:text-amber-200">
+                            Override roles for this rollout are fixed to <strong>{pendingDcfPolicy.monthLock.overrideRoles.join(', ')}</strong>. When override reasons are required, the reason is recorded in the user activity log with the blocked action or month.
+                        </div>
+                    </div>
+                )}
+            </section>
         </div>
     );
 };

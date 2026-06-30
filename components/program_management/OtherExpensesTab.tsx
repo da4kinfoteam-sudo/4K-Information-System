@@ -10,6 +10,7 @@ import { supabase } from '../../supabaseClient';
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState'; // Import for persistent state
 import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Check, ChevronDown, Download, FileSpreadsheet, Plus, Upload } from 'lucide-react';
+import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 
 const FilterIcon = () => (
     <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -190,6 +191,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
+    const { getDeleteDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
     
     // Local State
     const [view, setView] = useState<'list' | 'form'>('list');
@@ -523,6 +525,21 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     const handleDelete = async () => {
         if (!itemToDelete) return;
+        const decision = getDeleteDecision({
+            moduleKey: 'other_program_expenses',
+            item: itemToDelete,
+            hasModuleAccess: canEdit,
+        });
+        const allowed = await ensureDecisionAllowed(decision, {
+            moduleKey: 'other_program_expenses',
+            item: itemToDelete,
+            itemId: itemToDelete.id,
+            itemName: itemToDelete.particulars,
+            status: itemToDelete.status,
+            action: 'delete',
+            entityType: 'other_program_expense',
+        });
+        if (!allowed) return;
         if (supabase) {
             try {
                 const { error: archiveError } = await supabase.from('trash_bin').insert([{
@@ -553,10 +570,23 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const handleMultiDelete = async () => {
         if (selectedIds.length === 0) return;
         const itemsToDelete = items.filter(i => selectedIds.includes(i.id));
+        const deletableItems = itemsToDelete.filter(item => getDeleteDecision({
+            moduleKey: 'other_program_expenses',
+            item,
+            hasModuleAccess: canEdit,
+        }).allowed);
+        const skippedCount = itemsToDelete.length - deletableItems.length;
+        if (deletableItems.length === 0) {
+            alert('None of the selected program expenses can be deleted under the current DCF editing policy.');
+            setIsMultiDeleteModalOpen(false);
+            setSelectedIds([]);
+            return;
+        }
+        const deletableIds = deletableItems.map(item => item.id);
 
         if (supabase) {
             try {
-                const archivePayload = itemsToDelete.map(item => ({
+                const archivePayload = deletableItems.map(item => ({
                     entity_type: 'other_program_expense',
                     original_id: item.id,
                     data: item,
@@ -567,18 +597,19 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                 const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
                 if (archiveError) throw archiveError;
 
-                const { error: deleteError } = await supabase.from('other_program_expenses').delete().in('id', selectedIds);
+                const { error: deleteError } = await supabase.from('other_program_expenses').delete().in('id', deletableIds);
                 if (deleteError) throw deleteError;
 
-                setItems(prev => prev.filter(i => !selectedIds.includes(i.id)));
+                setItems(prev => prev.filter(i => !deletableIds.includes(i.id)));
             } catch (error: any) {
                 console.error("Error archiving/deleting selected:", error);
                 alert("Failed to delete selected: " + error.message);
                 return;
             }
         } else {
-            setItems(prev => prev.filter(i => !selectedIds.includes(i.id)));
+            setItems(prev => prev.filter(i => !deletableIds.includes(i.id)));
         }
+        if (skippedCount) alert(`${skippedCount} selected program expense${skippedCount === 1 ? ' was' : 's were'} skipped by DCF editing policy.`);
         setIsMultiDeleteModalOpen(false); setSelectedIds([]);
     };
 

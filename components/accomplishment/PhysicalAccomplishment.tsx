@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
+import { getDcfModuleKeyForSourceType, useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
 import { getBudgetLineTag, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 import { resolveSubprojectCompletionRollup } from '../../lib/subprojectCompletion';
@@ -155,6 +156,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = useUserAccess('Accomplishment - Physical');
+    const { getStatusDecision, getMonthDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
     const defaultYear = new Date().getFullYear();
 
     // Filters (Persistent)
@@ -181,6 +183,77 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     const [expandedGroups, setExpandedGroups] = useLocalStorageState<string[]>('phys_expandedGroups', ['Subprojects', 'Activities', 'Program Management']);
     const [expandedSubgroups, setExpandedSubgroups] = useLocalStorageState<string[]>('phys_expandedSubgroups', ['Staffing Requirements', 'Office Requirements']);
     const [expandedParents, setExpandedParents] = useLocalStorageState<string[]>('phys_expandedParents', []);
+
+    const getPolicySubjectForPhysicalItem = (item: PhysicalItem) => (
+        item.sourceType === 'Staffing'
+            ? { hiringStatus: item.status || 'Proposed' }
+            : { status: item.status || 'Proposed' }
+    );
+
+    const getPhysicalStatusDecision = (item: PhysicalItem) => {
+        const moduleKey = getDcfModuleKeyForSourceType(item.sourceType);
+        if (!moduleKey) {
+            return { allowed: false, code: 'blocked_by_status' as const, message: 'Unknown DCF source type.' };
+        }
+        return getStatusDecision({
+            moduleKey,
+            item: getPolicySubjectForPhysicalItem(item),
+            action: 'editPhysicalAccomplishment',
+            hasModuleAccess: canEdit,
+        });
+    };
+
+    const ensurePhysicalItemAllowed = async (item: PhysicalItem) => {
+        const moduleKey = getDcfModuleKeyForSourceType(item.sourceType);
+        if (!moduleKey) {
+            alert('Unknown DCF source type.');
+            return false;
+        }
+        return ensureDecisionAllowed(getPhysicalStatusDecision(item), {
+            moduleKey,
+            item: getPolicySubjectForPhysicalItem(item),
+            itemId: item.sourceId,
+            itemName: item.name,
+            status: item.status as any,
+            action: 'editPhysicalAccomplishment',
+            entityType: item.sourceType.toLowerCase(),
+        });
+    };
+
+    const validatePhysicalActualMonth = async (item: PhysicalItem, month: string) => {
+        if (!month) return true;
+        const moduleKey = getDcfModuleKeyForSourceType(item.sourceType);
+        if (!moduleKey) {
+            alert('Unknown DCF source type.');
+            return false;
+        }
+        if (!(await ensurePhysicalItemAllowed(item))) return false;
+        const monthDecision = getMonthDecision(month);
+        return ensureDecisionAllowed(monthDecision, {
+            moduleKey,
+            item: getPolicySubjectForPhysicalItem(item),
+            itemId: item.sourceId,
+            itemName: item.name,
+            status: item.status as any,
+            action: 'editPhysicalAccomplishment',
+            month,
+            entityType: item.sourceType.toLowerCase(),
+        });
+    };
+
+    const validatePhysicalItemForSave = async (item: PhysicalItem) => {
+        if (!(await ensurePhysicalItemAllowed(item))) return false;
+        const dates = [item.actualDateStart, item.actualDateEnd].filter(Boolean);
+        for (const date of dates) {
+            if (!(await validatePhysicalActualMonth(item, date))) return false;
+        }
+        if (item.children) {
+            for (const child of item.children) {
+                if (changedItems.has(child.uniqueId) && !(await validatePhysicalItemForSave(child))) return false;
+            }
+        }
+        return true;
+    };
 
     // Init defaults and OU lock
     useEffect(() => {
@@ -736,8 +809,13 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             
             findChangedItems(items);
 
-            const promises = itemsToSave.map(item => saveItemToDB(item));
-            await Promise.all(promises);
+            for (const item of itemsToSave) {
+                if (!(await validatePhysicalItemForSave(item))) {
+                    setIsSavingAll(false);
+                    return;
+                }
+            }
+            await Promise.all(itemsToSave.map(item => saveItemToDB(item)));
             
             setChangedItems(new Map());
             setOriginalItems(JSON.parse(JSON.stringify(items)));
@@ -783,7 +861,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     };
 
     // --- Render Helpers ---
-    const renderDateInput = (value: string, onChange: (val: string) => void, disabled: boolean) => (
+    const renderDateInput = (value: string, onChange: (val: string) => void | Promise<void>, disabled: boolean) => (
         <input 
             type="date" 
             value={value} 
@@ -910,7 +988,9 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     const renderPhysicalItemRows = (groupItems: PhysicalItem[]) => sortPhysicalItems(groupItems, sortMode).map(item => {
         const isParentExpanded = item.isParent && expandedParents.includes(item.uniqueId);
         const completionRate = getCompletionRate(item);
-        const isLocked = !canEdit;
+        const itemPhysicalDecision = getPhysicalStatusDecision(item);
+        const canEditPhysicalItem = canEdit && itemPhysicalDecision.allowed;
+        const isLocked = !canEditPhysicalItem;
         const isDerivedSubprojectParentActual = item.sourceType === 'Subproject' && item.isParent;
         const isTargetEditable = canEditTarget(item);
         const canEditVisibleTarget = isTargetEditable && !item.targetExcluded;
@@ -965,9 +1045,15 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     <td className="pac-col-actual px-4 py-2 border-l border-emerald-100 dark:border-emerald-800">
                         {!(item.sourceType === 'Staffing' && item.isParent) && (
                             <div className="space-y-1">
-                                {renderDateInput(item.actualDateStart, (val) => updateLocalItem(item.uniqueId, { actualDateStart: val }), isLocked || isDerivedSubprojectParentActual)}
+                                {renderDateInput(item.actualDateStart, async (val) => {
+                                    if (val && !(await validatePhysicalActualMonth(item, val))) return;
+                                    updateLocalItem(item.uniqueId, { actualDateStart: val });
+                                }, isLocked || isDerivedSubprojectParentActual)}
                                 {item.sourceType === 'Activity' && item.targetDateEnd && (
-                                    renderDateInput(item.actualDateEnd || item.actualDateStart, (val) => updateLocalItem(item.uniqueId, { actualDateEnd: val }), isLocked)
+                                    renderDateInput(item.actualDateEnd || item.actualDateStart, async (val) => {
+                                        if (val && !(await validatePhysicalActualMonth(item, val))) return;
+                                        updateLocalItem(item.uniqueId, { actualDateEnd: val });
+                                    }, isLocked)
                                 )}
                             </div>
                         )}

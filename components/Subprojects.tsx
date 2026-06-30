@@ -11,6 +11,7 @@ import useLocalStorageState from '../hooks/useLocalStorageState';
 import { supabase } from '../supabaseClient';
 import type { DataScope } from '../lib/scopedDataFetch';
 import { DcfScopeFilterPanel, DcfScopeFilterToggle, matchesDcfScope, useDcfScopeFilters } from './ui/DcfScopeFilters';
+import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -195,6 +196,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Subprojects');
+    const { getDeleteDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [subprojectToDelete, setSubprojectToDelete] = useState<Subproject | null>(null);
@@ -444,15 +446,29 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         setExpandedRowId(prev => (prev === id ? null : id));
     };
 
+    const canDeleteSubprojectByPolicy = (subproject: Subproject) => getDeleteDecision({
+        moduleKey: 'subprojects',
+        item: subproject,
+        hasModuleAccess: canEdit,
+    });
+
     const confirmMultiDelete = async () => {
         const itemsToDelete = subprojects.filter(s => selectedIds.includes(s.id));
-        const deletedNames = itemsToDelete.map(s => s.name).join(', ');
-        logAction('Deleted Subprojects', `Bulk deleted ${selectedIds.length} subprojects: ${deletedNames}`);
+        const deletableItems = itemsToDelete.filter(item => canDeleteSubprojectByPolicy(item).allowed);
+        const skippedCount = itemsToDelete.length - deletableItems.length;
+        if (deletableItems.length === 0) {
+            alert('None of the selected subprojects can be deleted under the current DCF editing policy.');
+            resetSelection();
+            return;
+        }
+        const deletableIds = deletableItems.map(item => item.id);
+        const deletedNames = deletableItems.map(s => s.name).join(', ');
+        logAction('Deleted Subprojects', `Bulk deleted ${deletableItems.length} subprojects: ${deletedNames}${skippedCount ? ` (${skippedCount} skipped by policy)` : ''}`);
 
         if (supabase) {
             try {
                 // Archive each item
-                const archivePayload = itemsToDelete.map(item => ({
+                const archivePayload = deletableItems.map(item => ({
                     entity_type: 'subproject',
                     original_id: item.id,
                     data: item,
@@ -463,19 +479,20 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
                 if (archiveError) throw archiveError;
 
-                const { error: deleteError } = await supabase.from('subprojects').delete().in('id', selectedIds);
+                const { error: deleteError } = await supabase.from('subprojects').delete().in('id', deletableIds);
                 if (deleteError) throw deleteError;
 
-                setSubprojects(prev => prev.filter(s => !selectedIds.includes(s.id)));
+                setSubprojects(prev => prev.filter(s => !deletableIds.includes(s.id)));
                 resetSelection();
             } catch (error: any) {
                 console.error("Error archiving/deleting:", error);
                 alert("Failed to delete selected items: " + error.message);
             }
         } else {
-            setSubprojects(prev => prev.filter(s => !selectedIds.includes(s.id)));
+            setSubprojects(prev => prev.filter(s => !deletableIds.includes(s.id)));
             resetSelection();
         }
+        if (skippedCount) alert(`${skippedCount} selected subproject${skippedCount === 1 ? ' was' : 's were'} skipped by DCF editing policy.`);
     };
 
     const handleClone = async () => {
@@ -568,6 +585,16 @@ const Subprojects: React.FC<SubprojectsProps> = ({
 
     const confirmDelete = async () => {
         if (subprojectToDelete) {
+            const allowed = await ensureDecisionAllowed(canDeleteSubprojectByPolicy(subprojectToDelete), {
+                moduleKey: 'subprojects',
+                item: subprojectToDelete,
+                itemId: subprojectToDelete.id,
+                itemName: subprojectToDelete.name,
+                status: subprojectToDelete.status,
+                action: 'delete',
+                entityType: 'subproject',
+            });
+            if (!allowed) return;
             logAction('Deleted Subproject', subprojectToDelete.name, subprojectToDelete.indigenousPeopleOrganization, 'Subproject', String(subprojectToDelete.id));
             
             if (supabase) {

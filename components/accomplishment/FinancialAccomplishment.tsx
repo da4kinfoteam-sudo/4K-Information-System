@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
+import { getDcfModuleKeyForSourceType, useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { FormattedAmountInput } from '../ui/FormattedAmountInput';
 import { Undo2, Loader2, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, ListFilter, SlidersHorizontal, ChevronDown } from 'lucide-react';
@@ -199,6 +200,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = useUserAccess('Accomplishment - Financial');
+    const { getStatusDecision, getMonthDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
     const defaultYear = new Date().getFullYear();
 
     // Filter States (Persistent)
@@ -224,6 +226,75 @@ const FinancialAccomplishment: React.FC<Props> = ({
     const [expandedGroups, setExpandedGroups] = useLocalStorageState<string[]>('fin_expandedGroups', []);
     const [expandedSubGroups, setExpandedSubGroups] = useLocalStorageState<string[]>('fin_expandedSubGroups', []);
     const [expandedRows, setExpandedRows] = useLocalStorageState<string[]>('fin_expandedRows', []);
+
+    const getPolicySubjectForFinancialItem = (item: FinancialItem) => (
+        item.sourceType === 'Staffing'
+            ? { hiringStatus: item.status || 'Proposed' }
+            : { status: item.status || 'Proposed' }
+    );
+
+    const getFinancialStatusDecision = (item: FinancialItem) => {
+        const moduleKey = getDcfModuleKeyForSourceType(item.sourceType);
+        if (!moduleKey) {
+            return { allowed: false, code: 'blocked_by_status' as const, message: 'Unknown DCF source type.' };
+        }
+        return getStatusDecision({
+            moduleKey,
+            item: getPolicySubjectForFinancialItem(item),
+            action: 'editFinancialAccomplishment',
+            hasModuleAccess: canEdit,
+        });
+    };
+
+    const ensureFinancialItemAllowed = async (item: FinancialItem) => {
+        const moduleKey = getDcfModuleKeyForSourceType(item.sourceType);
+        if (!moduleKey) {
+            alert('Unknown DCF source type.');
+            return false;
+        }
+        return ensureDecisionAllowed(getFinancialStatusDecision(item), {
+            moduleKey,
+            item: getPolicySubjectForFinancialItem(item),
+            itemId: item.sourceId,
+            itemName: item.sourceName,
+            status: item.status as any,
+            action: 'editFinancialAccomplishment',
+            entityType: item.sourceType.toLowerCase(),
+        });
+    };
+
+    const validateFinancialActualMonth = async (item: FinancialItem, month: string) => {
+        if (!month) return true;
+        const moduleKey = getDcfModuleKeyForSourceType(item.sourceType);
+        if (!moduleKey) {
+            alert('Unknown DCF source type.');
+            return false;
+        }
+        if (!(await ensureFinancialItemAllowed(item))) return false;
+        const monthDecision = getMonthDecision(month);
+        return ensureDecisionAllowed(monthDecision, {
+            moduleKey,
+            item: getPolicySubjectForFinancialItem(item),
+            itemId: item.sourceId,
+            itemName: item.sourceName,
+            status: item.status as any,
+            action: 'editFinancialAccomplishment',
+            month,
+            entityType: item.sourceType.toLowerCase(),
+        });
+    };
+
+    const validateFinancialItemForSave = async (item: FinancialItem) => {
+        if (!(await ensureFinancialItemAllowed(item))) return false;
+        const months = [
+            ...(item.obligations || []).map(record => record.date).filter(Boolean),
+            ...(item.disbursements || []).map(record => record.date).filter(Boolean),
+        ];
+        for (const month of months) {
+            if (!(await validateFinancialActualMonth(item, month))) return false;
+        }
+        return true;
+    };
 
     // Initialize User OU lock based on permissions
     useEffect(() => {
@@ -1306,8 +1377,14 @@ const FinancialAccomplishment: React.FC<Props> = ({
         setIsSaveConfirmOpen(false);
         setIsSavingAll(true);
         try {
-            const promises = Array.from(changedItems.values()).map((item: FinancialItem) => saveItemToDB(item));
-            await Promise.all(promises);
+            const itemsToSave: FinancialItem[] = Array.from(changedItems.values() as Iterable<FinancialItem>);
+            for (const item of itemsToSave) {
+                if (!(await validateFinancialItemForSave(item))) {
+                    setIsSavingAll(false);
+                    return;
+                }
+            }
+            await Promise.all(itemsToSave.map((item: FinancialItem) => saveItemToDB(item)));
             
             // Mark as saved and clear changes (but don't lock)
             setItems(prev => prev.map(item => {
@@ -1329,6 +1406,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
     const handleConfirmItem = async (item: FinancialItem) => {
         if (!canEdit) return;
+        if (!(await validateFinancialItemForSave(item))) return;
 
         setLocalSavingIds(prev => new Set(prev).add(item.uniqueId));
         try {
@@ -1647,6 +1725,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                             const contextDescription = getContextDescription(item);
                                                                             const isTagged = isTaggedExclusion(item);
                                                                             const taggedLabel = item.isCancelled ? 'Cancelled' : item.isSavings ? 'Savings' : item.isRealignment ? 'Realignment' : '';
+                                                                            const itemFinancialDecision = getFinancialStatusDecision(item);
+                                                                            const canEditFinancialItem = canEdit && itemFinancialDecision.allowed;
 
                                                                             return (
                                                                             <React.Fragment key={item.uniqueId}>
@@ -1675,7 +1755,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 <FormattedAmountInput
                                                                                     value={toFiniteNumber(item.targetObligationAmount)}
                                                                                     onValueChange={(value) => updateLocalItem(item.uniqueId, { targetObligationAmount: value })}
-                                                                                    disabled={!canEdit}
+                                                                                    disabled={!canEditFinancialItem}
                                                                                     className="w-full text-xs text-right p-1 border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-emerald-500 focus:border-emerald-500"
                                                                                     placeholder="0.00"
                                                                                     emptyWhenZero
@@ -1691,7 +1771,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 <MonthYearPicker 
                                                                                     value={item.targetObligationMonth} 
                                                                                     onChange={(val) => updateLocalItem(item.uniqueId, { targetObligationMonth: val })}
-                                                                                    disabled={!canEdit}
+                                                                                    disabled={!canEditFinancialItem}
                                                                                     className="h-7 text-[10px] py-0"
                                                                                 />
                                                                             ) : (
@@ -1705,7 +1785,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 obligations={item.obligations || []}
                                                                                 onChange={(newObs, total) => updateLocalItem(item.uniqueId, { obligations: newObs, actualObligationAmount: total })}
                                                                                 defaultYear={selectedYear?.toString()}
-                                                                                readOnly={!canEdit}
+                                                                                readOnly={!canEditFinancialItem}
+                                                                                validateMonthChange={(month) => validateFinancialActualMonth(item, month)}
                                                                             />
                                                                         </td>
 
@@ -1715,7 +1796,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 <FormattedAmountInput
                                                                                     value={toFiniteNumber(item.targetDisbursementAmount)}
                                                                                     onValueChange={(value) => updateLocalItem(item.uniqueId, { targetDisbursementAmount: value })}
-                                                                                    disabled={!canEdit}
+                                                                                    disabled={!canEditFinancialItem}
                                                                                     className="w-full text-xs text-right p-1 border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-emerald-500 focus:border-emerald-500"
                                                                                     placeholder="0.00"
                                                                                     emptyWhenZero
@@ -1731,7 +1812,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 <MonthYearPicker 
                                                                                     value={item.targetDisbursementMonth} 
                                                                                     onChange={(val) => updateLocalItem(item.uniqueId, { targetDisbursementMonth: val })}
-                                                                                    disabled={!canEdit}
+                                                                                    disabled={!canEditFinancialItem}
                                                                                     className="h-7 text-[10px] py-0"
                                                                                 />
                                                                             ) : (
@@ -1745,7 +1826,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 disbursements={item.disbursements || []}
                                                                                 onChange={(newDibs, total) => updateLocalItem(item.uniqueId, { disbursements: newDibs, actualDisbursementAmount: total })}
                                                                                 defaultYear={selectedYear?.toString()}
-                                                                                readOnly={!canEdit}
+                                                                                readOnly={!canEditFinancialItem}
+                                                                                validateMonthChange={(month) => validateFinancialActualMonth(item, month)}
                                                                             />
                                                                         </td>
 
@@ -1773,8 +1855,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                     )}
                                                                                     <button 
                                                                                         onClick={() => handleConfirmItem(item)}
-                                                                                        disabled={localSavingIds.has(item.uniqueId)}
+                                                                                        disabled={localSavingIds.has(item.uniqueId) || !canEditFinancialItem}
                                                                                         className="fac-save-button px-3 py-1 rounded text-xs font-bold transition-all flex items-center justify-center gap-1 bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm disabled:opacity-50 min-w-[60px]"
+                                                                                        title={canEditFinancialItem ? 'Save row' : itemFinancialDecision.message}
                                                                                     >
                                                                                         {localSavingIds.has(item.uniqueId) ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
                                                                                     </button>
@@ -1798,8 +1881,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                         <ObligationListEditor 
                                                                                             obligations={item.obligations}
                                                                                             onChange={(obs) => updateLocalItem(item.uniqueId, { obligations: obs })}
-                                                                                            readOnly={!canEdit}
+                                                                                            readOnly={!canEditFinancialItem}
                                                                                             hideHeaderAddButton
+                                                                                            validateMonthChange={(month) => validateFinancialActualMonth(item, month)}
                                                                                         />
                                                                                     </div>
 
@@ -1814,8 +1898,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                             onChange={(newDb) => {
                                                                                                 updateLocalItem(item.uniqueId, { disbursements: newDb });
                                                                                             }}
-                                                                                            readOnly={!canEdit}
+                                                                                            readOnly={!canEditFinancialItem}
                                                                                             hideHeaderAddButton
+                                                                                            validateMonthChange={(month) => validateFinancialActualMonth(item, month)}
                                                                                         />
                                                                                     </div>
                                                                                 </div>

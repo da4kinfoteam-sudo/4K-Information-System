@@ -6,6 +6,7 @@ import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
 import { useIpoHistory } from '../hooks/useIpoHistory';
+import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 import { MonthYearPicker } from './ui/MonthYearPicker';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
@@ -142,6 +143,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
     const { canEdit: canEditPhysical } = useUserAccess('Accomplishment - Physical');
     const { addIpoHistory } = useIpoHistory();
+    const { getStatusDecision, getMonthDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
     const isAdmin = currentUser?.role === 'Administrator';
     const canDeleteDriveFiles = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
 
@@ -204,11 +206,93 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const isUserRole = currentUser?.role === 'User';
 
-    // Toggle Flags for Edit Buttons (Role Based access)
-    const canEditProjectDetails = canEdit;
-    const canEditCommodity = canEdit;
-    const canEditBudget = canEdit;
-    const canEditAccomplishment = canEdit || canEditFinancial || canEditPhysical;
+    const detailsDecision = getStatusDecision({
+        moduleKey: 'subprojects',
+        item: subproject,
+        action: 'editDetails',
+        hasModuleAccess: canEdit,
+    });
+    const commodityDecision = detailsDecision;
+    const budgetDecision = getStatusDecision({
+        moduleKey: 'subprojects',
+        item: subproject,
+        action: 'editBudget',
+        hasModuleAccess: canEdit,
+    });
+    const physicalAccomplishmentDecision = getStatusDecision({
+        moduleKey: 'subprojects',
+        item: subproject,
+        action: 'editPhysicalAccomplishment',
+        hasModuleAccess: canEditPhysical,
+    });
+    const financialAccomplishmentDecision = getStatusDecision({
+        moduleKey: 'subprojects',
+        item: subproject,
+        action: 'editFinancialAccomplishment',
+        hasModuleAccess: canEditFinancial,
+    });
+    const accomplishmentDecision = physicalAccomplishmentDecision.allowed ? physicalAccomplishmentDecision : financialAccomplishmentDecision;
+
+    // Toggle Flags for Edit Buttons (Role + DCF policy based access)
+    const canEditProjectDetails = detailsDecision.allowed;
+    const canEditCommodity = commodityDecision.allowed;
+    const canEditBudget = budgetDecision.allowed;
+    const canEditAccomplishment = physicalAccomplishmentDecision.allowed || financialAccomplishmentDecision.allowed;
+
+    const getEditModeDecision = (mode: typeof editMode) => {
+        if (mode === 'details') return { decision: detailsDecision, action: 'editDetails' as const };
+        if (mode === 'commodity') return { decision: commodityDecision, action: 'editDetails' as const };
+        if (mode === 'budget') return { decision: budgetDecision, action: 'editBudget' as const };
+        if (mode === 'accomplishment') {
+            return {
+                decision: accomplishmentDecision,
+                action: physicalAccomplishmentDecision.allowed ? 'editPhysicalAccomplishment' as const : 'editFinancialAccomplishment' as const,
+            };
+        }
+        return { decision: detailsDecision, action: 'editDetails' as const };
+    };
+
+    const handlePolicyEditMode = async (mode: 'details' | 'commodity' | 'budget' | 'accomplishment') => {
+        const { decision, action } = getEditModeDecision(mode);
+        const allowed = await ensureDecisionAllowed(decision, {
+            moduleKey: 'subprojects',
+            item: subproject,
+            itemId: subproject.id,
+            itemName: subproject.name,
+            status: subproject.status,
+            action,
+            entityType: 'subproject',
+        });
+        if (allowed) setEditMode(mode);
+    };
+
+    const validateSubprojectActualMonth = async (month?: string) => {
+        if (!month) return true;
+        const decision = getMonthDecision(month);
+        return ensureDecisionAllowed(decision, {
+            moduleKey: 'subprojects',
+            item: subproject,
+            itemId: subproject.id,
+            itemName: subproject.name,
+            status: subproject.status,
+            action: 'editPhysicalAccomplishment',
+            month,
+            entityType: 'subproject',
+        });
+    };
+
+    const validateSubprojectAccomplishmentMonthsForSave = async () => {
+        if (editMode !== 'accomplishment') return true;
+        const months = detailItems.flatMap(detail => [
+            detail.actualDeliveryDate,
+            ...(detail.obligations || []).map(record => record.date),
+            ...(detail.disbursements || []).map(record => record.date),
+        ]).filter(Boolean);
+        for (const month of months) {
+            if (!(await validateSubprojectActualMonth(month))) return false;
+        }
+        return true;
+    };
 
     const resetCurrentDetail = () => {
         setCurrentDetail({
@@ -873,6 +957,22 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
+
+        if (editMode !== 'none' && editMode !== 'full') {
+            const { decision, action } = getEditModeDecision(editMode);
+            const allowed = await ensureDecisionAllowed(decision, {
+                moduleKey: 'subprojects',
+                item: subproject,
+                itemId: subproject.id,
+                itemName: subproject.name,
+                status: subproject.status,
+                action,
+                entityType: 'subproject',
+            });
+            if (!allowed) return;
+        }
+
+        if (!(await validateSubprojectAccomplishmentMonthsForSave())) return;
         
         if (editMode === 'details') {
             const requiredFields = ['name', 'indigenousPeopleOrganization', 'status'];
@@ -1704,7 +1804,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                 <td className="px-3 py-2">
                                                                     <MonthYearPicker
                                                                         value={(detail as any).actualDeliveryDate}
-                                                                        onChange={(val) => handleActualDeliveryDateChange(idx, val)}
+                                                                        onChange={async (val) => {
+                                                                            if (val && !(await validateSubprojectActualMonth(val))) return;
+                                                                            handleActualDeliveryDateChange(idx, val);
+                                                                        }}
                                                                         placeholder="Select month"
                                                                         defaultYear={editedSubproject.fundingYear}
                                                                         className="h-8 text-xs"
@@ -1719,6 +1822,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                             handleDetailAccomplishmentChange(idx, 'actualObligationAmount', total);
                                                                         }}
                                                                         defaultYear={editedSubproject.fundingYear}
+                                                                        validateMonthChange={validateSubprojectActualMonth}
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2" colSpan={2}>
@@ -1729,6 +1833,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                             handleDetailAccomplishmentChange(idx, 'actualDisbursementAmount', total);
                                                                         }}
                                                                         defaultYear={editedSubproject.fundingYear}
+                                                                        validateMonthChange={validateSubprojectActualMonth}
                                                                     />
                                                                 </td>
                                                             </tr>
@@ -1994,8 +2099,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 </div>
                 <div className="detail-actions">
                     {/* Granular Buttons - Prepare for individual role toggles */}
-                    {canEditAccomplishment && (
-                        <button onClick={() => setEditMode('accomplishment')} className="btn btn-primary btn-responsive" title="Edit Accomplishment">
+                    {(canEdit || canEditFinancial || canEditPhysical || canEditAccomplishment) && (
+                        <button onClick={() => handlePolicyEditMode('accomplishment')} disabled={!canEditAccomplishment} className={`btn btn-primary btn-responsive ${!canEditAccomplishment ? 'is-disabled' : ''}`} title={canEditAccomplishment ? 'Edit Accomplishment' : accomplishmentDecision.message}>
                             <CheckCircle2 className="btn-symbol" aria-hidden="true" />
                             <span className="btn-text">Edit Accomplishment</span>
                         </button>
@@ -2014,8 +2119,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                      <div className="detail-card">
                         <div className="flex justify-between items-start mb-4">
                             <h3 className="detail-card-title mb-0">Project Details</h3>
-                            {canEditProjectDetails && (
-                                <button onClick={() => setEditMode('details')} className="table-action table-action--primary">
+                            {(canEdit || canEditProjectDetails) && (
+                                <button onClick={() => handlePolicyEditMode('details')} disabled={!canEditProjectDetails} className={`table-action table-action--primary ${!canEditProjectDetails ? 'is-disabled' : ''}`} title={canEditProjectDetails ? 'Edit Details' : detailsDecision.message}>
                                     <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Details
                                 </button>
@@ -2057,8 +2162,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                      {/* New Target Commodities Section */}
                      <CollapsibleDetailCard title="Target Commodities" isOpen={expandedSections.commodities} onToggle={() => toggleSection('commodities')}>
                         <div className="flex justify-end mb-4">
-                            {canEditCommodity && (
-                                <button onClick={() => setEditMode('commodity')} className="table-action table-action--primary">
+                            {(canEdit || canEditCommodity) && (
+                                <button onClick={() => handlePolicyEditMode('commodity')} disabled={!canEditCommodity} className={`table-action table-action--primary ${!canEditCommodity ? 'is-disabled' : ''}`} title={canEditCommodity ? 'Edit Commodities' : commodityDecision.message}>
                                     <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Commodity
                                 </button>
@@ -2085,8 +2190,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
                      <CollapsibleDetailCard title="Budget Breakdown" isOpen={expandedSections.budget} onToggle={() => toggleSection('budget')}>
                         <div className="flex justify-end mb-4">
-                            {canEditBudget && (
-                                <button onClick={() => setEditMode('budget')} className="table-action table-action--primary">
+                            {(canEdit || canEditBudget) && (
+                                <button onClick={() => handlePolicyEditMode('budget')} disabled={!canEditBudget} className={`table-action table-action--primary ${!canEditBudget ? 'is-disabled' : ''}`} title={canEditBudget ? 'Edit Budget' : budgetDecision.message}>
                                     <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Budget
                                 </button>
@@ -2154,8 +2259,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     {/* NEW: Accomplishment Report Section (Read-Only) */}
                     <CollapsibleDetailCard title="Accomplishment Report" isOpen={expandedSections.accomplishment} onToggle={() => toggleSection('accomplishment')}>
                         <div className="flex justify-end mb-4">
-                            {canEditAccomplishment && (
-                                <button onClick={() => setEditMode('accomplishment')} className="table-action table-action--primary">
+                            {(canEdit || canEditFinancial || canEditPhysical || canEditAccomplishment) && (
+                                <button onClick={() => handlePolicyEditMode('accomplishment')} disabled={!canEditAccomplishment} className={`table-action table-action--primary ${!canEditAccomplishment ? 'is-disabled' : ''}`} title={canEditAccomplishment ? 'Edit Accomplishment' : accomplishmentDecision.message}>
                                     <CheckCircle2 className="btn-symbol" aria-hidden="true" />
                                     Edit Accomplishment
                                 </button>

@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { getMonetaryChanges } from '../../lib/logUtils';
 import { useUserAccess } from '../mainfunctions/TableHooks';
+import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 import { createDisbursementsFromMonthlyFields, summarizeDisbursements } from '../../lib/disbursementUtils';
@@ -33,6 +34,50 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Program Management');
     const { logAction } = useLogAction();
+    const { getStatusDecision, getMonthDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const detailsDecision = getStatusDecision({
+        moduleKey: 'other_program_expenses',
+        item,
+        action: 'editDetails',
+        hasModuleAccess: canEdit,
+    });
+    const accomplishmentDecision = getStatusDecision({
+        moduleKey: 'other_program_expenses',
+        item,
+        action: 'editFinancialAccomplishment',
+        hasModuleAccess: canEdit,
+    });
+    const canEditDetails = detailsDecision.allowed;
+    const canEditAccomplishment = accomplishmentDecision.allowed;
+
+    const validateActualMonth = async (month?: string) => {
+        if (!month) return true;
+        const decision = getMonthDecision(month);
+        return ensureDecisionAllowed(decision, {
+            moduleKey: 'other_program_expenses',
+            item,
+            itemId: item.id,
+            itemName: item.particulars,
+            status: item.status,
+            action: 'editFinancialAccomplishment',
+            month,
+            entityType: 'other_program_expense',
+        });
+    };
+
+    const validateAccomplishmentMonthsForSave = async () => {
+        if (editMode !== 'accomplishment') return true;
+        const monthsToCheck = [
+            ...(formData.obligations || []).map(record => record.date),
+            ...months
+                .map((month, index) => Number((formData as any)[`actualDisbursement${month}`]) > 0 ? `${formData.fundYear}-${String(index + 1).padStart(2, '0')}` : '')
+                .filter(Boolean),
+        ];
+        for (const month of monthsToCheck) {
+            if (!(await validateActualMonth(month))) return false;
+        }
+        return true;
+    };
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<OtherProgramExpense>(item);
@@ -208,7 +253,21 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
+        const action = editMode === 'details' ? 'editDetails' : 'editFinancialAccomplishment';
+        const decision = editMode === 'details' ? detailsDecision : accomplishmentDecision;
+        const allowed = await ensureDecisionAllowed(decision, {
+            moduleKey: 'other_program_expenses',
+            item,
+            itemId: item.id,
+            itemName: item.particulars,
+            status: item.status,
+            action,
+            entityType: 'other_program_expense',
+        });
+        if (!allowed) return;
+        if (!(await validateAccomplishmentMonthsForSave())) return;
+
         if (editMode === 'details') {
             const requiredFields = [
                 { key: 'operatingUnit', label: 'Operating Unit' },
@@ -550,6 +609,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                                             }));
                                         }}
                                         defaultYear={formData.fundYear?.toString()}
+                                        validateMonthChange={validateActualMonth}
                                     />
                                 </div>
                             </div>
@@ -591,16 +651,38 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                     <p className="detail-subtitle">{item.operatingUnit} | {item.uid}</p>
                 </div>
                 <div className="detail-actions">
-                    {canEdit && (
-                        <button onClick={() => setEditMode('details')} className="btn btn-primary btn-responsive">
+                    {(canEdit || canEditDetails) && (
+                        <button onClick={async () => {
+                            const allowed = await ensureDecisionAllowed(detailsDecision, {
+                                moduleKey: 'other_program_expenses',
+                                item,
+                                itemId: item.id,
+                                itemName: item.particulars,
+                                status: item.status,
+                                action: 'editDetails',
+                                entityType: 'other_program_expense',
+                            });
+                            if (allowed) setEditMode('details');
+                        }} disabled={!canEditDetails} className={`btn btn-primary btn-responsive ${!canEditDetails ? 'is-disabled' : ''}`} title={canEditDetails ? 'Edit Details' : detailsDecision.message}>
                             <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                             <span className="btn-text">
                             Edit Details
                             </span>
                         </button>
                     )}
-                    {canEdit && (
-                        <button onClick={() => setEditMode('accomplishment')} className="btn btn-primary btn-responsive">
+                    {(canEdit || canEditAccomplishment) && (
+                        <button onClick={async () => {
+                            const allowed = await ensureDecisionAllowed(accomplishmentDecision, {
+                                moduleKey: 'other_program_expenses',
+                                item,
+                                itemId: item.id,
+                                itemName: item.particulars,
+                                status: item.status,
+                                action: 'editFinancialAccomplishment',
+                                entityType: 'other_program_expense',
+                            });
+                            if (allowed) setEditMode('accomplishment');
+                        }} disabled={!canEditAccomplishment} className={`btn btn-primary btn-responsive ${!canEditAccomplishment ? 'is-disabled' : ''}`} title={canEditAccomplishment ? 'Edit Accomplishment' : accomplishmentDecision.message}>
                             <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             <span className="btn-text">
                             Edit Accomplishment

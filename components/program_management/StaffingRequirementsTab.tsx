@@ -12,6 +12,7 @@ import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExport
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Check, Download, FileSpreadsheet, Plus, Upload } from 'lucide-react';
 import { createStaffingExpenseId } from '../../lib/staffingExpenseIdentity';
+import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 
 declare const XLSX: any;
 
@@ -199,6 +200,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
+    const { getDeleteDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
     
     // Local State
     const [view, setView] = useState<'list' | 'form'>('list');
@@ -535,6 +537,21 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
     const handleDelete = async () => {
         if (!itemToDelete) return;
+        const decision = getDeleteDecision({
+            moduleKey: 'staffing_requirements',
+            item: itemToDelete,
+            hasModuleAccess: canEdit,
+        });
+        const allowed = await ensureDecisionAllowed(decision, {
+            moduleKey: 'staffing_requirements',
+            item: itemToDelete,
+            itemId: itemToDelete.id,
+            itemName: itemToDelete.personnelPosition,
+            status: itemToDelete.hiringStatus,
+            action: 'delete',
+            entityType: 'staffing_requirement',
+        });
+        if (!allowed) return;
         if (supabase) {
             try {
                 const { error: archiveError } = await supabase.from('trash_bin').insert([{
@@ -565,10 +582,23 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     const handleMultiDelete = async () => {
         if (selectedIds.length === 0) return;
         const itemsToDelete = items.filter(i => selectedIds.includes(i.id));
+        const deletableItems = itemsToDelete.filter(item => getDeleteDecision({
+            moduleKey: 'staffing_requirements',
+            item,
+            hasModuleAccess: canEdit,
+        }).allowed);
+        const skippedCount = itemsToDelete.length - deletableItems.length;
+        if (deletableItems.length === 0) {
+            alert('None of the selected staffing requirements can be deleted under the current DCF editing policy.');
+            setIsMultiDeleteModalOpen(false);
+            setSelectedIds([]);
+            return;
+        }
+        const deletableIds = deletableItems.map(item => item.id);
 
         if (supabase) {
             try {
-                const archivePayload = itemsToDelete.map(item => ({
+                const archivePayload = deletableItems.map(item => ({
                     entity_type: 'staffing_requirement',
                     original_id: item.id,
                     data: item,
@@ -579,18 +609,19 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
                 if (archiveError) throw archiveError;
 
-                const { error: deleteError } = await supabase.from('staffing_requirements').delete().in('id', selectedIds);
+                const { error: deleteError } = await supabase.from('staffing_requirements').delete().in('id', deletableIds);
                 if (deleteError) throw deleteError;
 
-                setItems(prev => prev.filter(i => !selectedIds.includes(i.id)));
+                setItems(prev => prev.filter(i => !deletableIds.includes(i.id)));
             } catch (error: any) {
                 console.error("Error archiving/deleting selected:", error);
                 alert("Failed to delete selected: " + error.message);
                 return;
             }
         } else {
-            setItems(prev => prev.filter(i => !selectedIds.includes(i.id)));
+            setItems(prev => prev.filter(i => !deletableIds.includes(i.id)));
         }
+        if (skippedCount) alert(`${skippedCount} selected staffing requirement${skippedCount === 1 ? ' was' : 's were'} skipped by DCF editing policy.`);
         setIsMultiDeleteModalOpen(false); setSelectedIds([]);
     };
 

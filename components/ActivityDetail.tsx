@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle2, ChevronDown, Edit3, ExternalLink, Eye, FileTex
 import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, ReferenceActivity } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
+import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 import { getBudgetLineAmount, getBudgetLineTag, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import { getActualDisbursementSummary, getActualObligationSummary } from '../lib/financialActualSummary';
 import { supabase } from '../supabaseClient';
@@ -102,8 +103,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     const { canEdit } = useUserAccess('Activities');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
     const { canEdit: canEditPhysical } = useUserAccess('Accomplishment - Physical');
+    const { getStatusDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
 
-    const isAdmin = currentUser?.role === 'Administrator';
     const canDeleteDriveFiles = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
     const [driveStatus, setDriveStatus] = useState<GoogleDriveStatus | null>(null);
     const [driveFiles, setDriveFiles] = useState<ActivityDriveFile[]>([]);
@@ -158,11 +159,54 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     
     // User Role Permission Logic
     // Details & Expenses: Editable if Proposed. Read-only if Ongoing/Completed/Cancelled (unless Admin).
-    const canEditDetails = canEdit;
-    const canEditExpenses = canEdit;
+    const detailsDecision = getStatusDecision({
+        moduleKey: 'activities',
+        item: activity,
+        action: 'editDetails',
+        hasModuleAccess: canEdit,
+    });
+    const expensesDecision = getStatusDecision({
+        moduleKey: 'activities',
+        item: activity,
+        action: 'editBudget',
+        hasModuleAccess: canEdit,
+    });
+    const physicalAccomplishmentDecision = getStatusDecision({
+        moduleKey: 'activities',
+        item: activity,
+        action: 'editPhysicalAccomplishment',
+        hasModuleAccess: canEditPhysical,
+    });
+    const financialAccomplishmentDecision = getStatusDecision({
+        moduleKey: 'activities',
+        item: activity,
+        action: 'editFinancialAccomplishment',
+        hasModuleAccess: canEditFinancial,
+    });
+    const accomplishmentDecision = physicalAccomplishmentDecision.allowed ? physicalAccomplishmentDecision : financialAccomplishmentDecision;
+    const canEditDetails = detailsDecision.allowed;
+    const canEditExpenses = expensesDecision.allowed;
     
     // Accomplishment: Editable based on tracking permissions
-    const canEditAccomplishment = canEdit || canEditFinancial || canEditPhysical;
+    const canEditAccomplishment = physicalAccomplishmentDecision.allowed || financialAccomplishmentDecision.allowed;
+
+    const handlePolicyEdit = async (mode: 'details' | 'expenses' | 'accomplishment') => {
+        const decision = mode === 'details'
+            ? detailsDecision
+            : mode === 'expenses'
+                ? expensesDecision
+                : accomplishmentDecision;
+        const allowed = await ensureDecisionAllowed(decision, {
+            moduleKey: 'activities',
+            item: activity,
+            itemId: activity.id,
+            itemName: activity.name,
+            status: activity.status,
+            action: mode === 'details' ? 'editDetails' : mode === 'expenses' ? 'editBudget' : physicalAccomplishmentDecision.allowed ? 'editPhysicalAccomplishment' : 'editFinancialAccomplishment',
+            entityType: 'activity',
+        });
+        if (allowed) onEdit(mode);
+    };
 
     const toggleSection = (section: ActivityDetailSectionKey) => {
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -466,8 +510,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                     </p>
                 </div>
                 <div className="detail-actions">
-                    {(canEditAccomplishment || isAdmin) && (
-                        <button onClick={() => onEdit('accomplishment')} className="btn btn-primary btn-responsive" title="Edit Accomplishment">
+                    {(canEdit || canEditFinancial || canEditPhysical || canEditAccomplishment) && (
+                        <button onClick={() => handlePolicyEdit('accomplishment')} disabled={!canEditAccomplishment} className={`btn btn-primary btn-responsive ${!canEditAccomplishment ? 'is-disabled' : ''}`} title={canEditAccomplishment ? 'Edit Accomplishment' : accomplishmentDecision.message}>
                             <CheckCircle2 className="btn-symbol" aria-hidden="true" />
                             <span className="btn-text">Edit Accomplishment</span>
                         </button>
@@ -488,8 +532,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                     <div className="detail-card">
                         <div className="flex justify-between items-start mb-4">
                             <h3 className="detail-card-title mb-0">Activity Details</h3>
-                            {(canEditDetails || isAdmin) && (
-                                <button onClick={() => onEdit('details')} className="table-action table-action--primary">
+                            {(canEdit || canEditDetails) && (
+                                <button onClick={() => handlePolicyEdit('details')} disabled={!canEditDetails} className={`table-action table-action--primary ${!canEditDetails ? 'is-disabled' : ''}`} title={canEditDetails ? 'Edit Details' : detailsDecision.message}>
                                     <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Details
                                 </button>
@@ -566,8 +610,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                     <div className="detail-card">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="detail-card-title mb-0">Expenses & Budget</h3>
-                            {(canEditExpenses || isAdmin) && (
-                                <button onClick={() => onEdit('expenses')} className="table-action table-action--primary">
+                            {(canEdit || canEditExpenses) && (
+                                <button onClick={() => handlePolicyEdit('expenses')} disabled={!canEditExpenses} className={`table-action table-action--primary ${!canEditExpenses ? 'is-disabled' : ''}`} title={canEditExpenses ? 'Edit Expenses' : expensesDecision.message}>
                                     <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Expenses
                                 </button>
@@ -630,8 +674,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                     <div className="detail-card">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="detail-card-title mb-0">Accomplishment Report</h3>
-                            {(canEditAccomplishment || isAdmin) && (
-                                <button onClick={() => onEdit('accomplishment')} className="table-action table-action--primary">
+                            {(canEdit || canEditFinancial || canEditPhysical || canEditAccomplishment) && (
+                                <button onClick={() => handlePolicyEdit('accomplishment')} disabled={!canEditAccomplishment} className={`table-action table-action--primary ${!canEditAccomplishment ? 'is-disabled' : ''}`} title={canEditAccomplishment ? 'Edit Accomplishment' : accomplishmentDecision.message}>
                                     <CheckCircle2 className="btn-symbol" aria-hidden="true" />
                                     Edit Accomplishment
                                 </button>

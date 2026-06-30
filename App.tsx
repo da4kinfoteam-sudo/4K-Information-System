@@ -39,6 +39,8 @@ import useLocalStorageState from './hooks/useLocalStorageState';
 import { useSupabaseTable } from './hooks/useSupabaseTable'; 
 import { supabase } from './supabaseClient'; // Import supabase client
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { DcfPolicyProvider } from './contexts/DcfPolicyContext';
+import { useDcfPolicyGuard } from './hooks/useDcfPolicyGuard';
 import { DataScope, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
 import { clearUserCache, getScopeCacheMeta, readScopedCache, writeScopedCache } from './lib/localScopedCache';
 import { normalizeStaffingExpenses } from './lib/staffingExpenseIdentity';
@@ -178,6 +180,7 @@ const createDefaultReportsPageState = (ownOu?: string | null, isLockedToOwnOu = 
 
 const AppContent: React.FC = () => {
     const { currentUser, hasAccess, getVisibilityScope, isAuthReady, refreshUser, refreshUsersList, refreshPermissions } = useAuth();
+    const { getStatusDecision } = useDcfPolicyGuard();
     // Initialize Sidebar state based on screen width (Open on Desktop by default)
     const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 768);
     const [themeMode, setThemeMode] = useState<ThemeMode>(() => resolveInitialTheme());
@@ -989,6 +992,27 @@ const AppContent: React.FC = () => {
                             onDataScopeChange={ensureDataScope}
                         />;
             case '/activity-edit':
+                if (activityEditMode !== 'create' && selectedActivity) {
+                    const activityEditDecision = activityEditMode === 'details'
+                        ? getStatusDecision({ moduleKey: 'activities', item: selectedActivity, action: 'editDetails', hasModuleAccess: hasAccess('Activities', 'edit') })
+                        : activityEditMode === 'expenses'
+                            ? getStatusDecision({ moduleKey: 'activities', item: selectedActivity, action: 'editBudget', hasModuleAccess: hasAccess('Activities', 'edit') })
+                            : (
+                                getStatusDecision({ moduleKey: 'activities', item: selectedActivity, action: 'editPhysicalAccomplishment', hasModuleAccess: hasAccess('Accomplishment - Physical', 'edit') }).allowed
+                                    ? getStatusDecision({ moduleKey: 'activities', item: selectedActivity, action: 'editPhysicalAccomplishment', hasModuleAccess: hasAccess('Accomplishment - Physical', 'edit') })
+                                    : getStatusDecision({ moduleKey: 'activities', item: selectedActivity, action: 'editFinancialAccomplishment', hasModuleAccess: hasAccess('Accomplishment - Financial', 'edit') })
+                            );
+                    if (!activityEditDecision.allowed) {
+                        return (
+                            <DetailRouteFallback
+                                title="Activity editing is locked"
+                                message={activityEditDecision.message}
+                                actionLabel="Back to Activity Details"
+                                onAction={() => navigateTo(buildDetailPath('/activity-detail', selectedActivity.id))}
+                            />
+                        );
+                    }
+                }
                 return <ActivityEdit 
                             mode={activityEditMode}
                             activity={selectedActivity || undefined}
@@ -1011,6 +1035,24 @@ const AppContent: React.FC = () => {
                             }
                         />;
             case '/subproject-edit':
+                if (selectedSubproject) {
+                    const subprojectEditDecision = getStatusDecision({
+                        moduleKey: 'subprojects',
+                        item: selectedSubproject,
+                        action: 'editDetails',
+                        hasModuleAccess: hasAccess('Subprojects', 'edit'),
+                    });
+                    if (!subprojectEditDecision.allowed) {
+                        return (
+                            <DetailRouteFallback
+                                title="Subproject editing is locked"
+                                message={subprojectEditDecision.message}
+                                actionLabel="Back to Subproject Details"
+                                onAction={() => navigateTo(buildDetailPath('/subproject-detail', selectedSubproject.id))}
+                            />
+                        );
+                    }
+                }
                 return <SubprojectEdit 
                             subproject={selectedSubproject || undefined}
                             ipos={ipos}
@@ -1529,7 +1571,9 @@ const AppContent: React.FC = () => {
 export const App: React.FC = () => {
     return (
         <AuthProvider>
-            <AppContent />
+            <DcfPolicyProvider>
+                <AppContent />
+            </DcfPolicyProvider>
         </AuthProvider>
     );
 };

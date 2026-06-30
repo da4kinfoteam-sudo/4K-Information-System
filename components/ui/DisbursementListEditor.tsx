@@ -10,9 +10,10 @@ interface Props {
     onChange: (disbursements: DisbursementRecord[]) => void;
     readOnly?: boolean;
     hideHeaderAddButton?: boolean;
+    validateMonthChange?: (month: string) => boolean | Promise<boolean>;
 }
 
-export const DisbursementListEditor: React.FC<Props> = ({ disbursements = [], onChange, readOnly = false, hideHeaderAddButton = false }) => {
+export const DisbursementListEditor: React.FC<Props> = ({ disbursements = [], onChange, readOnly = false, hideHeaderAddButton = false, validateMonthChange }) => {
     const handleAdd = () => {
         if (readOnly) return;
         const newRecord: DisbursementRecord = {
@@ -28,8 +29,12 @@ export const DisbursementListEditor: React.FC<Props> = ({ disbursements = [], on
         onChange(disbursements.filter(o => o.id !== id));
     };
 
-    const handleUpdate = (id: number, updates: Partial<DisbursementRecord>) => {
+    const handleUpdate = async (id: number, updates: Partial<DisbursementRecord>) => {
         if (readOnly) return;
+        if (updates.date && validateMonthChange) {
+            const allowed = await validateMonthChange(updates.date);
+            if (!allowed) return;
+        }
         onChange(disbursements.map(o => o.id === id ? { ...o, ...updates } : o));
     };
 
