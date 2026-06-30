@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
 import { getMonetaryChanges } from '../lib/logUtils';
 import { useIpoHistory } from '../hooks/useIpoHistory';
-import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
+import { normalizePolicyMonth, useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 import { supabase } from '../supabaseClient';
 import { Pencil, Trash2 } from 'lucide-react';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
@@ -92,11 +92,12 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     const { currentUser, hasAccess } = useAuth();
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
-    const { getStatusDecision, getMonthDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
     const isAdmin = currentUser?.role === 'Administrator';
 
     const [formData, setFormData] = useState<Activity>(activity || defaultFormData);
     const [initialActivity, setInitialActivity] = useState<Activity>(activity || defaultFormData);
+    const [monthLockMessage, setMonthLockMessage] = useState('');
 
     const [activeTab, setActiveTab] = useState<'details' | 'expenses'>('details');
     const [selectedActivityType, setSelectedActivityType] = useState('');
@@ -546,28 +547,44 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     const validateActivityActualMonth = async (month?: string) => {
         if (!month || !activity) return true;
         const decision = getMonthDecision(month);
-        return ensureDecisionAllowed(decision, {
-            moduleKey: 'activities',
-            item: activity,
-            itemId: activity.id,
-            itemName: activity.name,
-            status: activity.status,
-            action: 'editPhysicalAccomplishment',
-            month,
-            entityType: 'activity',
-        });
+        if (isMonthSelectionAllowed(decision)) {
+            setMonthLockMessage('');
+            return true;
+        }
+        setMonthLockMessage(getMonthLockMessage(decision));
+        return false;
     };
+
+    const hasMonthChanged = (current?: string | null, original?: string | null) => (
+        normalizePolicyMonth(current) !== normalizePolicyMonth(original)
+    );
+
+    const getChangedRecordMonths = (
+        currentRecords: Array<{ id?: number | string; date?: string | null }> = [],
+        originalRecords: Array<{ id?: number | string; date?: string | null }> = []
+    ) => currentRecords
+        .filter((record, index) => {
+            const originalRecord = record.id !== undefined
+                ? originalRecords.find(item => item.id === record.id)
+                : originalRecords[index];
+            return !!record.date && (!originalRecord || hasMonthChanged(record.date, originalRecord.date));
+        })
+        .map(record => record.date)
+        .filter(Boolean) as string[];
 
     const validateActivityAccomplishmentMonthsForSave = async () => {
         if (mode !== 'accomplishment') return true;
         const months = [
-            formData.actualDate,
-            formData.actualEndDate,
-            ...formData.expenses.flatMap(exp => [
-                ...(exp.obligations || []).map(record => record.date),
-                ...(exp.disbursements || []).map(record => record.date),
-            ]),
-        ].filter(Boolean);
+            ...(hasMonthChanged(formData.actualDate, initialActivity.actualDate) ? [formData.actualDate] : []),
+            ...(hasMonthChanged(formData.actualEndDate, initialActivity.actualEndDate) ? [formData.actualEndDate] : []),
+            ...formData.expenses.flatMap((exp, index) => {
+                const originalExpense = initialActivity.expenses.find(item => item.id === exp.id) || initialActivity.expenses[index];
+                return [
+                    ...getChangedRecordMonths(exp.obligations || [], originalExpense?.obligations || []),
+                    ...getChangedRecordMonths(exp.disbursements || [], originalExpense?.disbursements || []),
+                ];
+            }),
+        ].filter(Boolean) as string[];
         for (const month of months) {
             if (!(await validateActivityActualMonth(month))) return false;
         }
@@ -887,6 +904,11 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             </div>
 
             <form onSubmit={handleSubmit} className="form-card">
+                {monthLockMessage && (
+                    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800" role="status">
+                        {monthLockMessage}
+                    </div>
+                )}
                 
                 {/* Mode: Create - Tabs */}
                 {mode === 'create' && (

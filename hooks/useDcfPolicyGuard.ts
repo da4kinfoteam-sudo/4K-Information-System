@@ -106,6 +106,17 @@ export const getDcfModuleLabel = (moduleKey: DcfModuleKey): string => {
     }
 };
 
+export const formatPolicyMonthLabel = (month?: string | null): string => {
+    const normalizedMonth = normalizePolicyMonth(month);
+    if (!normalizedMonth) return 'the current month';
+    const [year, monthNumber] = normalizedMonth.split('-').map(Number);
+    return new Date(Date.UTC(year, monthNumber - 1, 1)).toLocaleDateString('en-US', {
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+    });
+};
+
 export const useDcfPolicyGuard = () => {
     const { currentUser } = useAuth();
     const { policy, serverDate, loading, error } = useDcfPolicy();
@@ -176,6 +187,21 @@ export const useDcfPolicyGuard = () => {
         });
     }, [currentUser, loading, policy, serverDate]);
 
+    const getCurrentAccomplishmentMonthLabel = useCallback((): string => (
+        formatPolicyMonthLabel(serverDate)
+    ), [serverDate]);
+
+    const isMonthSelectionAllowed = useCallback((decision: DcfPolicyDecision): boolean => (
+        decision.allowed && decision.code !== 'allowed_by_override'
+    ), []);
+
+    const getMonthLockMessage = useCallback((decision?: DcfPolicyDecision): string => {
+        if (decision?.code === 'blocked_by_permission') {
+            return decision.message;
+        }
+        return `Only the current accomplishment month is open. Please select ${getCurrentAccomplishmentMonthLabel()}.`;
+    }, [getCurrentAccomplishmentMonthLabel]);
+
     const requestOverrideReason = useCallback((decision: DcfPolicyDecision, context: DcfPolicyGuardContext): string | null => {
         if (decision.code !== 'allowed_by_override' || !decision.requiresOverrideReason) {
             return null;
@@ -232,6 +258,9 @@ export const useDcfPolicyGuard = () => {
         getStatusDecision,
         getDeleteDecision,
         getMonthDecision,
+        getCurrentAccomplishmentMonthLabel,
+        getMonthLockMessage,
+        isMonthSelectionAllowed,
         ensureDecisionAllowed,
     };
 };

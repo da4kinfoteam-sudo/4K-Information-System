@@ -308,14 +308,8 @@ export const canUseAccomplishmentMonth = ({
 
     const targetIndex = monthIndex(target.year, target.month);
     const currentIndex = monthIndex(current.year, current.month);
-    const currentDay = Number(serverDate.slice(8, 10));
-
     if (targetIndex === currentIndex) {
         return { allowed: true, code: 'allowed', message: 'Current month is open for accomplishment entry.' };
-    }
-
-    if (targetIndex === currentIndex - 1 && currentDay <= policy.monthLock.graceDays) {
-        return { allowed: true, code: 'allowed', message: `Previous month is open during the ${policy.monthLock.graceDays}-day grace period.` };
     }
 
     if (isOverrideRole) {
@@ -327,12 +321,12 @@ export const canUseAccomplishmentMonth = ({
         };
     }
 
-    if (targetIndex < currentIndex && policy.monthLock.blockPastMonthsAfterGrace) {
-        return { allowed: false, code: 'blocked_by_month_lock', message: 'Past accomplishment months are locked after the grace period.' };
+    if (targetIndex < currentIndex) {
+        return { allowed: false, code: 'blocked_by_month_lock', message: 'Only the current accomplishment month is open.' };
     }
 
-    if (targetIndex > currentIndex && policy.monthLock.blockFutureMonths) {
-        return { allowed: false, code: 'blocked_by_month_lock', message: 'Future accomplishment months are locked.' };
+    if (targetIndex > currentIndex) {
+        return { allowed: false, code: 'blocked_by_month_lock', message: 'Only the current accomplishment month is open.' };
     }
 
     return { allowed: true, code: 'allowed', message: 'Accomplishment month is allowed by period policy.' };

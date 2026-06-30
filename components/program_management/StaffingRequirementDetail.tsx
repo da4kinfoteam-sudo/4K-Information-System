@@ -8,7 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { getMonetaryChanges } from '../../lib/logUtils';
 import { useUserAccess } from '../mainfunctions/TableHooks';
-import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
+import { normalizePolicyMonth, useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
@@ -80,7 +80,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
-    const { getStatusDecision, getMonthDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
     const detailsDecision = getStatusDecision({
         moduleKey: 'staffing_requirements',
         item,
@@ -99,28 +99,45 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const validateActualMonth = async (month?: string) => {
         if (!month) return true;
         const decision = getMonthDecision(month);
-        return ensureDecisionAllowed(decision, {
-            moduleKey: 'staffing_requirements',
-            item,
-            itemId: item.id,
-            itemName: item.personnelPosition,
-            status: item.hiringStatus,
-            action: 'editPhysicalAccomplishment',
-            month,
-            entityType: 'staffing_requirement',
-        });
+        if (isMonthSelectionAllowed(decision)) {
+            setMonthLockMessage('');
+            return true;
+        }
+        setMonthLockMessage(getMonthLockMessage(decision));
+        return false;
     };
+
+    const hasMonthChanged = (current?: string | null, original?: string | null) => (
+        normalizePolicyMonth(current) !== normalizePolicyMonth(original)
+    );
+
+    const getChangedRecordMonths = (
+        currentRecords: Array<{ id?: number | string; date?: string | null }> = [],
+        originalRecords: Array<{ id?: number | string; date?: string | null }> = []
+    ) => currentRecords
+        .filter((record, index) => {
+            const originalRecord = record.id !== undefined
+                ? originalRecords.find(existing => existing.id === record.id)
+                : originalRecords[index];
+            return !!record.date && (!originalRecord || hasMonthChanged(record.date, originalRecord.date));
+        })
+        .map(record => record.date)
+        .filter(Boolean) as string[];
 
     const validateAccomplishmentMonthsForSave = async () => {
         if (editMode !== 'accomplishment') return true;
         const monthsToCheck: string[] = [];
-        if (formData.actualObligationDate) monthsToCheck.push(formData.actualObligationDate);
+        if (hasMonthChanged(formData.actualObligationDate, item.actualObligationDate) && formData.actualObligationDate) {
+            monthsToCheck.push(formData.actualObligationDate);
+        }
         expensesList.forEach(expense => {
-            (expense.obligations || []).forEach(record => {
-                if (record.date) monthsToCheck.push(record.date);
-            });
+            const originalExpense = originalExpensesList.find(existing => existing.id === expense.id);
+            monthsToCheck.push(...getChangedRecordMonths(expense.obligations || [], originalExpense?.obligations || []));
             months.forEach((month, index) => {
-                if (Number((expense as any)[`actualDisbursement${month}`]) > 0) {
+                const field = `actualDisbursement${month}`;
+                const currentAmount = Number((expense as any)[field]) || 0;
+                const originalAmount = Number((originalExpense as any)?.[field]) || 0;
+                if (currentAmount > 0 && valuesDiffer(currentAmount, originalAmount)) {
                     monthsToCheck.push(`${formData.fundYear}-${String(index + 1).padStart(2, '0')}`);
                 }
             });
@@ -134,6 +151,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<StaffingRequirement>(item);
     const [isSaving, setIsSaving] = useState(false);
+    const [monthLockMessage, setMonthLockMessage] = useState('');
     
     // Construct display expenses, handling legacy data where obligations array might be empty but actual fields exist
     const displayExpenses = useMemo(() => {
@@ -197,6 +215,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
     // Expense Management State
     const [expensesList, setExpensesList] = useState<StaffingExpense[]>([]);
+    const [originalExpensesList, setOriginalExpensesList] = useState<StaffingExpense[]>([]);
     const [expandedExpenseIds, setExpandedExpenseIds] = useState<Set<number>>(new Set());
     
     // Temp State for adding/editing expense in detail view
@@ -257,6 +276,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         // Reset form data and expenses list
         setFormData(item);
         setExpensesList(displayExpenses);
+        setOriginalExpensesList(displayExpenses);
 
         const fetchObligations = async () => {
             if (!item?.id || !supabase) return;
@@ -284,8 +304,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                     }
                 });
 
-                setExpensesList(prev => {
-                    return prev.map(exp => {
+                const applyFetchedObligations = (source: StaffingExpense[]) => source.map(exp => {
                         const itemId = exp.id?.toString();
                         if (itemId && obligationsByItem[itemId]) {
                             const obs = obligationsByItem[itemId];
@@ -294,7 +313,8 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         }
                         return exp;
                     });
-                });
+                setExpensesList(prev => applyFetchedObligations(prev));
+                setOriginalExpensesList(prev => applyFetchedObligations(prev));
             }
         };
 
@@ -341,6 +361,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         if (editMode === 'none') {
             setFormData(item);
             setExpensesList(displayExpenses);
+            setOriginalExpensesList(displayExpenses);
             setValidationErrors([]);
         }
     }, [editMode, item, displayExpenses]);
@@ -1075,6 +1096,11 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 </div>
                 <div className="form-card">
                     <form onSubmit={handleSubmit} className="space-y-6">
+                        {monthLockMessage && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800" role="status">
+                                {monthLockMessage}
+                            </div>
+                        )}
                         <fieldset className="form-fieldset">
                             <legend className="form-legend">Physical Accomplishment</legend>
                             <div className="form-grid">

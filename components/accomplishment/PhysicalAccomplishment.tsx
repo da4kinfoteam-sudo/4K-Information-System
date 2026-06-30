@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
-import { getDcfModuleKeyForSourceType, useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
+import { getDcfModuleKeyForSourceType, normalizePolicyMonth, useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
 import { getBudgetLineTag, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 import { resolveSubprojectCompletionRollup } from '../../lib/subprojectCompletion';
@@ -156,7 +156,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = useUserAccess('Accomplishment - Physical');
-    const { getStatusDecision, getMonthDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
     const defaultYear = new Date().getFullYear();
 
     // Filters (Persistent)
@@ -178,6 +178,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     const [isSavingAll, setIsSavingAll] = useState(false);
     const [isSaveConfirmOpen, setIsSaveConfirmOpen] = useState(false);
     const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
+    const [monthLockMessage, setMonthLockMessage] = useState('');
     
     // Expansion State
     const [expandedGroups, setExpandedGroups] = useLocalStorageState<string[]>('phys_expandedGroups', ['Subprojects', 'Activities', 'Program Management']);
@@ -229,21 +230,21 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         }
         if (!(await ensurePhysicalItemAllowed(item))) return false;
         const monthDecision = getMonthDecision(month);
-        return ensureDecisionAllowed(monthDecision, {
-            moduleKey,
-            item: getPolicySubjectForPhysicalItem(item),
-            itemId: item.sourceId,
-            itemName: item.name,
-            status: item.status as any,
-            action: 'editPhysicalAccomplishment',
-            month,
-            entityType: item.sourceType.toLowerCase(),
-        });
+        if (isMonthSelectionAllowed(monthDecision)) {
+            setMonthLockMessage('');
+            return true;
+        }
+        setMonthLockMessage(getMonthLockMessage(monthDecision));
+        return false;
     };
 
     const validatePhysicalItemForSave = async (item: PhysicalItem) => {
         if (!(await ensurePhysicalItemAllowed(item))) return false;
-        const dates = [item.actualDateStart, item.actualDateEnd].filter(Boolean);
+        const originalItem = originalItems.find(original => original.uniqueId === item.uniqueId);
+        const dates = [
+            normalizePolicyMonth(item.actualDateStart) !== normalizePolicyMonth(originalItem?.actualDateStart) ? item.actualDateStart : '',
+            normalizePolicyMonth(item.actualDateEnd) !== normalizePolicyMonth(originalItem?.actualDateEnd) ? item.actualDateEnd : '',
+        ].filter(Boolean);
         for (const date of dates) {
             if (!(await validatePhysicalActualMonth(item, date))) return false;
         }
@@ -1365,6 +1366,11 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
                     {saveSuccessMessage}
+                </div>
+            )}
+            {monthLockMessage && (
+                <div className="fixed bottom-24 right-8 bg-amber-100 border border-amber-200 text-amber-900 px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-fadeIn z-50" role="status">
+                    {monthLockMessage}
                 </div>
             )}
         </div>
