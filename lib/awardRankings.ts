@@ -76,6 +76,11 @@ export interface AwardComponentScore extends AwardOuScore {
     metrics: Record<string, number>;
 }
 
+export interface AwardPhysicalOverallScore extends AwardOuScore {
+    componentPoints: number;
+    rankPoints: number;
+}
+
 export interface AwardSpecialScore extends AwardOuScore {
     target?: number;
 }
@@ -85,7 +90,7 @@ export interface AwardQuarterResult {
     isActive: boolean;
     statusLabel: string;
     physicalComponents: Record<AwardPhysicalComponentKey, AwardComponentScore[]>;
-    physicalOverall: AwardOuScore[];
+    physicalOverall: AwardPhysicalOverallScore[];
     financial: Array<AwardOuScore & {
         allocation: number;
         obligation: number;
@@ -600,7 +605,12 @@ const buildQuarterResult = (
         ou,
         componentPoints: Object.values(physicalComponents).reduce((sum, rows) => sum + (rows.find(row => row.ou === ou)?.points || 0), 0),
     }));
-    const physicalOverall = rankRows(physicalOverallBase, row => row.componentPoints, (rank, score) => getQuarterRankPoints(settings, rank, score));
+    const physicalOverall = rankRows(physicalOverallBase, row => row.componentPoints, (rank, score) => getQuarterRankPoints(settings, rank, score))
+        .map(row => ({
+            ...row,
+            rankPoints: row.points,
+            points: row.componentPoints,
+        }));
     const financial = buildQuarterFinancial(data, year, quarter, settings);
     return { period: quarter, isActive: true, statusLabel: 'Calculated', physicalComponents, physicalOverall, financial };
 };
