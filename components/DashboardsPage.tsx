@@ -1,5 +1,5 @@
 // Author: 4K 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, operatingUnits, ouToRegionMap, OfficeRequirement, StaffingRequirement, OtherProgramExpense, filterYears, MarketingPartner } from '../constants';
 import PhysicalDashboard from './dashboards/PhysicalDashboard';
 import FinancialDashboard from './dashboards/FinancialDashboard';
@@ -13,7 +13,7 @@ import CommodityDashboard from './dashboards/CommodityDashboard';
 import AwardsRankingsDashboard from './dashboards/AwardsRankingsDashboard';
 import { ModalItem } from './dashboards/DashboardComponents';
 import { useAuth } from '../contexts/AuthContext';
-import { ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import type { DataScope } from '../lib/scopedDataFetch';
 
 export interface DashboardsPageProps {
@@ -51,6 +51,14 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
     const [filtersOpen, setFiltersOpen] = useState(false);
+    const dashboardTabsRef = useRef<HTMLElement | null>(null);
+
+    const scrollDashboardTabs = (direction: 'left' | 'right') => {
+        dashboardTabsRef.current?.scrollBy({
+            left: direction === 'left' ? -280 : 280,
+            behavior: 'smooth',
+        });
+    };
 
     useEffect(() => {
         onDataScopeChange?.({
@@ -312,18 +320,36 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
 
             {/* Tabs Section */}
             <div className="report-tabs-card dashboard-tabs-card">
-                <nav className="data-tabs" aria-label="Dashboard tabs">
-                    <TabButton tabName="Physical" label="Physical" />
-                    <TabButton tabName="Financial" label="Financial" />
-                    <TabButton tabName="SCAD" label="SCAD" />
-                    <TabButton tabName="Agricultural Interventions" label="Agricultural Interventions" />
-                    <TabButton tabName="Commodities" label="Commodities" />
-                    <TabButton tabName="GAD" label="GAD" />
-                    <TabButton tabName="IPO Level of Development" label="IPO Level of Development" />
-                    <TabButton tabName="Nutrition" label="Nutrition" />
-                    <TabButton tabName="Farm Productivity and Income" label="Farm Productivity and Income" />
-                    {canViewAwards && <TabButton tabName="Awards and Rankings" label="Awards and Rankings" />}
-                </nav>
+                <div className="dashboard-tabs-scroll-shell">
+                    <button
+                        type="button"
+                        className="dashboard-tabs-arrow dashboard-tabs-arrow--left"
+                        onClick={() => scrollDashboardTabs('left')}
+                        aria-label="Scroll dashboard tabs left"
+                    >
+                        <ChevronLeft aria-hidden="true" />
+                    </button>
+                    <nav ref={dashboardTabsRef} className="data-tabs dashboard-tabs-scroll" aria-label="Dashboard tabs">
+                        <TabButton tabName="Physical" label="Physical" />
+                        <TabButton tabName="Financial" label="Financial" />
+                        <TabButton tabName="SCAD" label="SCAD" />
+                        <TabButton tabName="Agricultural Interventions" label="Agricultural Interventions" />
+                        <TabButton tabName="Farm Productivity and Income" label="Farm Productivity and Income" />
+                        <TabButton tabName="Commodities" label="Commodities" />
+                        <TabButton tabName="IPO Level of Development" label="IPO Level of Development" />
+                        <TabButton tabName="GAD" label="GAD" />
+                        <TabButton tabName="Nutrition" label="Nutrition" />
+                        {canViewAwards && <TabButton tabName="Awards and Rankings" label="Awards and Rankings" />}
+                    </nav>
+                    <button
+                        type="button"
+                        className="dashboard-tabs-arrow dashboard-tabs-arrow--right"
+                        onClick={() => scrollDashboardTabs('right')}
+                        aria-label="Scroll dashboard tabs right"
+                    >
+                        <ChevronRight aria-hidden="true" />
+                    </button>
+                </div>
             </div>
 
             {/* Tab Content */}

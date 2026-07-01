@@ -21,6 +21,7 @@ import { parseLocation } from '../LocationPicker';
 import { ModalItem } from './DashboardComponents';
 
 declare const PptxGenJS: any;
+declare const JSZip: any;
 
 interface PhysicalDashboardProps {
     data: {
@@ -458,6 +459,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
     const [summaryItemsPerPage, setSummaryItemsPerPage] = useState(10);
     const [summarySort, setSummarySort] = useState<{ key: SummarySortKey; direction: SortDirection } | null>(null);
     const [isPowerPointExporting, setIsPowerPointExporting] = useState(false);
+    const [powerPointExportMessage, setPowerPointExportMessage] = useState<string | null>(null);
     const [localModal, setLocalModal] = useState<{
         title: string;
         type: ModalType;
@@ -1270,6 +1272,20 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
 
     const activeTrendRows = analytics.cumulativeTrendSeries.map(row => row[trendIndicator]) as CumulativeTrendRow[];
     const activeTrendLabel = trendIndicatorOptions.find(option => option.id === trendIndicator)?.label || 'Physical Percentage';
+    const hasPhysicalExportData = useMemo(() => (
+        analytics.metrics.some(metric =>
+            metric.annual.target > 0 ||
+            metric.annual.actual > 0 ||
+            metric.monthly.target > 0 ||
+            metric.monthly.actual > 0 ||
+            metric.quarterly.target > 0 ||
+            metric.quarterly.actual > 0 ||
+            metric.cumulative.target > 0 ||
+            metric.cumulative.actual > 0
+        ) ||
+        analytics.ouRows.some(row => getSummaryTargetTotal(row) > 0 || getSummaryActualTotal(row) > 0) ||
+        analytics.provinceRows.some(row => getSummaryTargetTotal(row) > 0 || getSummaryActualTotal(row) > 0)
+    ), [analytics.metrics, analytics.ouRows, analytics.provinceRows]);
 
     const getDetailRows = () => {
         if (detailView === 'national') {
@@ -1361,8 +1377,17 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
     };
 
     const handleExportPowerPoint = async () => {
-        if (typeof PptxGenJS === 'undefined' || isPowerPointExporting) return;
+        if (isPowerPointExporting) return;
+        if (typeof PptxGenJS === 'undefined') {
+            setPowerPointExportMessage('PowerPoint export library is still loading. Please try again in a moment.');
+            return;
+        }
+        if (!hasPhysicalExportData) {
+            setPowerPointExportMessage('No physical dashboard data is available for the current filter selection.');
+            return;
+        }
         setIsPowerPointExporting(true);
+        setPowerPointExportMessage(null);
         try {
             const exportMetrics = analytics.metrics.map(metric => ({
                 metric,
@@ -1481,6 +1506,72 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     });
                 });
             };
+            const addTrendSegment = (
+                slide: any,
+                start: { x: number; y: number },
+                end: { x: number; y: number },
+                color: string
+            ) => {
+                const dx = end.x - start.x;
+                const dy = end.y - start.y;
+                const length = Math.sqrt((dx * dx) + (dy * dy));
+                if (length < 0.01) return;
+                const thickness = 0.025;
+                const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+                slide.addShape(pptx.ShapeType.rect, {
+                    x: ((start.x + end.x) / 2) - (length / 2),
+                    y: ((start.y + end.y) / 2) - (thickness / 2),
+                    w: length,
+                    h: thickness,
+                    rotate: angle,
+                    fill: { color },
+                    line: { color, transparency: 100 },
+                });
+            };
+            const sanitizePowerPointBlob = async (blob: Blob) => {
+                if (typeof JSZip === 'undefined') return blob;
+                const zip = await JSZip.loadAsync(blob);
+                const contentTypesFile = zip.file('[Content_Types].xml');
+                if (!contentTypesFile) return blob;
+
+                const contentTypesXml = await contentTypesFile.async('string');
+                const parser = new DOMParser();
+                const documentXml = parser.parseFromString(contentTypesXml, 'application/xml');
+                if (documentXml.getElementsByTagName('parsererror').length > 0) return blob;
+
+                const overrides = Array.from(documentXml.getElementsByTagNameNS(
+                    'http://schemas.openxmlformats.org/package/2006/content-types',
+                    'Override'
+                )) as Element[];
+                let changed = false;
+
+                overrides.forEach(override => {
+                    const partName = override.getAttribute('PartName') || '';
+                    const zipPath = partName.replace(/^\//, '');
+                    if (zipPath && !zip.file(zipPath) && partName.startsWith('/ppt/slideMasters/slideMaster')) {
+                        override.parentNode?.removeChild(override);
+                        changed = true;
+                    }
+                });
+
+                if (!changed) return blob;
+
+                zip.file('[Content_Types].xml', new XMLSerializer().serializeToString(documentXml));
+                return zip.generateAsync({
+                    type: 'blob',
+                    mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                });
+            };
+            const downloadBlob = (blob: Blob, fileName: string) => {
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = url;
+                anchor.download = fileName;
+                document.body.appendChild(anchor);
+                anchor.click();
+                anchor.remove();
+                URL.revokeObjectURL(url);
+            };
             const formatScopeCell = (scope: MetricScope) => {
                 const rate = percent(scope.actual, scope.target);
                 const status = getStatus(scope.actual, scope.target).label;
@@ -1541,7 +1632,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     formatScopeCell(metric.cumulative),
                 ]),
             ];
-            addSimpleTable(executiveSlide, executiveRows, 0.42, 1.18, 12.5, 0.58, [2.35, 2.35, 2.35, 2.25, 3.2], { fontSize: 10.5, numericColumns: [1, 2, 3, 4] });
+            addSimpleTable(executiveSlide, executiveRows, 0.42, 1.18, 12.5, 0.48, [2.45, 2.35, 2.25, 2.25, 3.2], { fontSize: 9.2, numericColumns: [1, 2, 3, 4] });
             addFooter(executiveSlide);
 
             const nationalSlide = pptx.addSlide();
@@ -1606,7 +1697,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 points.forEach((point, index) => {
                     if (index > 0) {
                         const previous = points[index - 1];
-                        trendSlide.addShape(pptx.ShapeType.line, { x: previous.x, y: previous.y, w: point.x - previous.x, h: point.y - previous.y, line: { color, pt: 1.2 } });
+                        addTrendSegment(trendSlide, previous, point, color);
                     }
                     trendSlide.addShape(pptx.ShapeType.ellipse, { x: point.x - 0.045, y: point.y - 0.045, w: 0.09, h: 0.09, fill: { color }, line: { color } });
                 });
@@ -1644,7 +1735,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     ];
                 }),
             ];
-            addSimpleTable(summarySlide, tableRows, 0.35, 1.05, 12.65, 0.34, [2.45, 1.45, 1.65, 1.5, 1.55, 0.95, 1.55], { fontSize: 8.8, maxRows: 18, numericColumns: [1, 2, 3, 4, 5] });
+            addSimpleTable(summarySlide, tableRows, 0.35, 1.05, 12.65, 0.3, [2.45, 1.45, 1.65, 1.5, 1.55, 0.95, 1.55], { fontSize: 8.2, maxRows: 18, numericColumns: [1, 2, 3, 4, 5] });
             if (tableRows.length > 18) {
                 summarySlide.addText(`Showing first 17 of ${exportSummaryRows.length} rows. Use the dashboard table for the full list.`, {
                     x: 0.45,
@@ -1659,7 +1750,13 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             addFooter(summarySlide);
 
             const fileName = `4K_Physical_Accomplishment_Dashboard_${sanitizeFileSegment(selectedYear)}_${sanitizeFileSegment(scopeLabel)}_${new Date().toISOString().split('T')[0]}.pptx`;
-            await pptx.writeFile({ fileName });
+            const rawPowerPointBlob = await pptx.write({ outputType: 'blob' });
+            const sanitizedPowerPointBlob = await sanitizePowerPointBlob(rawPowerPointBlob);
+            downloadBlob(sanitizedPowerPointBlob, fileName);
+            setPowerPointExportMessage('PowerPoint file generated successfully.');
+        } catch (error) {
+            console.error('PowerPoint export failed:', error);
+            setPowerPointExportMessage('PowerPoint export failed. Please refresh the dashboard and try again.');
         } finally {
             setIsPowerPointExporting(false);
         }
@@ -1766,11 +1863,16 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                         type="button"
                         className="btn btn-primary btn-responsive physical-dashboard-ppt-button"
                         onClick={handleExportPowerPoint}
-                        disabled={isPowerPointExporting}
+                        disabled={isPowerPointExporting || !hasPhysicalExportData}
                     >
                         <Download className="btn-symbol" aria-hidden="true" />
                         <span className="btn-text">{isPowerPointExporting ? 'Generating...' : 'Generate PowerPoint'}</span>
                     </button>
+                    {powerPointExportMessage && (
+                        <span className="physical-dashboard-ppt-message" role="status">
+                            {powerPointExportMessage}
+                        </span>
+                    )}
                     <label>
                         <span>View</span>
                         <select value={viewMode} onChange={event => setViewMode(event.target.value as ViewMode)} className="form-control">
