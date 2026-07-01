@@ -1364,6 +1364,12 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         if (typeof PptxGenJS === 'undefined' || isPowerPointExporting) return;
         setIsPowerPointExporting(true);
         try {
+            const exportMetrics = analytics.metrics.map(metric => ({
+                metric,
+                active: activeScope(metric),
+            }));
+            const exportTrendRows = activeTrendRows.map(row => ({ ...row }));
+            const exportSummaryRows = (allOuMode ? analytics.ouRows : analytics.provinceRows).map(row => ({ ...row }));
             const pptx = new PptxGenJS();
             pptx.layout = 'LAYOUT_WIDE';
             pptx.author = '4K Information System';
@@ -1379,9 +1385,10 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
 
             const logoData = await toDataUri('/assets/4klogo.png');
             const green = '0F8A4B';
+            const deepGreen = '0B5F3A';
+            const accentGold = 'E9A23B';
             const darkText = '0F172A';
             const mutedText = '64748B';
-            const lightGreen = 'E8F7EE';
             const grayFill = 'F1F5F9';
             const borderColor = 'CBD5E1';
             const slideW = 13.333;
@@ -1390,178 +1397,256 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             const quarter = getQuarterBounds(asOfMonth);
             const quarterLabel = `${quarter.label} (${monthNames[quarter.start]}-${monthNames[quarter.end]})`;
             const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-            const cell = (text: string | number, options: Record<string, unknown> = {}) => ({
-                text: String(text),
-                options: {
-                    margin: 0.05,
-                    fontSize: 8,
-                    color: darkText,
-                    valign: 'mid',
-                    ...options,
-                },
-            });
             const addHeader = (slide: any, title: string, subtitle?: string) => {
                 slide.background = { color: 'FFFFFF' };
-                slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: slideW, h: 0.58, fill: { color: green }, line: { color: green } });
+                slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: slideW, h: 0.62, fill: { color: green }, line: { color: green, transparency: 100 } });
                 if (logoData) {
-                    slide.addImage({ data: logoData, x: 0.25, y: 0.08, w: 0.38, h: 0.38 });
+                    slide.addImage({ data: logoData, x: 0.28, y: 0.09, w: 0.42, h: 0.42 });
                 }
-                slide.addText(title, { x: 0.75, y: 0.13, w: 8.2, h: 0.3, fontSize: 15, bold: true, color: 'FFFFFF', margin: 0 });
-                slide.addText(generatedDate, { x: 10.2, y: 0.16, w: 2.8, h: 0.25, fontSize: 8, color: 'FFFFFF', align: 'right', margin: 0 });
+                slide.addText(title, { x: 0.82, y: 0.12, w: 8.6, h: 0.34, fontSize: 17, bold: true, color: 'FFFFFF', margin: 0 });
+                slide.addText(generatedDate, { x: 10.05, y: 0.17, w: 2.9, h: 0.25, fontSize: 9, color: 'FFFFFF', align: 'right', margin: 0 });
                 if (subtitle) {
-                    slide.addText(subtitle, { x: 0.5, y: 0.75, w: 12.2, h: 0.25, fontSize: 8.5, color: mutedText, margin: 0 });
+                    slide.addText(subtitle, { x: 0.5, y: 0.8, w: 12.2, h: 0.25, fontSize: 10.5, color: mutedText, margin: 0 });
                 }
             };
             const addFooter = (slide: any) => {
-                slide.addShape(pptx.ShapeType.line, { x: 0.5, y: slideH - 0.35, w: 12.3, h: 0, line: { color: borderColor, transparency: 35 } });
-                slide.addText('4K Information System', { x: 0.5, y: slideH - 0.27, w: 4, h: 0.15, fontSize: 6.5, color: mutedText, margin: 0 });
+                slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: slideH - 0.36, w: 12.3, h: 0.01, fill: { color: borderColor, transparency: 35 }, line: { color: borderColor, transparency: 100 } });
+                slide.addText('4K Information System', { x: 0.5, y: slideH - 0.27, w: 4, h: 0.15, fontSize: 7, color: mutedText, margin: 0 });
             };
-            const addTable = (slide: any, rows: any[], x: number, y: number, w: number, h?: number) => {
-                slide.addTable(rows, {
+            const addLabel = (slide: any, text: string, x: number, y: number, w: number, h: number, options: Record<string, unknown> = {}) => {
+                slide.addText(text, {
                     x,
                     y,
                     w,
                     h,
-                    border: { type: 'solid', color: borderColor, pt: 0.5 },
+                    margin: 0.03,
+                    fit: 'shrink',
+                    breakLine: false,
+                    fontFace: 'Aptos',
                     color: darkText,
-                    fontSize: 8,
-                    valign: 'mid',
-                    margin: 0.04,
+                    fontSize: 11,
+                    ...options,
+                });
+            };
+            const addMetricTile = (
+                slide: any,
+                title: string,
+                value: string,
+                subtitle: string,
+                x: number,
+                y: number,
+                w: number,
+                h: number,
+                color = green
+            ) => {
+                slide.addShape(pptx.ShapeType.roundRect, { x, y, w, h, rectRadius: 0.08, fill: { color: 'FFFFFF' }, line: { color: borderColor, transparency: 15 } });
+                slide.addShape(pptx.ShapeType.rect, { x, y, w: 0.08, h, fill: { color }, line: { color, transparency: 100 } });
+                addLabel(slide, title.toUpperCase(), x + 0.18, y + 0.13, w - 0.28, 0.18, { fontSize: 7.5, bold: true, color: mutedText });
+                addLabel(slide, value, x + 0.18, y + 0.36, w - 0.28, 0.35, { fontSize: 17, bold: true, color: darkText });
+                addLabel(slide, subtitle, x + 0.18, y + 0.78, w - 0.28, 0.18, { fontSize: 8.5, color: mutedText });
+            };
+            const addSimpleTable = (
+                slide: any,
+                rows: Array<Array<string | number>>,
+                x: number,
+                y: number,
+                w: number,
+                rowH: number,
+                colWidths: number[],
+                options: { headerFill?: string; fontSize?: number; maxRows?: number; numericColumns?: number[] } = {}
+            ) => {
+                const maxRows = options.maxRows || rows.length;
+                rows.slice(0, maxRows).forEach((row, rowIndex) => {
+                    let cursorX = x;
+                    const fillColor = rowIndex === 0 ? (options.headerFill || green) : (rowIndex % 2 === 0 ? 'FFFFFF' : 'F8FAFC');
+                    row.forEach((value, colIndex) => {
+                        const cw = colWidths[colIndex] || ((w / row.length));
+                        const isHeader = rowIndex === 0;
+                        const isNumeric = options.numericColumns?.includes(colIndex);
+                        slide.addShape(pptx.ShapeType.rect, {
+                            x: cursorX,
+                            y: y + (rowIndex * rowH),
+                            w: cw,
+                            h: rowH,
+                            fill: { color: fillColor },
+                            line: { color: borderColor, transparency: 25 },
+                        });
+                        addLabel(slide, String(value), cursorX + 0.04, y + (rowIndex * rowH) + 0.04, cw - 0.08, rowH - 0.08, {
+                            fontSize: isHeader ? Math.max((options.fontSize || 9) - 1, 7) : (options.fontSize || 9),
+                            bold: isHeader || colIndex === 0,
+                            color: isHeader ? 'FFFFFF' : darkText,
+                            align: isNumeric ? 'right' : 'left',
+                        });
+                        cursorX += cw;
+                    });
                 });
             };
             const formatScopeCell = (scope: MetricScope) => {
                 const rate = percent(scope.actual, scope.target);
                 const status = getStatus(scope.actual, scope.target).label;
-                return `${scope.actual.toLocaleString()} / ${scope.target.toLocaleString()}\n${rate}% | ${status}`;
+                return `${scope.actual.toLocaleString()} / ${scope.target.toLocaleString()} (${rate}%) ${status}`;
+            };
+            const formatScopeCount = (scope: MetricScope) => `${scope.actual.toLocaleString()} / ${scope.target.toLocaleString()}`;
+            const addHorizontalBars = (
+                slide: any,
+                rows: Array<{ label: string; target: number; actual: number; rate?: number }>,
+                x: number,
+                y: number,
+                w: number,
+                rowH: number
+            ) => {
+                const maxValue = Math.max(1, ...rows.flatMap(row => [row.target, row.actual]));
+                rows.forEach((row, index) => {
+                    const rowY = y + (index * rowH);
+                    const targetW = (row.target / maxValue) * w;
+                    const actualW = (row.actual / maxValue) * w;
+                    addLabel(slide, row.label, x, rowY, 2.25, 0.22, { fontSize: 9.5, bold: true });
+                    addLabel(slide, `${row.actual.toLocaleString()} / ${row.target.toLocaleString()}${typeof row.rate === 'number' ? ` (${row.rate}%)` : ''}`, x + 10.2, rowY, 1.7, 0.22, { fontSize: 9, bold: true, align: 'right' });
+                    slide.addShape(pptx.ShapeType.roundRect, { x: x + 2.35, y: rowY + 0.03, w, h: 0.12, rectRadius: 0.03, fill: { color: 'E2E8F0' }, line: { color: 'E2E8F0', transparency: 100 } });
+                    slide.addShape(pptx.ShapeType.roundRect, { x: x + 2.35, y: rowY + 0.03, w: Math.max(targetW, 0.02), h: 0.12, rectRadius: 0.03, fill: { color: '94A3B8' }, line: { color: '94A3B8', transparency: 100 } });
+                    slide.addShape(pptx.ShapeType.roundRect, { x: x + 2.35, y: rowY + 0.23, w, h: 0.12, rectRadius: 0.03, fill: { color: 'E8F7EE' }, line: { color: 'E8F7EE', transparency: 100 } });
+                    slide.addShape(pptx.ShapeType.roundRect, { x: x + 2.35, y: rowY + 0.23, w: Math.max(actualW, 0.02), h: 0.12, rectRadius: 0.03, fill: { color: green }, line: { color: green, transparency: 100 } });
+                });
             };
 
             const titleSlide = pptx.addSlide();
             titleSlide.background = { color: 'FFFFFF' };
-            titleSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: slideW, h: slideH, fill: { color: 'FFFFFF' }, line: { color: 'FFFFFF' } });
-            titleSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: slideW, h: 1.0, fill: { color: green }, line: { color: green } });
-            if (logoData) titleSlide.addImage({ data: logoData, x: 0.65, y: 1.55, w: 1.15, h: 1.15 });
-            titleSlide.addText('Physical Accomplishment Dashboard', { x: 2.0, y: 1.45, w: 9.8, h: 0.5, fontSize: 26, bold: true, color: darkText, margin: 0 });
-            titleSlide.addText('4K Program Implementation Briefing', { x: 2.0, y: 2.0, w: 8.5, h: 0.3, fontSize: 14, color: green, bold: true, margin: 0 });
-            addTable(titleSlide, [
-                [cell('Fund Year', { bold: true, fill: { color: grayFill } }), cell(selectedYear)],
-                [cell('Scope', { bold: true, fill: { color: grayFill } }), cell(scopeLabel)],
-                [cell('View Mode', { bold: true, fill: { color: grayFill } }), cell(viewMode)],
-                [cell('As of Month', { bold: true, fill: { color: grayFill } }), cell(monthNames[asOfMonth])],
-                [cell('Quarter Scope', { bold: true, fill: { color: grayFill } }), cell(quarterLabel)],
-                [cell('Generated', { bold: true, fill: { color: grayFill } }), cell(generatedDate)],
-            ], 2.0, 2.75, 5.2, 2.2);
+            titleSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: slideW, h: 0.95, fill: { color: green }, line: { color: green, transparency: 100 } });
+            titleSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.95, w: slideW, h: 0.07, fill: { color: accentGold }, line: { color: accentGold, transparency: 100 } });
+            if (logoData) titleSlide.addImage({ data: logoData, x: 0.65, y: 1.48, w: 1.18, h: 1.18 });
+            addLabel(titleSlide, 'Physical Accomplishment Dashboard', 2.05, 1.45, 9.8, 0.48, { fontSize: 28, bold: true, color: darkText });
+            addLabel(titleSlide, '4K Program Implementation Briefing', 2.05, 1.95, 8.5, 0.28, { fontSize: 15, color: green, bold: true });
+            addSimpleTable(titleSlide, [
+                ['Fund Year', selectedYear],
+                ['Scope', scopeLabel],
+                ['View Mode', viewMode],
+                ['As of Month', monthNames[asOfMonth]],
+                ['Quarter Scope', quarterLabel],
+                ['Generated', generatedDate],
+            ], 2.05, 2.75, 5.4, 0.34, [1.65, 3.75], { headerFill: grayFill, fontSize: 11, maxRows: 6 });
+            exportMetrics.slice(0, 3).forEach((row, index) => {
+                addMetricTile(titleSlide, row.metric.label, formatScopeCount(row.active), `${percent(row.active.actual, row.active.target)}% ${getStatus(row.active.actual, row.active.target).label}`, 8.05, 2.3 + (index * 1.05), 3.95, 0.88, index === 1 ? accentGold : green);
+            });
             addFooter(titleSlide);
 
             const executiveSlide = pptx.addSlide();
             addHeader(executiveSlide, 'Executive Summary', `${scopeLabel} | Fund Year ${selectedYear} | As of ${monthNames[asOfMonth]}`);
             const executiveRows = [
-                [
-                    cell('Indicator', { bold: true, color: 'FFFFFF', fill: { color: green } }),
-                    cell('Annual', { bold: true, color: 'FFFFFF', fill: { color: green } }),
-                    cell(monthNames[asOfMonth], { bold: true, color: 'FFFFFF', fill: { color: green } }),
-                    cell(quarter.label, { bold: true, color: 'FFFFFF', fill: { color: green } }),
-                    cell(`Cumulative as of ${monthNames[asOfMonth]}`, { bold: true, color: 'FFFFFF', fill: { color: green } }),
-                ],
-                ...analytics.metrics.map(metric => [
-                    cell(metric.label, { bold: true }),
-                    cell(formatScopeCell(metric.annual)),
-                    cell(formatScopeCell(metric.monthly)),
-                    cell(formatScopeCell(metric.quarterly)),
-                    cell(formatScopeCell(metric.cumulative)),
+                ['Indicator', 'Annual', monthNames[asOfMonth], quarter.label, `Cumulative ${monthNames[asOfMonth]}`],
+                ...exportMetrics.map(({ metric }) => [
+                    metric.label,
+                    formatScopeCell(metric.annual),
+                    formatScopeCell(metric.monthly),
+                    formatScopeCell(metric.quarterly),
+                    formatScopeCell(metric.cumulative),
                 ]),
             ];
-            addTable(executiveSlide, executiveRows, 0.45, 1.15, 12.45, 5.45);
+            addSimpleTable(executiveSlide, executiveRows, 0.42, 1.18, 12.5, 0.58, [2.35, 2.35, 2.35, 2.25, 3.2], { fontSize: 10.5, numericColumns: [1, 2, 3, 4] });
             addFooter(executiveSlide);
 
             const nationalSlide = pptx.addSlide();
             addHeader(nationalSlide, 'National Target vs Accomplishment', `${viewMode} view | ${scopeLabel} | Fund Year ${selectedYear}`);
-            const activeMetricScopes = analytics.metrics.map(metric => ({ metric, scope: activeScope(metric) }));
-            const nationalChartData = [
-                { name: 'Target', labels: activeMetricScopes.map(row => row.metric.label), values: activeMetricScopes.map(row => row.scope.target) },
-                { name: 'Accomplishment', labels: activeMetricScopes.map(row => row.metric.label), values: activeMetricScopes.map(row => row.scope.actual) },
-            ];
-            nationalSlide.addChart(pptx.ChartType.bar, nationalChartData, {
-                x: 0.5,
-                y: 1.25,
-                w: 7.0,
-                h: 4.7,
-                showLegend: true,
-                legendPos: 'b',
-                barDir: 'bar',
-                chartColors: ['CBD5E1', '16A34A'],
-                catAxisLabelFontFace: 'Aptos',
-                catAxisLabelFontSize: 8,
-                valAxisLabelFontSize: 8,
-            });
-            addTable(nationalSlide, [
-                [cell('Indicator', { bold: true, fill: { color: lightGreen } }), cell('Target', { bold: true, fill: { color: lightGreen } }), cell('Actual', { bold: true, fill: { color: lightGreen } }), cell('Rate', { bold: true, fill: { color: lightGreen } })],
-                ...activeMetricScopes.map(row => [
-                    cell(row.metric.label),
-                    cell(row.scope.target.toLocaleString(), { align: 'right' }),
-                    cell(row.scope.actual.toLocaleString(), { align: 'right' }),
-                    cell(`${percent(row.scope.actual, row.scope.target)}%`, { align: 'right' }),
+            addLabel(nationalSlide, 'Target', 8.45, 1.03, 0.7, 0.2, { fontSize: 9, color: mutedText, bold: true });
+            nationalSlide.addShape(pptx.ShapeType.roundRect, { x: 9.1, y: 1.08, w: 0.35, h: 0.08, rectRadius: 0.02, fill: { color: '94A3B8' }, line: { color: '94A3B8', transparency: 100 } });
+            addLabel(nationalSlide, 'Accomplishment', 9.65, 1.03, 1.35, 0.2, { fontSize: 9, color: mutedText, bold: true });
+            nationalSlide.addShape(pptx.ShapeType.roundRect, { x: 11.0, y: 1.08, w: 0.35, h: 0.08, rectRadius: 0.02, fill: { color: green }, line: { color: green, transparency: 100 } });
+            addHorizontalBars(
+                nationalSlide,
+                exportMetrics.map(row => ({
+                    label: row.metric.label,
+                    target: row.active.target,
+                    actual: row.active.actual,
+                    rate: percent(row.active.actual, row.active.target),
+                })),
+                0.55,
+                1.45,
+                6.8,
+                0.72
+            );
+            addSimpleTable(nationalSlide, [
+                ['Indicator', 'Target', 'Actual', 'Rate'],
+                ...exportMetrics.map(row => [
+                    row.metric.label,
+                    row.active.target.toLocaleString(),
+                    row.active.actual.toLocaleString(),
+                    `${percent(row.active.actual, row.active.target)}%`,
                 ]),
-            ], 7.85, 1.25, 4.95, 4.7);
+            ], 8.25, 1.45, 4.6, 0.42, [1.85, 0.85, 0.85, 0.75], { headerFill: deepGreen, fontSize: 9.3, numericColumns: [1, 2, 3] });
             addFooter(nationalSlide);
 
             const trendSlide = pptx.addSlide();
             addHeader(trendSlide, 'Cumulative Trend', `${activeTrendLabel} | Jan-Dec ${selectedYear}`);
-            const trendChartData = [
-                { name: 'Cumulative Target', labels: activeTrendRows.map(row => row.monthShort), values: activeTrendRows.map(row => row.target) },
-                { name: 'Cumulative Accomplishment', labels: activeTrendRows.map(row => row.monthShort), values: activeTrendRows.map(row => row.actual) },
-            ];
-            trendSlide.addChart(pptx.ChartType.line, trendChartData, {
-                x: 0.55,
-                y: 1.25,
-                w: 7.5,
-                h: 4.7,
-                showLegend: true,
-                legendPos: 'b',
-                chartColors: ['64748B', '16A34A'],
-                valAxisLabelFontSize: 8,
-                catAxisLabelFontSize: 8,
+            const trendMaxValue = trendIndicator === 'physicalPercentage'
+                ? 100
+                : Math.max(1, ...exportTrendRows.flatMap(row => [row.target, row.actual]));
+            const chartX = 0.55;
+            const chartY = 1.35;
+            const chartW = 7.45;
+            const chartH = 4.75;
+            const slotW = chartW / exportTrendRows.length;
+            trendSlide.addShape(pptx.ShapeType.rect, { x: chartX, y: chartY, w: chartW, h: chartH, fill: { color: 'FFFFFF' }, line: { color: borderColor, transparency: 10 } });
+            [0, 0.25, 0.5, 0.75, 1].forEach(step => {
+                const y = chartY + chartH - (chartH * step);
+                trendSlide.addShape(pptx.ShapeType.rect, { x: chartX, y, w: chartW, h: 0.006, fill: { color: 'E2E8F0' }, line: { color: 'E2E8F0', transparency: 100 } });
             });
-            addTable(trendSlide, [
-                [cell('Month', { bold: true, fill: { color: lightGreen } }), cell('Target', { bold: true, fill: { color: lightGreen } }), cell('Actual', { bold: true, fill: { color: lightGreen } }), cell('Rate', { bold: true, fill: { color: lightGreen } })],
-                ...activeTrendRows.map(row => [
-                    cell(row.monthShort),
-                    cell(row.target.toLocaleString(), { align: 'right' }),
-                    cell(row.actual.toLocaleString(), { align: 'right' }),
-                    cell(`${row.rate}%`, { align: 'right' }),
+            const targetPoints: Array<{ x: number; y: number }> = [];
+            const actualPoints: Array<{ x: number; y: number }> = [];
+            exportTrendRows.forEach((row, index) => {
+                const baseX = chartX + (index * slotW) + (slotW * 0.18);
+                const targetH = (Math.min(row.target, trendMaxValue) / trendMaxValue) * (chartH - 0.25);
+                const actualH = (Math.min(row.actual, trendMaxValue) / trendMaxValue) * (chartH - 0.25);
+                trendSlide.addShape(pptx.ShapeType.rect, { x: baseX, y: chartY + chartH - targetH, w: slotW * 0.22, h: Math.max(targetH, 0.01), fill: { color: 'CBD5E1' }, line: { color: 'CBD5E1', transparency: 100 } });
+                trendSlide.addShape(pptx.ShapeType.rect, { x: baseX + (slotW * 0.26), y: chartY + chartH - actualH, w: slotW * 0.22, h: Math.max(actualH, 0.01), fill: { color: '86EFAC' }, line: { color: '86EFAC', transparency: 100 } });
+                const pointX = chartX + (index * slotW) + (slotW * 0.5);
+                targetPoints.push({ x: pointX, y: chartY + chartH - targetH });
+                actualPoints.push({ x: pointX, y: chartY + chartH - actualH });
+                addLabel(trendSlide, row.monthShort, chartX + (index * slotW), chartY + chartH + 0.08, slotW, 0.16, { fontSize: 7.5, align: 'center', color: mutedText });
+            });
+            const drawLine = (points: Array<{ x: number; y: number }>, color: string) => {
+                points.forEach((point, index) => {
+                    if (index > 0) {
+                        const previous = points[index - 1];
+                        trendSlide.addShape(pptx.ShapeType.line, { x: previous.x, y: previous.y, w: point.x - previous.x, h: point.y - previous.y, line: { color, pt: 1.2 } });
+                    }
+                    trendSlide.addShape(pptx.ShapeType.ellipse, { x: point.x - 0.045, y: point.y - 0.045, w: 0.09, h: 0.09, fill: { color }, line: { color } });
+                });
+            };
+            drawLine(targetPoints, mutedText);
+            drawLine(actualPoints, green);
+            addLabel(trendSlide, 'Target bars/line', 0.65, 6.38, 1.3, 0.16, { fontSize: 8.2, color: mutedText, bold: true });
+            addLabel(trendSlide, 'Actual bars/line', 2.0, 6.38, 1.3, 0.16, { fontSize: 8.2, color: green, bold: true });
+            addSimpleTable(trendSlide, [
+                ['Month', 'Target', 'Actual', 'Rate'],
+                ...exportTrendRows.map(row => [
+                    row.monthShort,
+                    row.target.toLocaleString(),
+                    row.actual.toLocaleString(),
+                    `${row.rate}%`,
                 ]),
-            ], 8.35, 1.0, 4.4, 5.75);
+            ], 8.35, 1.05, 4.45, 0.36, [0.82, 1.12, 1.12, 0.9], { headerFill: deepGreen, fontSize: 8.8, numericColumns: [1, 2, 3] });
             addFooter(trendSlide);
 
             const summarySlide = pptx.addSlide();
-            const summaryRows = allOuMode ? analytics.ouRows : analytics.provinceRows;
             addHeader(summarySlide, allOuMode ? 'OU Performance Summary' : 'Province Performance Summary', `${scopeLabel} | Fund Year ${selectedYear}`);
-            const tableRows = [
-                [
-                    cell(allOuMode ? 'OU' : 'Province', { bold: true, color: 'FFFFFF', fill: { color: green } }),
-                    cell('IPOs', { bold: true, color: 'FFFFFF', fill: { color: green } }),
-                    cell('Subprojects', { bold: true, color: 'FFFFFF', fill: { color: green } }),
-                    cell('Trainings', { bold: true, color: 'FFFFFF', fill: { color: green } }),
-                    cell('Total', { bold: true, color: 'FFFFFF', fill: { color: green } }),
-                    cell('Rate', { bold: true, color: 'FFFFFF', fill: { color: green } }),
-                    cell('Status', { bold: true, color: 'FFFFFF', fill: { color: green } }),
-                ],
-                ...summaryRows.map(row => {
+            const tableRows: Array<Array<string | number>> = [
+                [allOuMode ? 'OU' : 'Province', 'IPOs', 'Subprojects', 'Trainings', 'Total', 'Rate', 'Status'],
+                ...exportSummaryRows.map(row => {
                     const targetTotal = getSummaryTargetTotal(row);
                     const actualTotal = getSummaryActualTotal(row);
                     return [
-                        cell(allOuMode ? row.ou : row.province, { bold: true }),
-                        cell(`${row.actualIpos} / ${row.targetIpos}`, { align: 'right' }),
-                        cell(`${row.actualSubprojects} / ${row.targetSubprojects}`, { align: 'right' }),
-                        cell(`${row.actualTrainings} / ${row.targetTrainings}`, { align: 'right' }),
-                        cell(`${actualTotal} / ${targetTotal}`, { align: 'right' }),
-                        cell(`${row.rate}%`, { align: 'right' }),
-                        cell(getSummaryStatusLabel(row)),
+                        allOuMode ? row.ou : row.province,
+                        `${row.actualIpos} / ${row.targetIpos}`,
+                        `${row.actualSubprojects} / ${row.targetSubprojects}`,
+                        `${row.actualTrainings} / ${row.targetTrainings}`,
+                        `${actualTotal} / ${targetTotal}`,
+                        `${row.rate}%`,
+                        getSummaryStatusLabel(row),
                     ];
                 }),
             ];
-            addTable(summarySlide, tableRows.slice(0, 18), 0.35, 1.05, 12.65, 5.95);
+            addSimpleTable(summarySlide, tableRows, 0.35, 1.05, 12.65, 0.34, [2.45, 1.45, 1.65, 1.5, 1.55, 0.95, 1.55], { fontSize: 8.8, maxRows: 18, numericColumns: [1, 2, 3, 4, 5] });
             if (tableRows.length > 18) {
-                summarySlide.addText(`Showing first 17 of ${summaryRows.length} rows. Use the dashboard table for the full list.`, {
+                summarySlide.addText(`Showing first 17 of ${exportSummaryRows.length} rows. Use the dashboard table for the full list.`, {
                     x: 0.45,
                     y: 6.95,
                     w: 8.2,
