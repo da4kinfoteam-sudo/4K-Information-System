@@ -481,8 +481,8 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
                 Status: quarter.statusLabel,
                 Rank: row.rank,
                 OU: row.ou,
-                Score: row.score,
-                Points: row.points,
+                'Component Points': row.componentPoints,
+                'Overall Rank Points': row.rankPoints,
             }))), `${quarter.period} Physical`);
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(quarter.financial.map(row => ({
                 Status: quarter.statusLabel,
