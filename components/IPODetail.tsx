@@ -33,6 +33,8 @@ interface IPODetailProps {
     monitoringActivities?: Activity[];
     cachedMonitoringReports?: ActivityMonitoringReport[];
     cachedMonitoringActions?: ActivityMonitoringAction[];
+    linkedDcfLoading?: boolean;
+    linkedDcfError?: string | null;
     marketingPartners: MarketingPartner[];
     onBack: () => void;
     previousPageName: string;
@@ -259,7 +261,7 @@ const CollapsibleDetailCard: React.FC<{
     </section>
 );
 
-const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, monitoringActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], marketingPartners, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, onOpenMonitoringReport, onSelectLodYear, onSelectMarketingPartner, particularTypes, commodityCategories }) => {
+const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, monitoringActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], linkedDcfLoading = false, linkedDcfError = null, marketingPartners, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, onOpenMonitoringReport, onSelectLodYear, onSelectMarketingPartner, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('IPO Management');
     const canDeleteDriveFiles = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
@@ -1353,6 +1355,22 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                             ) : <p className="detail-empty">No commodities listed.</p>}
                         </div>
                     </div>
+
+                    {(linkedDcfLoading || linkedDcfError) && (
+                        <div className={`ipo-linked-dcf-status ${linkedDcfError ? 'ipo-linked-dcf-status--warning' : ''}`} role="status">
+                            {linkedDcfLoading ? (
+                                <>
+                                    <Loader2 className="animate-spin" aria-hidden="true" />
+                                    <span>Loading all linked Subprojects, Trainings, and Monitoring Reports for this IPO...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <AlertCircle aria-hidden="true" />
+                                    <span>{linkedDcfError}</span>
+                                </>
+                            )}
+                        </div>
+                    )}
 
                     {/* Subprojects Card */}
                     <CollapsibleDetailCard title="Subprojects" isOpen={expandedSections.subprojects} onToggle={() => toggleSection('subprojects')}>
