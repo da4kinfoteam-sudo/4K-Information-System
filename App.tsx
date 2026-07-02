@@ -44,6 +44,7 @@ import { useDcfPolicyGuard } from './hooks/useDcfPolicyGuard';
 import { DataScope, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
 import { clearUserCache, getScopeCacheMeta, readScopedCache, writeScopedCache } from './lib/localScopedCache';
 import { normalizeStaffingExpenses } from './lib/staffingExpenseIdentity';
+import { emptyIpoLinkedDcfRecords, fetchIpoLinkedDcfRecords, IpoLinkedDcfRecords } from './lib/ipoLinkedDcfRecords';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
@@ -560,6 +561,13 @@ const AppContent: React.FC = () => {
     const [selectedMarketingPartner, setSelectedMarketingPartner] = useState<MarketingPartner | null>(null);
     const [selectedMarketingLinkageKey, setSelectedMarketingLinkageKey] = useState<string | number | null>(null);
     const [selectedLodYear, setSelectedLodYear] = useState<number | null>(null);
+    const [ipoLinkedDcfState, setIpoLinkedDcfState] = useState<{
+        ipoId: number;
+        data: IpoLinkedDcfRecords | null;
+        loading: boolean;
+        error: string | null;
+    } | null>(null);
+    const ipoLinkedDcfCacheRef = useRef<Map<string, IpoLinkedDcfRecords>>(new Map());
     
     // Activity Edit Mode State
     const [activityEditMode, setActivityEditMode] = useState<'create' | 'details' | 'expenses' | 'accomplishment'>('create');
@@ -594,6 +602,111 @@ const AppContent: React.FC = () => {
             setReportsPageState(prev => prev.activeTab === 'Financial Audit' ? { ...prev, activeTab: 'WFP' } : prev);
         }
     }, [currentUser?.role]);
+
+    const fallbackIpoLinkedDcfRecords = useMemo<IpoLinkedDcfRecords>(() => {
+        if (!selectedIpo?.id) return emptyIpoLinkedDcfRecords();
+        const ipoId = Number(selectedIpo.id);
+        const ipoName = String(selectedIpo.name || '').trim();
+        const linkedSubprojects = visibleSubprojects.filter(subproject =>
+            Number(subproject.ipo_id) === ipoId ||
+            String(subproject.indigenousPeopleOrganization || '').trim() === ipoName
+        );
+        const linkedActivities = visibleActivities.filter(activity =>
+            (activity.participating_ipo_ids || []).map(Number).includes(ipoId) ||
+            (activity.participatingIpos || []).some(name => String(name || '').trim() === ipoName)
+        );
+        const linkedActivityIds = new Set(linkedActivities.map(activity => Number(activity.id)));
+        const linkedReports = activityMonitoringReports.filter(report =>
+            Number(report.ipo_id) === ipoId &&
+            linkedActivityIds.has(Number(report.activity_id))
+        );
+        const linkedReportIds = new Set(linkedReports.map(report => Number(report.id)));
+        return {
+            subprojects: linkedSubprojects,
+            trainings: linkedActivities.filter(activity => activity.type === 'Training'),
+            monitoringActivities: linkedActivities,
+            monitoringReports: linkedReports,
+            monitoringActions: activityMonitoringActions.filter(action => linkedReportIds.has(Number(action.monitoring_report_id))),
+        };
+    }, [activityMonitoringActions, activityMonitoringReports, selectedIpo?.id, selectedIpo?.name, visibleActivities, visibleSubprojects]);
+
+    const mergeIpoLinkedRecords = useCallback((primary: IpoLinkedDcfRecords, secondary: IpoLinkedDcfRecords): IpoLinkedDcfRecords => {
+        const mergeById = <T extends { id: number }>(first: T[], second: T[]) => {
+            const byId = new Map<number, T>();
+            [...first, ...second].forEach(item => {
+                const id = Number(item.id);
+                if (Number.isFinite(id) && !byId.has(id)) byId.set(id, item);
+            });
+            return Array.from(byId.values()).sort((a, b) => Number(a.id) - Number(b.id));
+        };
+        return {
+            subprojects: mergeById(primary.subprojects, secondary.subprojects),
+            trainings: mergeById(primary.trainings, secondary.trainings),
+            monitoringActivities: mergeById(primary.monitoringActivities, secondary.monitoringActivities),
+            monitoringReports: mergeById(primary.monitoringReports, secondary.monitoringReports),
+            monitoringActions: mergeById(primary.monitoringActions, secondary.monitoringActions),
+        };
+    }, []);
+
+    const ipoDetailLinkedDcfRecords = useMemo(() => {
+        const liveData = selectedIpo?.id && ipoLinkedDcfState?.ipoId === selectedIpo.id
+            ? ipoLinkedDcfState.data
+            : null;
+        return liveData
+            ? mergeIpoLinkedRecords(fallbackIpoLinkedDcfRecords, liveData)
+            : fallbackIpoLinkedDcfRecords;
+    }, [fallbackIpoLinkedDcfRecords, ipoLinkedDcfState, mergeIpoLinkedRecords, selectedIpo?.id]);
+
+    useEffect(() => {
+        if (!selectedIpo?.id) {
+            setIpoLinkedDcfState(null);
+            return;
+        }
+
+        const ipoId = Number(selectedIpo.id);
+        const cacheKey = [
+            currentUser?.id || 'anonymous',
+            currentUser?.role || 'role',
+            currentUser?.operatingUnit || 'ou',
+            currentUser?.visibility_scope || 'scope',
+            ipoId
+        ].join('|');
+        const cached = ipoLinkedDcfCacheRef.current.get(cacheKey);
+        if (cached) {
+            setIpoLinkedDcfState({ ipoId, data: cached, loading: false, error: null });
+            return;
+        }
+
+        let cancelled = false;
+        setIpoLinkedDcfState({ ipoId, data: null, loading: true, error: null });
+
+        fetchIpoLinkedDcfRecords(selectedIpo, currentUser)
+            .then(data => {
+                if (cancelled) return;
+                ipoLinkedDcfCacheRef.current.set(cacheKey, data);
+                setIpoLinkedDcfState({ ipoId, data, loading: false, error: null });
+            })
+            .catch(error => {
+                if (cancelled) return;
+                setIpoLinkedDcfState({
+                    ipoId,
+                    data: null,
+                    loading: false,
+                    error: error?.message || 'Unable to load all linked Subprojects, Trainings, and Monitoring Reports for this IPO.'
+                });
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        currentUser,
+        currentUser?.id,
+        currentUser?.operatingUnit,
+        currentUser?.role,
+        currentUser?.visibility_scope,
+        selectedIpo
+    ]);
 
     const navigateTo = (page: string, options: NavigationOptions = {}) => {
         const current = currentPageRef.current;
@@ -1362,11 +1475,13 @@ const AppContent: React.FC = () => {
                 if (!selectedIpo) return <div>Select an IPO</div>;
                 return <IPODetail 
                             ipo={selectedIpo} 
-                            subprojects={subprojects.filter(s => s.indigenousPeopleOrganization === selectedIpo.name)}
-                            trainings={trainings.filter(t => t.participatingIpos.includes(selectedIpo.name))}
-                            monitoringActivities={visibleActivities}
-                            cachedMonitoringReports={activityMonitoringReports}
-                            cachedMonitoringActions={activityMonitoringActions}
+                            subprojects={ipoDetailLinkedDcfRecords.subprojects}
+                            trainings={ipoDetailLinkedDcfRecords.trainings}
+                            monitoringActivities={ipoDetailLinkedDcfRecords.monitoringActivities}
+                            cachedMonitoringReports={ipoDetailLinkedDcfRecords.monitoringReports}
+                            cachedMonitoringActions={ipoDetailLinkedDcfRecords.monitoringActions}
+                            linkedDcfLoading={ipoLinkedDcfState?.ipoId === selectedIpo.id ? ipoLinkedDcfState.loading : false}
+                            linkedDcfError={ipoLinkedDcfState?.ipoId === selectedIpo.id ? ipoLinkedDcfState.error : null}
                             marketingPartners={marketingPartners}
                             onBack={handleBack}
                             previousPageName={getPageName(previousPage)}
