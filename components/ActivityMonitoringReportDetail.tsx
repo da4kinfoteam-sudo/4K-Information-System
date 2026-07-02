@@ -1,5 +1,5 @@
-import React, { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Edit3, Loader2, Plus, Save, Trash2 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Edit3, Loader2, Plus, Save, Trash2, X } from 'lucide-react';
 import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, ActivityMonitoringStatus, IPO } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
@@ -31,6 +31,51 @@ const formatDateTime = (value?: string | null) => {
 const displayUserName = (user: ReturnType<typeof useAuth>['currentUser']) =>
     user?.fullName || user?.username || 'System';
 
+type ReportTextField = 'findings' | 'issues' | 'recommendations';
+type ReportEditableField = ReportTextField | 'status';
+
+const createEditingState = (activeField?: ReportEditableField): Record<ReportEditableField, boolean> => ({
+    status: activeField === 'status',
+    findings: activeField === 'findings',
+    issues: activeField === 'issues',
+    recommendations: activeField === 'recommendations',
+});
+
+const createSavingState = (activeField?: ReportEditableField): Record<ReportEditableField, boolean> => ({
+    status: activeField === 'status',
+    findings: activeField === 'findings',
+    issues: activeField === 'issues',
+    recommendations: activeField === 'recommendations',
+});
+
+const fieldLabels: Record<ReportEditableField, string> = {
+    status: 'Status',
+    findings: 'Findings',
+    issues: 'Issues',
+    recommendations: 'Recommendations',
+};
+
+const AutoGrowTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = ({ value, onChange, ...props }) => {
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+        const minimumHeight = Number(textarea.dataset.minHeightPx || 128);
+        textarea.style.height = 'auto';
+        textarea.style.height = `${Math.max(textarea.scrollHeight, minimumHeight)}px`;
+    }, [value]);
+
+    return (
+        <textarea
+            {...props}
+            ref={textareaRef}
+            value={value}
+            onChange={onChange}
+        />
+    );
+};
+
 const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailProps> = ({
     activity,
     ipo,
@@ -49,8 +94,10 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
     const [actions, setActions] = useState<ActivityMonitoringAction[]>(initialActions);
     const [newAction, setNewAction] = useState('');
     const [message, setMessage] = useState<string | null>(null);
+    const [fieldMessages, setFieldMessages] = useState<Partial<Record<ReportEditableField, string>>>({});
+    const [editingFields, setEditingFields] = useState<Record<ReportEditableField, boolean>>(createEditingState());
+    const [savingFields, setSavingFields] = useState<Record<ReportEditableField, boolean>>(createSavingState());
     const [isLoading, setIsLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
     const [isAddingAction, setIsAddingAction] = useState(false);
 
     const canEditReport = canEdit || isAdmin;
@@ -58,6 +105,13 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
     useEffect(() => {
         setActions(initialActions);
     }, [initialActions]);
+
+    const syncReportValues = useCallback((activeReport: ActivityMonitoringReport | null) => {
+        setStatus(activeReport?.status || 'Pending');
+        setFindings(activeReport?.findings || '');
+        setIssues(activeReport?.issues || '');
+        setRecommendations(activeReport?.recommendations || '');
+    }, []);
 
     const loadReport = useCallback(async () => {
         if (!activity.id || !ipo.id) return;
@@ -82,12 +136,7 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
                 if (error) throw error;
                 activeReport = data as ActivityMonitoringReport | null;
                 setReport(activeReport);
-                if (activeReport) {
-                    setStatus(activeReport.status);
-                    setFindings(activeReport.findings || '');
-                    setIssues(activeReport.issues || '');
-                    setRecommendations(activeReport.recommendations || '');
-                }
+                syncReportValues(activeReport);
             }
 
             if (!activeReport?.id) {
@@ -111,58 +160,139 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
         } finally {
             setIsLoading(false);
         }
-    }, [activity.id, initialActions, initialReport, ipo.id, report]);
+    }, [activity.id, initialActions, initialReport, ipo.id, report, syncReportValues]);
 
     useEffect(() => {
         loadReport();
     }, [loadReport]);
 
-    const reportPayload = useMemo(() => ({
+    const baseReportPayload = useMemo(() => ({
         activity_id: activity.id,
         ipo_id: ipo.id,
-        status,
-        findings: findings.trim() || null,
-        issues: issues.trim() || null,
-        recommendations: recommendations.trim() || null,
         reported_by: currentUser?.id || null,
         reported_by_name: displayUserName(currentUser),
         updated_at: new Date().toISOString()
-    }), [activity.id, currentUser, findings, ipo.id, issues, recommendations, status]);
+    }), [activity.id, currentUser, ipo.id]);
 
-    const handleSave = async (event: FormEvent) => {
-        event.preventDefault();
+    const setFieldEditing = (field: ReportEditableField, value: boolean) => {
+        setEditingFields(prev => ({ ...prev, [field]: value }));
+        setFieldMessages(prev => ({ ...prev, [field]: undefined }));
+    };
+
+    const resetFieldDraft = (field: ReportEditableField) => {
+        if (field === 'status') setStatus(report?.status || 'Pending');
+        if (field === 'findings') setFindings(report?.findings || '');
+        if (field === 'issues') setIssues(report?.issues || '');
+        if (field === 'recommendations') setRecommendations(report?.recommendations || '');
+        setFieldEditing(field, false);
+    };
+
+    const saveReportPatch = async (field: ReportEditableField, patch: Partial<ActivityMonitoringReport>) => {
         if (!supabase || !canEditReport) return;
-        setIsSaving(true);
+        setSavingFields(createSavingState(field));
         setMessage(null);
+        setFieldMessages(prev => ({ ...prev, [field]: undefined }));
         try {
+            const payload = {
+                ...baseReportPayload,
+                status: report?.status || status || 'Pending',
+                ...patch,
+                updated_at: new Date().toISOString(),
+            };
+
             if (report?.id) {
                 const { data, error } = await supabase
                     .from('activity_monitoring_reports')
-                    .update(reportPayload)
+                    .update(payload)
                     .eq('id', report.id)
                     .select('*')
                     .single();
                 if (error) throw error;
                 setReport(data as ActivityMonitoringReport);
+                syncReportValues(data as ActivityMonitoringReport);
             } else {
                 const { data, error } = await supabase
                     .from('activity_monitoring_reports')
                     .insert({
-                        ...reportPayload,
+                        ...payload,
                         created_at: new Date().toISOString()
                     })
                     .select('*')
                     .single();
                 if (error) throw error;
                 setReport(data as ActivityMonitoringReport);
+                syncReportValues(data as ActivityMonitoringReport);
             }
-            setMessage('Monitoring report saved.');
+            setFieldEditing(field, false);
+            setFieldMessages(prev => ({ ...prev, [field]: `${fieldLabels[field]} saved.` }));
         } catch (error: any) {
-            setMessage(error.message || 'Unable to save monitoring report.');
+            setFieldMessages(prev => ({ ...prev, [field]: error.message || `Unable to save ${fieldLabels[field].toLowerCase()}.` }));
         } finally {
-            setIsSaving(false);
+            setSavingFields(createSavingState());
         }
     };
+
+    const handleSaveStatus = () => saveReportPatch('status', { status });
+
+    const handleSaveTextField = (field: ReportTextField, value: string) => {
+        saveReportPatch(field, { [field]: value.trim() || null } as Partial<ActivityMonitoringReport>);
+    };
+
+    const renderFieldActions = (field: ReportEditableField, onSave: () => void) => {
+        if (!canEditReport) return null;
+        if (editingFields[field]) {
+            return (
+                <div className="monitoring-report-field__actions">
+                    <button
+                        type="button"
+                        className="table-action"
+                        onClick={() => resetFieldDraft(field)}
+                        disabled={savingFields[field]}
+                    >
+                        <X aria-hidden="true" />
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        className="table-action table-action--primary"
+                        onClick={onSave}
+                        disabled={savingFields[field]}
+                    >
+                        {savingFields[field] ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Save aria-hidden="true" />}
+                        {savingFields[field] ? 'Saving...' : 'Save'}
+                    </button>
+                </div>
+            );
+        }
+        return (
+            <button type="button" className="table-action table-action--primary" onClick={() => setFieldEditing(field, true)}>
+                <Edit3 aria-hidden="true" />
+                {report ? 'Edit' : 'Add'}
+            </button>
+        );
+    };
+
+    const renderTextField = (field: ReportTextField, value: string, setValue: (value: string) => void) => (
+        <section className="monitoring-report-field">
+            <div className="monitoring-report-field__header">
+                <h4>{fieldLabels[field]}</h4>
+                {renderFieldActions(field, () => handleSaveTextField(field, value))}
+            </div>
+            {editingFields[field] ? (
+                <AutoGrowTextarea
+                    value={value}
+                    onChange={event => setValue(event.target.value)}
+                    className="form-control monitoring-report-textarea"
+                    placeholder={`Add ${fieldLabels[field].toLowerCase()}...`}
+                />
+            ) : (
+                <p className="monitoring-report-readonly">
+                    {value || `No ${fieldLabels[field].toLowerCase()} recorded.`}
+                </p>
+            )}
+            {fieldMessages[field] && <p className="monitoring-report-field__message" role="status">{fieldMessages[field]}</p>}
+        </section>
+    );
 
     const handleAddAction = async () => {
         if (!supabase || !canEditReport || !newAction.trim()) return;
@@ -257,7 +387,7 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
 
             <div className="detail-grid">
                 <main className="detail-main">
-                    <form className="detail-card" onSubmit={handleSave}>
+                    <section className="detail-card">
                         <div className="flex items-center justify-between gap-3 mb-4">
                             <h3 className="detail-card-title mb-0">Report Details</h3>
                             <span className={`status-badge status-badge--compact ${status === 'Completed' ? 'status-badge--completed' : status === 'Ongoing' ? 'status-badge--ongoing' : 'status-badge--pending'}`}>
@@ -273,35 +403,26 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                <div>
-                                    <label className="form-label">Status</label>
-                                    <select value={status} onChange={event => setStatus(event.target.value as ActivityMonitoringStatus)} className="form-control" disabled={!canEditReport}>
-                                        {statusOptions.map(option => <option key={option} value={option}>{option}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="form-label">Findings</label>
-                                    <textarea value={findings} onChange={event => setFindings(event.target.value)} className="form-control" rows={4} disabled={!canEditReport} />
-                                </div>
-                                <div>
-                                    <label className="form-label">Issues</label>
-                                    <textarea value={issues} onChange={event => setIssues(event.target.value)} className="form-control" rows={4} disabled={!canEditReport} />
-                                </div>
-                                <div>
-                                    <label className="form-label">Recommendations</label>
-                                    <textarea value={recommendations} onChange={event => setRecommendations(event.target.value)} className="form-control" rows={4} disabled={!canEditReport} />
-                                </div>
-                                {canEditReport && (
-                                    <div className="flex justify-end">
-                                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
-                                            {isSaving ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Save aria-hidden="true" />}
-                                            {isSaving ? 'Saving...' : 'Save Report'}
-                                        </button>
+                                <section className="monitoring-report-field">
+                                    <div className="monitoring-report-field__header">
+                                        <h4>Status</h4>
+                                        {renderFieldActions('status', handleSaveStatus)}
                                     </div>
-                                )}
+                                    {editingFields.status ? (
+                                        <select value={status} onChange={event => setStatus(event.target.value as ActivityMonitoringStatus)} className="form-control">
+                                            {statusOptions.map(option => <option key={option} value={option}>{option}</option>)}
+                                        </select>
+                                    ) : (
+                                        <p className="monitoring-report-readonly monitoring-report-readonly--compact">{status}</p>
+                                    )}
+                                    {fieldMessages.status && <p className="monitoring-report-field__message" role="status">{fieldMessages.status}</p>}
+                                </section>
+                                {renderTextField('findings', findings, setFindings)}
+                                {renderTextField('issues', issues, setIssues)}
+                                {renderTextField('recommendations', recommendations, setRecommendations)}
                             </div>
                         )}
-                    </form>
+                    </section>
                 </main>
 
                 <aside className="detail-aside">
@@ -309,11 +430,11 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
                         <h3 className="detail-card-title">Action Timeline</h3>
                         {canEditReport && (
                             <div className="space-y-3 mb-4">
-                                <textarea
+                                <AutoGrowTextarea
                                     value={newAction}
                                     onChange={event => setNewAction(event.target.value)}
-                                    className="form-control"
-                                    rows={3}
+                                    className="form-control monitoring-report-textarea monitoring-report-textarea--compact"
+                                    data-min-height-px="80"
                                     placeholder="Add action taken..."
                                 />
                                 <button type="button" className="btn btn-primary w-full" onClick={handleAddAction} disabled={isAddingAction || !newAction.trim()}>

@@ -76,6 +76,13 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
     </div>
 );
 
+const MonitoringPreviewLine: React.FC<{ label: string; value?: string | null }> = ({ label, value }) => (
+    <div className="monitoring-report-preview__line">
+        <span className="monitoring-report-preview__label">{label}</span>
+        <p className="monitoring-report-preview__snippet">{value?.trim() || `No ${label.toLowerCase()} recorded.`}</p>
+    </div>
+);
+
 type ActivityDetailSectionKey = 'monitoring' | 'gallery' | 'files';
 
 const CollapsibleDetailCard: React.FC<{
@@ -791,11 +798,15 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                     </span>
                                                 </div>
                                                 {report ? (
-                                                    <div className="mt-3 space-y-2 text-xs text-gray-600 dark:text-gray-300">
-                                                        <p><span className="font-semibold">Findings:</span> {report.findings || 'No findings recorded.'}</p>
-                                                        <p><span className="font-semibold">Issues:</span> {report.issues || 'No issues recorded.'}</p>
-                                                        <p><span className="font-semibold">Recommendations:</span> {report.recommendations || 'No recommendations recorded.'}</p>
-                                                        <p><span className="font-semibold">Latest action:</span> {latestAction?.action_taken || 'No action updates yet.'}</p>
+                                                    <div className="monitoring-report-preview">
+                                                        <div className="monitoring-report-preview__meta">
+                                                            <span>Updated {formatDate(report.updated_at)}</span>
+                                                            <span>{report.reported_by_name || 'Reporter not recorded'}</span>
+                                                        </div>
+                                                        <MonitoringPreviewLine label="Findings" value={report.findings} />
+                                                        <MonitoringPreviewLine label="Issues" value={report.issues} />
+                                                        <MonitoringPreviewLine label="Recommendations" value={report.recommendations} />
+                                                        <MonitoringPreviewLine label="Latest action" value={latestAction?.action_taken} />
                                                     </div>
                                                 ) : (
                                                     <p className="detail-empty mt-3">No report has been created for this IPO yet.</p>
@@ -807,7 +818,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                         onClick={() => onOpenMonitoringReport?.(activity, ipo, report || null)}
                                                     >
                                                         {report ? <Eye aria-hidden="true" /> : <Plus aria-hidden="true" />}
-                                                        {report ? 'Open Report' : 'Create Report'}
+                                                        {report ? 'View Report' : 'Create Report'}
                                                     </button>
                                                 </div>
                                             </article>
