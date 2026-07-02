@@ -49,7 +49,7 @@ import {
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
     Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea, ElcacArea, RefCommodity, RefLivestock, RefEquipment,
-    RefInput, RefInfrastructure, RefTrainingReference, ActivityMonitoringAction, ActivityMonitoringReport
+    RefInput, RefInfrastructure, RefTrainingReference, ActivityMonitoringAction, ActivityMonitoringReport, operatingUnits
 } from './constants';
 import {
     sampleActivities, sampleMarketingPartners, sampleOfficeRequirements, sampleOtherProgramExpenses, sampleReferenceUacsList,
@@ -165,6 +165,7 @@ const createDefaultReportsPageState = (ownOu?: string | null, isLockedToOwnOu = 
         selectedYear: currentYear,
         selectedReportingYear: currentYear,
         selectedOu: isLockedToOwnOu ? (ownOu || 'All') : 'All',
+        selectedOus: isLockedToOwnOu ? (ownOu ? [ownOu] : []) : operatingUnits,
         selectedTier: 'Tier 1',
         selectedFundType: 'Current',
         bar1SelectedAsOfDate: '',
@@ -593,7 +594,11 @@ const AppContent: React.FC = () => {
 
     useEffect(() => {
         if (isReportsLockedToOwnOu && currentUser?.operatingUnit) {
-            setReportsPageState(prev => ({ ...prev, selectedOu: currentUser.operatingUnit }));
+            setReportsPageState(prev => ({
+                ...prev,
+                selectedOu: currentUser.operatingUnit,
+                selectedOus: [currentUser.operatingUnit],
+            }));
         }
     }, [currentUser?.operatingUnit, isReportsLockedToOwnOu]);
 
