@@ -187,6 +187,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const [historyLimit, setHistoryLimit] = useState<number>(5);
     const [missingFields, setMissingFields] = useState<string[]>([]);
     const [budgetItemErrorFields, setBudgetItemErrorFields] = useState<string[]>([]);
+    const [budgetItemFormMessage, setBudgetItemFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [driveStatus, setDriveStatus] = useState<GoogleDriveStatus | null>(null);
     const [driveFiles, setDriveFiles] = useState<SubprojectDriveFile[]>([]);
     const [isDriveLoading, setIsDriveLoading] = useState(true);
@@ -329,6 +330,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             isCancelled: false,
             adjustmentReason: '',
         });
+        setBudgetItemFormMessage(null);
     };
 
     const toggleSection = (section: SubprojectDetailSectionKey) => {
@@ -602,12 +604,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             } else {
                 setCurrentDetail(prev => ({ ...prev, [confirmBudgetItemDate.field]: confirmBudgetItemDate.dateStr }));
             }
+            setBudgetItemErrorFields(prev => prev.filter(field => field !== confirmBudgetItemDate.field));
+            setBudgetItemFormMessage(null);
             setConfirmBudgetItemDate(null);
         }
     };
 
     const handleCancelBudgetItemDate = () => {
         setConfirmBudgetItemDate(null);
+        setBudgetItemFormMessage({
+            type: 'error',
+            text: 'The selected budget item month was not applied. Confirm the month first or choose a month within the subproject estimated completion.',
+        });
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -687,11 +695,16 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
+        setBudgetItemFormMessage(null);
+        setBudgetItemErrorFields(prev => prev.filter(field => field !== name));
         if (name === 'type') {
+            setBudgetItemErrorFields(prev => prev.filter(field => field !== 'particulars'));
             setCurrentDetail(prev => ({ ...prev, type: value, particulars: '' }));
         } else if (name === 'objectType') {
+            setBudgetItemErrorFields(prev => prev.filter(field => field !== 'uacsCode'));
             setCurrentDetail(prev => ({ ...prev, objectType: value as ObjectType, expenseParticular: '', uacsCode: '' }));
         } else if (name === 'expenseParticular') {
+            setBudgetItemErrorFields(prev => prev.filter(field => field !== 'uacsCode'));
             setCurrentDetail(prev => ({ ...prev, expenseParticular: value, uacsCode: '' }));
         } else if (name === 'uacsCode') {
             let foundOt = currentDetail.objectType;
@@ -721,89 +734,129 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     };
     
     const handleAddDetail = async () => {
-        const requiredDetailFields = ['type', 'particulars', 'deliveryDate', 'pricePerUnit', 'numberOfUnits', 'obligationMonth', 'disbursementMonth', 'uacsCode'];
-        const missingDetailFields = requiredDetailFields.filter(field => !currentDetail[field as keyof typeof currentDetail]);
-        if (missingDetailFields.length > 0) {
-            setBudgetItemErrorFields(missingDetailFields);
-            return;
-        }
-        
-        // Removed start date validation
-
-        if ((currentDetail.isCancelled || currentDetail.isRealignment || currentDetail.isSavings) && !currentDetail.adjustmentReason.trim()) {
-            window.alert('A short reason is required when adding a cancelled, realignment, or savings budget item.');
-            return;
-        }
-
-        const newItem: SubprojectDetailInput = ensureOriginalBudgetSnapshot(normalizeBudgetLineStatus({
-            ...currentDetail,
-            pricePerUnit: parseFloat(currentDetail.pricePerUnit),
-            numberOfUnits: parseFloat(currentDetail.numberOfUnits),
-            // Ensure ID is generated for new items so tracking works later
-            id: Date.now() + Math.random(), 
-            // Default accomplishment fields
-            actualNumberOfUnits: 0,
-            actualDeliveryDate: '',
-            actualObligationDate: '',
-            actualDisbursementDate: '',
-            actualAmount: 0,
-            actualObligationAmount: 0,
-            actualDisbursementAmount: 0
-        }));
-
-        let updatedDetailItems: SubprojectDetailInput[] = [];
-
-        if (editingDetailIndex !== null) {
-            const beforeItem = detailItems[editingDetailIndex];
-            updatedDetailItems = detailItems.map((item, index) => index === editingDetailIndex ? { ...item, ...newItem, id: item.id } : item);
-            if (currentDetail.isCancelled || currentDetail.isRealignment || currentDetail.isSavings || beforeItem.isRealignment || beforeItem.isSavings || beforeItem.isCancelled) {
-                await persistBudgetAdjustmentHistory(
-                    currentDetail.isCancelled ? 'cancel'
-                        : currentDetail.isRealignment ? 'tag_realignment'
-                            : currentDetail.isSavings ? 'tag_savings'
-                                : beforeItem.isCancelled ? 'restore'
-                                    : 'clear_tag',
-                    beforeItem,
-                    { ...beforeItem, ...newItem, id: beforeItem.id },
-                    currentDetail.adjustmentReason.trim() || 'Updated budget item metadata.'
-                );
+        try {
+            setBudgetItemFormMessage(null);
+            const requiredDetailFields = ['type', 'particulars', 'deliveryDate', 'pricePerUnit', 'numberOfUnits', 'obligationMonth', 'disbursementMonth', 'uacsCode'];
+            const missingDetailFields = requiredDetailFields.filter(field => {
+                const value = currentDetail[field as keyof typeof currentDetail];
+                return value === undefined || value === null || String(value).trim() === '';
+            });
+            if (missingDetailFields.length > 0) {
+                setBudgetItemErrorFields(missingDetailFields);
+                setBudgetItemFormMessage({
+                    type: 'error',
+                    text: `Complete these required fields first: ${missingDetailFields.map(field => budgetItemFieldLabels[field] || field).join(', ')}.`,
+                });
+                return;
             }
-            setEditingDetailIndex(null);
-        } else {
-            updatedDetailItems = [...detailItems, newItem];
-            if (newItem.isRealignment || newItem.isSavings) {
-                await persistBudgetAdjustmentHistory(
-                    'create_adjustment_item',
-                    null,
-                    newItem,
-                    newItem.adjustmentReason?.trim() || 'Created budget adjustment item.'
-                );
+
+            const parsedPricePerUnit = Number(currentDetail.pricePerUnit);
+            const parsedNumberOfUnits = Number(currentDetail.numberOfUnits);
+            const invalidNumberFields = [
+                ...(!Number.isFinite(parsedPricePerUnit) || parsedPricePerUnit <= 0 ? ['pricePerUnit'] : []),
+                ...(!Number.isFinite(parsedNumberOfUnits) || parsedNumberOfUnits <= 0 ? ['numberOfUnits'] : []),
+            ];
+            if (invalidNumberFields.length > 0) {
+                setBudgetItemErrorFields(invalidNumberFields);
+                setBudgetItemFormMessage({
+                    type: 'error',
+                    text: 'Price per Unit and Number of Units must be greater than zero.',
+                });
+                return;
             }
-        }
+            
+            // Removed start date validation
 
-        // Rule: Automatically update Estimated Completion Date to the farthest delivery date of budget items
-        let newEstimatedCompletionDate = editedSubproject.estimatedCompletionDate;
-        const deliveryDates = updatedDetailItems
-            .map(d => d.deliveryDate)
-            .filter(d => d && d.trim() !== '')
-            .map(d => new Date(d).getTime())
-            .filter(t => !isNaN(t));
-
-        if (deliveryDates.length > 0) {
-            const maxDateTimestamp = Math.max(...deliveryDates);
-            const farthestDate = new Date(maxDateTimestamp).toISOString().split('T')[0];
-            if (!newEstimatedCompletionDate || new Date(farthestDate) > new Date(newEstimatedCompletionDate)) {
-                newEstimatedCompletionDate = farthestDate;
+            if ((currentDetail.isCancelled || currentDetail.isRealignment || currentDetail.isSavings) && !currentDetail.adjustmentReason.trim()) {
+                setBudgetItemFormMessage({
+                    type: 'error',
+                    text: 'A short reason is required when adding a cancelled, realignment, or savings budget item.',
+                });
+                return;
             }
-        }
-        
-        setDetailItems(updatedDetailItems);
-        setEditedSubproject(prev => ({
-            ...prev,
-            estimatedCompletionDate: newEstimatedCompletionDate
-        }));
 
-        resetCurrentDetail();
+            const newItem: SubprojectDetailInput = ensureOriginalBudgetSnapshot(normalizeBudgetLineStatus({
+                ...currentDetail,
+                pricePerUnit: parsedPricePerUnit,
+                numberOfUnits: parsedNumberOfUnits,
+                // Ensure ID is generated for new items so tracking works later
+                id: Date.now() + Math.random(), 
+                // Default accomplishment fields
+                actualNumberOfUnits: 0,
+                actualDeliveryDate: '',
+                actualObligationDate: '',
+                actualDisbursementDate: '',
+                actualAmount: 0,
+                actualObligationAmount: 0,
+                actualDisbursementAmount: 0
+            }));
+
+            let updatedDetailItems: SubprojectDetailInput[] = [];
+
+            if (editingDetailIndex !== null) {
+                const beforeItem = detailItems[editingDetailIndex];
+                updatedDetailItems = detailItems.map((item, index) => index === editingDetailIndex ? { ...item, ...newItem, id: item.id } : item);
+                if (currentDetail.isCancelled || currentDetail.isRealignment || currentDetail.isSavings || beforeItem.isRealignment || beforeItem.isSavings || beforeItem.isCancelled) {
+                    await persistBudgetAdjustmentHistory(
+                        currentDetail.isCancelled ? 'cancel'
+                            : currentDetail.isRealignment ? 'tag_realignment'
+                                : currentDetail.isSavings ? 'tag_savings'
+                                    : beforeItem.isCancelled ? 'restore'
+                                        : 'clear_tag',
+                        beforeItem,
+                        { ...beforeItem, ...newItem, id: beforeItem.id },
+                        currentDetail.adjustmentReason.trim() || 'Updated budget item metadata.'
+                    );
+                }
+                setEditingDetailIndex(null);
+            } else {
+                updatedDetailItems = [...detailItems, newItem];
+                if (newItem.isRealignment || newItem.isSavings) {
+                    await persistBudgetAdjustmentHistory(
+                        'create_adjustment_item',
+                        null,
+                        newItem,
+                        newItem.adjustmentReason?.trim() || 'Created budget adjustment item.'
+                    );
+                }
+            }
+
+            // Rule: Automatically update Estimated Completion Date to the farthest delivery date of budget items
+            let newEstimatedCompletionDate = editedSubproject.estimatedCompletionDate;
+            const deliveryDates = updatedDetailItems
+                .map(d => d.deliveryDate)
+                .filter(d => d && d.trim() !== '')
+                .map(d => new Date(d).getTime())
+                .filter(t => !isNaN(t));
+
+            if (deliveryDates.length > 0) {
+                const maxDateTimestamp = Math.max(...deliveryDates);
+                const farthestDate = new Date(maxDateTimestamp).toISOString().split('T')[0];
+                if (!newEstimatedCompletionDate || new Date(farthestDate) > new Date(newEstimatedCompletionDate)) {
+                    newEstimatedCompletionDate = farthestDate;
+                }
+            }
+            
+            setDetailItems(updatedDetailItems);
+            setEditedSubproject(prev => ({
+                ...prev,
+                estimatedCompletionDate: newEstimatedCompletionDate
+            }));
+
+            resetCurrentDetail();
+            setBudgetItemFormMessage({
+                type: 'success',
+                text: editingDetailIndex !== null
+                    ? 'Budget item updated. Click Save Changes to persist this update.'
+                    : 'Budget item added to the list above. Click Save Changes to persist this new item.',
+            });
+        } catch (error) {
+            console.error('Unable to add budget item', error);
+            setBudgetItemFormMessage({
+                type: 'error',
+                text: error instanceof Error ? error.message : 'Unable to add this budget item. Please review the fields and try again.',
+            });
+        }
     };
 
     const handleRemoveDetail = async (indexToRemove: number) => {
@@ -1632,6 +1685,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <MonthYearPicker
                                                     value={currentDetail.deliveryDate}
                                                     onChange={(val) => {
+                                                        setBudgetItemFormMessage(null);
+                                                        setBudgetItemErrorFields(prev => prev.filter(field => field !== 'deliveryDate'));
                                                         if (editedSubproject.estimatedCompletionDate && val > editedSubproject.estimatedCompletionDate) {
                                                             setConfirmBudgetItemDate({ field: 'deliveryDate', dateStr: val });
                                                             return;
@@ -1649,6 +1704,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <MonthYearPicker
                                                     value={currentDetail.obligationMonth}
                                                     onChange={(val) => {
+                                                        setBudgetItemFormMessage(null);
+                                                        setBudgetItemErrorFields(prev => prev.filter(field => field !== 'obligationMonth'));
                                                         if (editedSubproject.estimatedCompletionDate && val > editedSubproject.estimatedCompletionDate) {
                                                             setConfirmBudgetItemDate({ field: 'obligationMonth', dateStr: val });
                                                             return;
@@ -1664,7 +1721,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <label className="form-label">Disbursement Month</label>
                                                 <MonthYearPicker
                                                     value={currentDetail.disbursementMonth}
-                                                    onChange={(val) => setCurrentDetail(prev => ({ ...prev, disbursementMonth: val }))}
+                                                    onChange={(val) => {
+                                                        setBudgetItemFormMessage(null);
+                                                        setBudgetItemErrorFields(prev => prev.filter(field => field !== 'disbursementMonth'));
+                                                        setCurrentDetail(prev => ({ ...prev, disbursementMonth: val }));
+                                                    }}
                                                     placeholder="Select month"
                                                     defaultYear={editedSubproject.fundingYear}
                                                     className="h-9"
@@ -1674,6 +1735,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             <div><label className="form-label">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`} /></div>
                                             <div><label className="form-label">Number of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`} /></div>
                                             <div><label className="form-label">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`}><option value="pcs">pcs</option><option value="grams">grams</option><option value="kg">kg</option><option value="liters">liters</option><option value="boxes">boxes</option><option value="cans">cans</option><option value="sets">sets</option><option value="pax">pax</option><option value="heads">heads</option><option value="months">months</option><option value="days">days</option><option value="ha">ha</option><option value="bags">bags</option><option value="bottles">bottles</option><option value="sachets">sachets</option><option value="rolls">rolls</option><option value="meters">meters</option><option value="units">units</option><option value="packs">packs</option><option value="lots">lots</option></select></div>
+                                            {budgetItemFormMessage && (
+                                                <div className={`budget-item-form-grid__full budget-item-form-message budget-item-form-message--${budgetItemFormMessage.type}`} role={budgetItemFormMessage.type === 'error' ? 'alert' : 'status'}>
+                                                    {budgetItemFormMessage.text}
+                                                </div>
+                                            )}
                                             <div className="budget-item-form-grid__full budget-line-adjustment-options">
                                                 {editingDetailIndex !== null && (
                                                     <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 dark:text-gray-300">

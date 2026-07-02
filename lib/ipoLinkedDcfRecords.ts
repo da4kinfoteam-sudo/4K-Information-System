@@ -1,4 +1,4 @@
-import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, Subproject, User } from '../constants';
+import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, normalizeRegionName, ouToRegionMap, Subproject, User } from '../constants';
 import { supabase } from '../supabaseClient';
 
 export interface IpoLinkedDcfRecords {
@@ -16,6 +16,14 @@ const isMissingColumnError = (error: any) => {
   return error?.code === 'PGRST204' || error?.code === '42703' || message.includes('column');
 };
 
+const isRecoverableOptionalFilterError = (error: any) => {
+  const message = String(error?.message || '').toLowerCase();
+  return isMissingColumnError(error) ||
+    message.includes('invalid input syntax for type json') ||
+    message.includes('malformed array literal') ||
+    message.includes('operator does not exist');
+};
+
 const fetchQuery = async (query: any, optionalColumn = false) => {
   const { data, error } = await query;
   if (error) {
@@ -26,6 +34,18 @@ const fetchQuery = async (query: any, optionalColumn = false) => {
     throw error;
   }
   return data || [];
+};
+
+const fetchOptionalQuery = async <T,>(query: any, label: string): Promise<T[] | null> => {
+  const { data, error } = await query;
+  if (error) {
+    if (isRecoverableOptionalFilterError(error)) {
+      console.warn(`Skipping IPO linked-record optional query (${label}):`, error.message);
+      return null;
+    }
+    throw error;
+  }
+  return (data || []) as T[];
 };
 
 const mergePreferFirstById = <T extends { id: number }>(...groups: T[][]) => {
@@ -46,6 +66,52 @@ const filterByUserVisibility = <T extends { operatingUnit?: string }>(rows: T[],
 };
 
 const toNumericIds = (values: unknown[]) => Array.from(new Set(values.map(Number).filter(Number.isFinite)));
+
+const normalizeComparableText = (value: unknown) => String(value || '').trim().toLowerCase();
+
+const activityIncludesIpo = (activity: Activity, ipoId: number, ipoName: string) => {
+  const idMatches = (activity.participating_ipo_ids || []).map(Number).includes(ipoId);
+  if (idMatches) return true;
+
+  const targetName = normalizeComparableText(ipoName);
+  const rawNames = activity.participatingIpos;
+  const names = Array.isArray(rawNames)
+    ? rawNames
+    : String(rawNames || '').split(/[;,]/);
+
+  return names.some(name => normalizeComparableText(name) === targetName);
+};
+
+const getLikelyOperatingUnits = (ipo: IPO, currentUser?: User | null) => {
+  const units = new Set<string>();
+  if (currentUser && !isAdminRole(currentUser.role) && currentUser.visibility_scope !== 'All OUs' && currentUser.operatingUnit) {
+    units.add(currentUser.operatingUnit);
+  }
+
+  const normalizedIpoRegion = normalizeRegionName(ipo.region || '');
+  Object.entries(ouToRegionMap).forEach(([ou, region]) => {
+    if (normalizeRegionName(region) === normalizedIpoRegion) units.add(ou);
+  });
+
+  return Array.from(units);
+};
+
+const fetchActivityFallbackCandidates = async (ipo: IPO, currentUser?: User | null) => {
+  if (!supabase) return [];
+  const likelyOperatingUnits = getLikelyOperatingUnits(ipo, currentUser);
+  if (likelyOperatingUnits.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('activities')
+    .select('*')
+    .in('operatingUnit', likelyOperatingUnits)
+    .order('id', { ascending: true });
+  if (error) throw error;
+
+  return ((data || []) as Activity[]).filter(activity =>
+    activityIncludesIpo(activity, Number(ipo.id), String(ipo.name || '').trim())
+  );
+};
 
 const fetchActionsForReports = async (reports: ActivityMonitoringReport[]) => {
   const reportIds = toNumericIds(reports.map(report => report.id));
@@ -77,8 +143,8 @@ export async function fetchIpoLinkedDcfRecords(ipo: IPO, currentUser?: User | nu
   const [
     idMatchedSubprojects,
     nameMatchedSubprojects,
-    idMatchedActivities,
-    nameMatchedActivities,
+    idMatchedActivitiesResult,
+    nameMatchedActivitiesResult,
   ] = await Promise.all([
     fetchQuery(
       supabase
@@ -97,31 +163,38 @@ export async function fetchIpoLinkedDcfRecords(ipo: IPO, currentUser?: User | nu
           .order('id', { ascending: true })
       ) as Promise<Subproject[]>
       : Promise.resolve([]),
-    fetchQuery(
+    fetchOptionalQuery<Activity>(
       supabase
         .from('activities')
         .select('*')
         .contains('participating_ipo_ids', [ipoId])
         .order('id', { ascending: true }),
-      true
-    ) as Promise<Activity[]>,
+      'activities.participating_ipo_ids'
+    ),
     ipoName
-      ? fetchQuery(
+      ? fetchOptionalQuery<Activity>(
         supabase
           .from('activities')
           .select('*')
           .contains('participatingIpos', [ipoName])
-          .order('id', { ascending: true })
-      ) as Promise<Activity[]>
+          .order('id', { ascending: true }),
+        'activities.participatingIpos'
+      )
       : Promise.resolve([]),
   ]);
+
+  const fallbackActivities = idMatchedActivitiesResult === null || nameMatchedActivitiesResult === null
+    ? await fetchActivityFallbackCandidates(ipo, currentUser)
+    : [];
+  const idMatchedActivities = idMatchedActivitiesResult || [];
+  const nameMatchedActivities = nameMatchedActivitiesResult || [];
 
   const linkedSubprojects = filterByUserVisibility(
     mergePreferFirstById(idMatchedSubprojects, nameMatchedSubprojects),
     currentUser
   );
   const linkedActivities = filterByUserVisibility(
-    mergePreferFirstById(idMatchedActivities, nameMatchedActivities),
+    mergePreferFirstById(idMatchedActivities, nameMatchedActivities, fallbackActivities),
     currentUser
   );
   const linkedTrainings = linkedActivities.filter(activity => activity.type === 'Training');

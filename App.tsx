@@ -613,7 +613,10 @@ const AppContent: React.FC = () => {
         );
         const linkedActivities = visibleActivities.filter(activity =>
             (activity.participating_ipo_ids || []).map(Number).includes(ipoId) ||
-            (activity.participatingIpos || []).some(name => String(name || '').trim() === ipoName)
+            (Array.isArray(activity.participatingIpos)
+                ? activity.participatingIpos
+                : String(activity.participatingIpos || '').split(/[;,]/)
+            ).some(name => String(name || '').trim() === ipoName)
         );
         const linkedActivityIds = new Set(linkedActivities.map(activity => Number(activity.id)));
         const linkedReports = activityMonitoringReports.filter(report =>
