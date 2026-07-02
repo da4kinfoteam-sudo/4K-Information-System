@@ -2359,6 +2359,103 @@
   min-width: 0;
 }
 
+.report-ou-multiselect {
+  position: relative;
+}
+
+.report-ou-multiselect__button {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  min-width: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.report-ou-multiselect__button:disabled {
+  cursor: not-allowed;
+}
+
+.report-ou-multiselect__chevron {
+  flex: 0 0 auto;
+  height: 1rem;
+  transition: transform 160ms ease;
+  width: 1rem;
+}
+
+.report-ou-multiselect__chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.report-ou-multiselect__menu {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  box-shadow: var(--app-shadow-panel);
+  display: grid;
+  gap: 0.65rem;
+  left: 0;
+  margin-top: 0.35rem;
+  max-height: min(24rem, 70vh);
+  min-width: min(20rem, 90vw);
+  overflow: hidden;
+  padding: 0.75rem;
+  position: absolute;
+  right: 0;
+  z-index: 45;
+}
+
+.report-ou-multiselect__search {
+  min-height: 2.25rem;
+}
+
+.report-ou-multiselect__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.report-ou-multiselect__list {
+  display: grid;
+  gap: 0.15rem;
+  max-height: 15rem;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.report-ou-multiselect__option {
+  align-items: center;
+  border-radius: 0.55rem;
+  color: var(--app-text);
+  cursor: pointer;
+  display: flex;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.45rem 0.5rem;
+}
+
+.report-ou-multiselect__option:hover {
+  background: var(--app-surface-muted);
+}
+
+.report-ou-multiselect__option input {
+  flex: 0 0 auto;
+}
+
+.report-ou-multiselect__option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-ou-multiselect__empty {
+  color: var(--app-text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+  padding: 0.5rem;
+}
+
 .report-tabs-card {
   padding: 0 1rem;
 }

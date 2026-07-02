@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient';
-import { ouToRegionMap } from '../constants';
+import { operatingUnits, ouToRegionMap } from '../constants';
 import {
   sampleActivities,
   sampleActivityMonitoringActions,
@@ -30,6 +30,7 @@ import { sampleIPOs } from '../sampleIPOs';
 export interface DataScope {
   year: string | number;
   operatingUnit: string;
+  operatingUnits?: string[];
   tier: string;
   fundType: string;
   canViewAllOus: boolean;
@@ -72,12 +73,29 @@ type IpoReferenceSources = {
   activityMonitoringReports: any[];
 };
 
+const normalizeOperatingUnitList = (values?: string[]) => {
+  if (!Array.isArray(values)) return undefined;
+  return Array.from(new Set(values.filter(value => operatingUnits.includes(value)))).sort();
+};
+
+const getScopedOperatingUnits = (scope: DataScope): string[] | null => {
+  const selected = normalizeOperatingUnitList(scope.operatingUnits);
+  if (selected) return selected;
+  if (!isAll(scope.operatingUnit)) return [scope.operatingUnit];
+  return null;
+};
+
 export const normalizeDataScope = (scope: DataScope, fallbackOu?: string): DataScope => {
   const lockedOu = !scope.canViewAllOus;
+  const lockedOperatingUnit = fallbackOu || scope.operatingUnit;
+  const selectedOperatingUnits = lockedOu
+    ? (lockedOperatingUnit ? [lockedOperatingUnit] : undefined)
+    : normalizeOperatingUnitList(scope.operatingUnits);
   return {
     ...scope,
     year: scope.year || new Date().getFullYear().toString(),
-    operatingUnit: lockedOu ? (fallbackOu || scope.operatingUnit) : (scope.operatingUnit || 'All'),
+    operatingUnit: lockedOu ? (lockedOperatingUnit || 'All') : (scope.operatingUnit || 'All'),
+    operatingUnits: selectedOperatingUnits,
     tier: scope.tier || 'Tier 1',
     fundType: scope.fundType || 'Current',
   };
@@ -86,6 +104,7 @@ export const normalizeDataScope = (scope: DataScope, fallbackOu?: string): DataS
 export const getDataScopeKey = (scope: DataScope) => [
   scope.year || 'All',
   scope.operatingUnit || 'All',
+  normalizeOperatingUnitList(scope.operatingUnits)?.join(',') ?? 'legacy-ou',
   scope.tier || 'All',
   scope.fundType || 'All',
   scope.canViewAllOus ? 'all-ou' : 'own-ou',
@@ -120,8 +139,9 @@ async function fetchQuery(query: any): Promise<any[]> {
 
 function applyCommonScope(query: any, scope: DataScope, yearColumn: 'fundingYear' | 'fundYear') {
   let next = query;
+  const scopedOus = getScopedOperatingUnits(scope);
   if (!isAll(scope.year)) next = next.eq(yearColumn, Number(scope.year));
-  if (!isAll(scope.operatingUnit)) next = next.eq('operatingUnit', scope.operatingUnit);
+  if (scopedOus) next = next.in('operatingUnit', scopedOus);
   if (!isAll(scope.tier)) next = next.eq('tier', scope.tier);
   if (!isAll(scope.fundType)) next = next.eq('fundType', scope.fundType);
   return next;
@@ -129,6 +149,8 @@ function applyCommonScope(query: any, scope: DataScope, yearColumn: 'fundingYear
 
 async function fetchScopedBusinessTable(tableName: string, scope: DataScope, yearColumn: 'fundingYear' | 'fundYear') {
   if (!supabase) return [];
+  const scopedOus = getScopedOperatingUnits(scope);
+  if (scopedOus && scopedOus.length === 0) return [];
   return fetchQuery(applyCommonScope(
     supabase.from(tableName).select('*').order('id', { ascending: true }),
     scope,
@@ -143,18 +165,23 @@ async function fetchReferenceTable(tableName: string, orderBy = 'id') {
 
 async function fetchBudgetCeilings(scope: DataScope) {
   if (!supabase) return [];
+  const scopedOus = getScopedOperatingUnits(scope);
+  if (scopedOus && scopedOus.length === 0) return [];
   let query = supabase.from('budget_ceilings').select('*');
   if (!isAll(scope.year)) query = query.eq('year', Number(scope.year));
-  if (!isAll(scope.operatingUnit)) query = query.eq('operating_unit', scope.operatingUnit);
+  if (scopedOus) query = query.in('operating_unit', scopedOus);
   return fetchQuery(query);
 }
 
 async function fetchScopedIpos(scope: DataScope) {
   if (!supabase) return [];
+  const scopedOus = getScopedOperatingUnits(scope);
+  if (scopedOus && scopedOus.length === 0) return [];
   let query = supabase.from('ipos').select('*').order('id', { ascending: true });
-  if (!isAll(scope.operatingUnit)) {
-    const targetRegion = ouToRegionMap[scope.operatingUnit];
-    if (targetRegion) query = query.eq('region', targetRegion);
+  if (scopedOus) {
+    const targetRegions = Array.from(new Set(scopedOus.map(ou => ouToRegionMap[ou]).filter(Boolean)));
+    if (targetRegions.length === 0) return [];
+    query = query.in('region', targetRegions);
   }
   return fetchQuery(query);
 }
@@ -235,10 +262,13 @@ async function enrichScopedIpos(baseIpos: any[], sources: IpoReferenceSources) {
 
 async function fetchScopedMarketingPartners(scope: DataScope) {
   if (!supabase) return [];
+  const scopedOus = getScopedOperatingUnits(scope);
+  if (scopedOus && scopedOus.length === 0) return [];
   let query = supabase.from('marketing_partners').select('*').order('id', { ascending: true });
-  if (!isAll(scope.operatingUnit)) {
-    const targetRegion = ouToRegionMap[scope.operatingUnit];
-    if (targetRegion) query = query.eq('region', targetRegion);
+  if (scopedOus) {
+    const targetRegions = Array.from(new Set(scopedOus.map(ou => ouToRegionMap[ou]).filter(Boolean)));
+    if (targetRegions.length === 0) return [];
+    query = query.in('region', targetRegions);
   }
   return fetchQuery(query);
 }
@@ -364,8 +394,9 @@ function applyLocalCommonScope<T extends Record<string, any>>(
   yearColumn: 'fundingYear' | 'fundYear'
 ) {
   return rows.filter(row => {
+    const scopedOus = getScopedOperatingUnits(scope);
     if (!isAll(scope.year) && Number(row[yearColumn]) !== Number(scope.year)) return false;
-    if (!isAll(scope.operatingUnit) && row.operatingUnit !== scope.operatingUnit) return false;
+    if (scopedOus && !scopedOus.includes(row.operatingUnit)) return false;
     if (!isAll(scope.tier) && row.tier !== scope.tier) return false;
     if (!isAll(scope.fundType) && row.fundType !== scope.fundType) return false;
     return true;
@@ -373,10 +404,12 @@ function applyLocalCommonScope<T extends Record<string, any>>(
 }
 
 function applyLocalIpoScope(scope: DataScope) {
-  if (isAll(scope.operatingUnit)) return sampleIPOs;
-  const targetRegion = ouToRegionMap[scope.operatingUnit];
-  if (!targetRegion) return sampleIPOs;
-  return sampleIPOs.filter(ipo => ipo.region === targetRegion);
+  const scopedOus = getScopedOperatingUnits(scope);
+  if (!scopedOus) return sampleIPOs;
+  if (scopedOus.length === 0) return [];
+  const targetRegions = new Set(scopedOus.map(ou => ouToRegionMap[ou]).filter(Boolean));
+  if (targetRegions.size === 0) return [];
+  return sampleIPOs.filter(ipo => targetRegions.has(ipo.region));
 }
 
 function enrichLocalIpos(baseIpos: any[], sources: IpoReferenceSources) {
@@ -392,8 +425,9 @@ function enrichLocalIpos(baseIpos: any[], sources: IpoReferenceSources) {
 
 function filterLocalBudgetCeilings(scope: DataScope) {
   return sampleBudgetCeilings.filter(row => {
+    const scopedOus = getScopedOperatingUnits(scope);
     if (!isAll(scope.year) && Number(row.year) !== Number(scope.year)) return false;
-    if (!isAll(scope.operatingUnit) && row.operating_unit !== scope.operatingUnit) return false;
+    if (scopedOus && !scopedOus.includes(row.operating_unit)) return false;
     return true;
   });
 }
