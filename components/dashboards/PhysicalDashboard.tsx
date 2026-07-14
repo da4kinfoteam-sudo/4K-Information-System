@@ -57,6 +57,9 @@ type ModalItemWithOu = ModalItem & {
     actualDate?: string;
     isCompleted?: boolean;
     isOverdue?: boolean;
+    isUnresolved?: boolean;
+    isUnresolvedPlaceholder?: boolean;
+    unresolvedIpoReferences?: string[];
 };
 
 type MetricScope = {
@@ -533,6 +536,20 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         const getLinkedTargetDate = (item: Subproject | Training) =>
             'indigenousPeopleOrganization' in item ? item.estimatedCompletionDate : getActivityTargetDate(item);
 
+        const getUnresolvedIpoReferences = (names: Array<string | undefined>) =>
+            Array.from(new Set(names.filter((name): name is string => !!name && !ipoMap.has(name))));
+
+        const formatLinkedSource = (item: Subproject | Training) => {
+            const sourceType = 'indigenousPeopleOrganization' in item ? 'Subproject' : 'Training';
+            return `${sourceType}: ${item.name} (ID: ${item.id}, OU: ${item.operatingUnit || 'Unknown OU'})`;
+        };
+
+        const getLinkedSourceOu = (items: Array<Subproject | Training>) => {
+            const sourceOus = Array.from(new Set(items.map(item => item.operatingUnit || 'Unknown OU')));
+            if (sourceOus.length === 1) return sourceOus[0];
+            return sourceOus.length > 1 ? 'Multiple OUs' : 'Unknown OU';
+        };
+
         const areAllLinkedTargetsOverdueAndIncomplete = (items: Array<Subproject | Training>) => {
             const overdueItems = items.filter(item => isMonthTargetOverdue(getLinkedTargetDate(item)));
             return overdueItems.length > 0 && overdueItems.every(isLinkedTargetIncomplete);
@@ -548,13 +565,27 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         ) => Array.from(names)
             .map(name => {
                 const ipo = ipoMap.get(name);
-                if (!ipo) return null;
                 const linkedTargets = getLinkedTargetsForIpo(
                     name,
                     options.targetSubprojects || [],
                     options.targetTrainings || []
                 );
                 const isCompleted = options.completedNames?.has(name) || false;
+                if (!ipo) {
+                    return {
+                        id: `unresolved-ipo:${name}`,
+                        name: `Unresolved IPO reference: ${name.trim() || '(blank reference)'}`,
+                        details: linkedTargets.length > 0
+                            ? `Linked records: ${linkedTargets.map(formatLinkedSource).join('; ')}`
+                            : 'No linked source record was found in this view.',
+                        operatingUnit: getLinkedSourceOu(linkedTargets),
+                        isCompleted,
+                        isOverdue: !isCompleted && areAllLinkedTargetsOverdueAndIncomplete(linkedTargets),
+                        isUnresolved: true,
+                        isUnresolvedPlaceholder: true,
+                        unresolvedIpoReferences: [name],
+                    };
+                }
                 return {
                     id: ipo.id,
                     name: ipo.name,
@@ -564,21 +595,26 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     isOverdue: !isCompleted && areAllLinkedTargetsOverdueAndIncomplete(linkedTargets),
                 };
             })
-            .filter((item): item is NonNullable<typeof item> => !!item)
             .sort((a, b) => compareOuThenName(a.operatingUnit, b.operatingUnit, a.name, b.name));
 
         const makeSubprojectItems = (items: Subproject[], completedIds?: Set<number>) => items
             .map(sp => {
                 const isCompleted = completedIds?.has(sp.id) ?? isCompletedSubproject(sp);
+                const unresolvedIpoReferences = getUnresolvedIpoReferences([sp.indigenousPeopleOrganization]);
+                const unresolvedDetails = unresolvedIpoReferences.length > 0
+                    ? ` | Unresolved IPO reference: ${unresolvedIpoReferences.join(', ')}`
+                    : '';
                 return {
                     id: sp.id,
                     name: sp.name,
-                    details: `${sp.indigenousPeopleOrganization} | Target: ${formatDate(sp.estimatedCompletionDate)} | Completed: ${formatDate(sp.actualCompletionDate)}`,
+                    details: `${sp.indigenousPeopleOrganization} | Target: ${formatDate(sp.estimatedCompletionDate)} | Completed: ${formatDate(sp.actualCompletionDate)}${unresolvedDetails}`,
                     operatingUnit: sp.operatingUnit,
                     targetDate: sp.estimatedCompletionDate,
                     actualDate: sp.actualCompletionDate,
                     isCompleted,
                     isOverdue: !isCompleted && isMonthTargetOverdue(sp.estimatedCompletionDate),
+                    isUnresolved: unresolvedIpoReferences.length > 0,
+                    unresolvedIpoReferences,
                 };
             })
             .sort((a, b) => compareOuThenName(a.operatingUnit, b.operatingUnit, a.name, b.name));
@@ -587,15 +623,21 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             .map(training => {
                 const targetDate = getActivityTargetDate(training);
                 const isCompleted = completedIds?.has(training.id) ?? isCompletedTraining(training);
+                const unresolvedIpoReferences = getUnresolvedIpoReferences(training.participatingIpos || []);
+                const unresolvedDetails = unresolvedIpoReferences.length > 0
+                    ? ` | Unresolved IPO reference${unresolvedIpoReferences.length > 1 ? 's' : ''}: ${unresolvedIpoReferences.join(', ')}`
+                    : '';
                 return {
                     id: training.id,
                     name: training.name,
-                    details: `${training.component} | Target: ${formatDate(targetDate)} | Conducted: ${formatDate(training.actualDate)}`,
+                    details: `${training.component} | Target: ${formatDate(targetDate)} | Conducted: ${formatDate(training.actualDate)}${unresolvedDetails}`,
                     operatingUnit: training.operatingUnit,
                     targetDate,
                     actualDate: training.actualDate,
                     isCompleted,
                     isOverdue: !isCompleted && isMonthTargetOverdue(targetDate),
+                    isUnresolved: unresolvedIpoReferences.length > 0,
+                    unresolvedIpoReferences,
                 };
             })
             .sort((a, b) => compareOuThenName(a.operatingUnit, b.operatingUnit, a.name, b.name));
@@ -702,25 +744,25 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     annualTargetIpos.size,
                     annualActualIpos.size,
                     makeIpoItems(annualTargetIpos, { completedNames: annualActualIpos, targetSubprojects, targetTrainings }),
-                    makeIpoItems(annualActualIpos)
+                    makeIpoItems(annualActualIpos, { targetSubprojects: actualSubprojects, targetTrainings: actualTrainings })
                 ),
                 monthly: makeMetricScope(
                     monthlyTargetIpos.size,
                     monthlyActualIpos.size,
                     makeIpoItems(monthlyTargetIpos, { completedNames: monthlyActualIpos, targetSubprojects: monthTargetSubprojects, targetTrainings: monthTargetTrainings }),
-                    makeIpoItems(monthlyActualIpos)
+                    makeIpoItems(monthlyActualIpos, { targetSubprojects: monthActualSubprojects, targetTrainings: monthActualTrainings })
                 ),
                 quarterly: makeMetricScope(
                     quarterlyTargetIpos.size,
                     quarterlyActualIpos.size,
                     makeIpoItems(quarterlyTargetIpos, { completedNames: quarterlyActualIpos, targetSubprojects: quarterTargetSubprojects, targetTrainings: quarterTargetTrainings }),
-                    makeIpoItems(quarterlyActualIpos)
+                    makeIpoItems(quarterlyActualIpos, { targetSubprojects: quarterActualSubprojects, targetTrainings: quarterActualTrainings })
                 ),
                 cumulative: makeMetricScope(
                     cumulativeTargetIpos.size,
                     cumulativeActualIpos.size,
                     makeIpoItems(cumulativeTargetIpos, { completedNames: cumulativeActualIpos, targetSubprojects: cumulativeTargetSubprojects, targetTrainings: cumulativeTargetTrainings }),
-                    makeIpoItems(cumulativeActualIpos)
+                    makeIpoItems(cumulativeActualIpos, { targetSubprojects: cumulativeActualSubprojects, targetTrainings: cumulativeActualTrainings })
                 ),
             },
             {
@@ -744,25 +786,25 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     annualTargetIposWithSp.size,
                     annualActualIposWithSp.size,
                     makeIpoItems(annualTargetIposWithSp, { completedNames: annualActualIposWithSp, targetSubprojects }),
-                    makeIpoItems(annualActualIposWithSp)
+                    makeIpoItems(annualActualIposWithSp, { targetSubprojects: actualSubprojects })
                 ),
                 monthly: makeMetricScope(
                     monthlyTargetIposWithSp.size,
                     monthlyActualIposWithSp.size,
                     makeIpoItems(monthlyTargetIposWithSp, { completedNames: monthlyActualIposWithSp, targetSubprojects: monthTargetSubprojects }),
-                    makeIpoItems(monthlyActualIposWithSp)
+                    makeIpoItems(monthlyActualIposWithSp, { targetSubprojects: monthActualSubprojects })
                 ),
                 quarterly: makeMetricScope(
                     quarterlyTargetIposWithSp.size,
                     quarterlyActualIposWithSp.size,
                     makeIpoItems(quarterlyTargetIposWithSp, { completedNames: quarterlyActualIposWithSp, targetSubprojects: quarterTargetSubprojects }),
-                    makeIpoItems(quarterlyActualIposWithSp)
+                    makeIpoItems(quarterlyActualIposWithSp, { targetSubprojects: quarterActualSubprojects })
                 ),
                 cumulative: makeMetricScope(
                     cumulativeTargetIposWithSp.size,
                     cumulativeActualIposWithSp.size,
                     makeIpoItems(cumulativeTargetIposWithSp, { completedNames: cumulativeActualIposWithSp, targetSubprojects: cumulativeTargetSubprojects }),
-                    makeIpoItems(cumulativeActualIposWithSp)
+                    makeIpoItems(cumulativeActualIposWithSp, { targetSubprojects: cumulativeActualSubprojects })
                 ),
             },
             {
@@ -786,25 +828,25 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     annualTargetIposTrained.size,
                     annualActualIposTrained.size,
                     makeIpoItems(annualTargetIposTrained, { completedNames: annualActualIposTrained, targetTrainings }),
-                    makeIpoItems(annualActualIposTrained)
+                    makeIpoItems(annualActualIposTrained, { targetTrainings: actualTrainings })
                 ),
                 monthly: makeMetricScope(
                     monthlyTargetIposTrained.size,
                     monthlyActualIposTrained.size,
                     makeIpoItems(monthlyTargetIposTrained, { completedNames: monthlyActualIposTrained, targetTrainings: monthTargetTrainings }),
-                    makeIpoItems(monthlyActualIposTrained)
+                    makeIpoItems(monthlyActualIposTrained, { targetTrainings: monthActualTrainings })
                 ),
                 quarterly: makeMetricScope(
                     quarterlyTargetIposTrained.size,
                     quarterlyActualIposTrained.size,
                     makeIpoItems(quarterlyTargetIposTrained, { completedNames: quarterlyActualIposTrained, targetTrainings: quarterTargetTrainings }),
-                    makeIpoItems(quarterlyActualIposTrained)
+                    makeIpoItems(quarterlyActualIposTrained, { targetTrainings: quarterActualTrainings })
                 ),
                 cumulative: makeMetricScope(
                     cumulativeTargetIposTrained.size,
                     cumulativeActualIposTrained.size,
                     makeIpoItems(cumulativeTargetIposTrained, { completedNames: cumulativeActualIposTrained, targetTrainings: cumulativeTargetTrainings }),
-                    makeIpoItems(cumulativeActualIposTrained)
+                    makeIpoItems(cumulativeActualIposTrained, { targetTrainings: cumulativeActualTrainings })
                 ),
             },
             {
@@ -1249,7 +1291,8 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         XLSX.writeFile(wb, `${localModal.title.replace(/\s+/g, '_')}.xlsx`);
     };
 
-    const handleItemClick = (item: ModalItem) => {
+    const handleItemClick = (item: ModalItemWithOu) => {
+        if (item.isUnresolvedPlaceholder) return;
         if (localModal?.type === 'ipos') {
             const ipo = (data.ipos || []).find(i => i.id === item.id);
             if (ipo && onSelectIpo) onSelectIpo(ipo);
@@ -2219,12 +2262,14 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                                                             key={`${item.id}-${index}`}
                                                             className={[
                                                                 'dashboard-modal__event',
-                                                                localModal.type !== 'provinces' ? 'dashboard-modal__event--clickable' : '',
-                                                                modalTab === 'targets' && item.isCompleted ? 'physical-dashboard-modal-event--completed' : '',
-                                                                modalTab === 'targets' && !item.isCompleted && item.isOverdue ? 'physical-dashboard-modal-event--overdue' : '',
+                                                                localModal.type !== 'provinces' && !item.isUnresolvedPlaceholder ? 'dashboard-modal__event--clickable' : '',
+                                                                item.isUnresolved ? 'physical-dashboard-modal-event--unresolved' : '',
+                                                                !item.isUnresolved && modalTab === 'targets' && item.isCompleted ? 'physical-dashboard-modal-event--completed' : '',
+                                                                !item.isUnresolved && modalTab === 'targets' && !item.isCompleted && item.isOverdue ? 'physical-dashboard-modal-event--overdue' : '',
                                                             ].filter(Boolean).join(' ')}
-                                                            onClick={() => localModal.type !== 'provinces' && handleItemClick(item)}
+                                                            onClick={() => localModal.type !== 'provinces' && !item.isUnresolvedPlaceholder && handleItemClick(item)}
                                                         >
+                                                            {item.isUnresolved && <span className="physical-dashboard-modal-event__warning">Unresolved IPO reference</span>}
                                                             <p className="dashboard-modal__metric-value">{item.name}</p>
                                                             {item.details && <p className="dashboard-modal__metric-subtext">{item.details}</p>}
                                                         </li>

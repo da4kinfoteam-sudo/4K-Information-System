@@ -9059,6 +9059,30 @@ button.bar1-drilldown-card:focus-visible {
   color: #991b1b;
 }
 
+.dashboard-modal__event.physical-dashboard-modal-event--unresolved {
+  background: #fffbeb;
+  border-color: rgba(217, 119, 6, 0.38);
+}
+
+.dashboard-modal__event.physical-dashboard-modal-event--unresolved .dashboard-modal__metric-value {
+  color: #92400e;
+}
+
+.physical-dashboard-modal-event__warning {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 0.35rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
 .physical-dashboard-alert-list,
 .physical-dashboard-performer-list,
 .physical-dashboard-submission-list {
@@ -9272,6 +9296,20 @@ button.bar1-drilldown-card:focus-visible {
 
 .dark .dashboard-modal__event.physical-dashboard-modal-event--overdue .dashboard-modal__metric-value {
   color: #fca5a5;
+}
+
+.dark .dashboard-modal__event.physical-dashboard-modal-event--unresolved {
+  background: rgba(120, 53, 15, 0.32);
+  border-color: rgba(251, 191, 36, 0.36);
+}
+
+.dark .dashboard-modal__event.physical-dashboard-modal-event--unresolved .dashboard-modal__metric-value {
+  color: #fde68a;
+}
+
+.dark .physical-dashboard-modal-event__warning {
+  background: rgba(146, 64, 14, 0.55);
+  color: #fde68a;
 }
 
 @media (min-width: 1024px) {
