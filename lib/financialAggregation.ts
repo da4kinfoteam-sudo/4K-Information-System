@@ -35,6 +35,7 @@ export interface HomepageFinancialStats {
 }
 
 export type FinancialLine = {
+    id?: number | string;
     amount?: number;
     pricePerUnit?: number;
     numberOfUnits?: number;
@@ -198,6 +199,11 @@ const isTargetRecord = (record: ScopedRecord, filters: FinancialAggregationFilte
     return matchesSelectedYear(getRecordYear(record), filters.year);
 };
 
+const isTargetScopeRecord = (record: ScopedRecord, filters: FinancialAggregationFilters) => {
+    if (!matchesBaseFilters(record, filters)) return false;
+    return matchesSelectedYear(getRecordYear(record), filters.year);
+};
+
 const isActualRecord = (record: ScopedRecord, filters: FinancialAggregationFilters) => {
     if (!matchesBaseFilters(record, filters)) return false;
     return matchesSelectedYear(getRecordYear(record), filters.year);
@@ -341,11 +347,12 @@ const addLineItem = (
 ) => {
     const fallbackYear = getRecordYear(record);
     const isTaggedExclusion = isRecordOrLineExcludedFromTargets(record, line);
+    const isTargetScope = isTargetScopeRecord(record, filters);
     const isTarget = isTargetRecord(record, filters);
     const includeTarget = isTarget && !isTaggedExclusion;
     const includeActual = isActualRecord(record, filters);
-    const rawTargetAllocation = isTarget ? getFinancialAllocation(line) : 0;
-    const excludedTargetAllocation = isTarget && isTaggedExclusion ? rawTargetAllocation : 0;
+    const rawTargetAllocation = isTargetScope ? getFinancialAllocation(line) : 0;
+    const excludedTargetAllocation = isTargetScope && isTaggedExclusion ? rawTargetAllocation : 0;
     const alloc = includeTarget ? rawTargetAllocation : 0;
     const actualYear = filters.actualYear ?? 'All';
     const obli = includeActual ? getActualObligationTotal(line, { year: actualYear, fallbackYear }) : 0;
