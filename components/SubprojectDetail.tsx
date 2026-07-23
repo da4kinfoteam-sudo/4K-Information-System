@@ -26,22 +26,20 @@ import {
     summarizeBudgetAdjustments,
     writeBudgetItemAdjustmentHistory
 } from '../lib/budgetLineAdjustments';
-import { ArrowLeft, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Edit3, ExternalLink, Eye, FileText, HardDrive, ImageIcon, Info, Loader2, Pencil, Plus, Trash2, UploadCloud, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ChevronDown, Edit3, Info, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import {
-    canPreviewSubprojectDriveFile,
     deleteSubprojectDriveFile,
     formatFileSize,
     getGoogleDriveStatus,
     getSubprojectDriveImageUrl,
-    getSubprojectDrivePreviewUrl,
     GoogleDriveStatus,
-    isAllowedSubprojectDriveFile,
-    isSubprojectDriveImageFile,
     listSubprojectDriveFiles,
-    SUBPROJECT_DRIVE_FILE_ACCEPT,
     SubprojectDriveFile,
-    uploadSubprojectDriveFile
+    uploadSubprojectDriveFile,
+    updateSubprojectDriveFileMetadata,
+    DriveUploadSection
 } from '../lib/googleDriveStorage';
+import { EntityFilesList, EntityGallery, getPersistedDriveUploadSection } from './ui/DriveMediaSections';
 
 interface SubprojectDetailProps {
     subproject: Subproject;
@@ -191,10 +189,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const [driveStatus, setDriveStatus] = useState<GoogleDriveStatus | null>(null);
     const [driveFiles, setDriveFiles] = useState<SubprojectDriveFile[]>([]);
     const [isDriveLoading, setIsDriveLoading] = useState(true);
-    const [isDriveUploading, setIsDriveUploading] = useState(false);
     const [deletingDriveFileId, setDeletingDriveFileId] = useState<number | null>(null);
     const [driveMessage, setDriveMessage] = useState<string | null>(null);
-    const [previewDriveFile, setPreviewDriveFile] = useState<SubprojectDriveFile | null>(null);
     const [driveFilePendingDelete, setDriveFilePendingDelete] = useState<SubprojectDriveFile | null>(null);
     const [expandedSections, setExpandedSections] = useState<Record<SubprojectDetailSectionKey, boolean>>({
         commodities: false,
@@ -203,8 +199,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         gallery: false,
         files: false
     });
-    const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
-    const [galleryImageFailed, setGalleryImageFailed] = useState(false);
 
     const isUserRole = currentUser?.role === 'User';
 
@@ -422,43 +416,20 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         loadDriveFiles();
     }, [loadDriveFiles]);
 
-    const handleDriveFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        event.target.value = '';
-        if (!file) return;
-
-        if (!isAllowedSubprojectDriveFile(file)) {
-            setDriveMessage('Only PDF and image files are allowed. Please upload a PDF, PNG, JPG, WEBP, or GIF file.');
-            return;
-        }
+    const uploadDriveFile = async (file: File, uploadSection: DriveUploadSection) => {
         if (!canEdit) {
-            setDriveMessage('You do not have permission to upload Subproject files.');
-            return;
+            throw new Error('You do not have permission to upload Subproject files.');
         }
         if (!driveStatus?.isConnected) {
-            setDriveMessage(driveStatus?.connectionMessage || 'Ask an Admin to reconnect Google Drive storage.');
-            return;
+            throw new Error(driveStatus?.connectionMessage || 'Ask an Admin to reconnect Google Drive storage.');
         }
         if (!subproject.operatingUnit) {
-            setDriveMessage('This subproject needs an operating unit before files can be uploaded.');
-            return;
+            throw new Error('This subproject needs an operating unit before files can be uploaded.');
         }
         if (!subproject.indigenousPeopleOrganization) {
-            setDriveMessage('This subproject needs a linked IPO before files can be uploaded.');
-            return;
+            throw new Error('This subproject needs a linked IPO before files can be uploaded.');
         }
-
-        setIsDriveUploading(true);
-        setDriveMessage(null);
-        try {
-            const uploaded = await uploadSubprojectDriveFile(currentUser, subproject.id, file);
-            setDriveFiles(prev => [uploaded, ...prev]);
-            setDriveMessage(`${uploaded.file_name} uploaded successfully.`);
-        } catch (error: any) {
-            setDriveMessage(error.message || 'Unable to upload Subproject file.');
-        } finally {
-            setIsDriveUploading(false);
-        }
+        return uploadSubprojectDriveFile(currentUser, subproject.id, file, uploadSection);
     };
 
     const requestDriveFileDelete = (file: SubprojectDriveFile) => {
@@ -483,28 +454,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }
     };
 
-    const galleryFiles = useMemo(() => driveFiles.filter(isSubprojectDriveImageFile), [driveFiles]);
-    const selectedGalleryFile = galleryIndex !== null ? galleryFiles[galleryIndex] : null;
-
-    useEffect(() => {
-        if (galleryIndex !== null && galleryIndex >= galleryFiles.length) {
-            setGalleryIndex(galleryFiles.length > 0 ? galleryFiles.length - 1 : null);
-        }
-    }, [galleryFiles.length, galleryIndex]);
-
-    useEffect(() => {
-        setGalleryImageFailed(false);
-    }, [galleryIndex]);
-
-    const showPreviousGalleryImage = () => {
-        if (galleryFiles.length === 0) return;
-        setGalleryIndex(current => current === null ? 0 : (current - 1 + galleryFiles.length) % galleryFiles.length);
-    };
-
-    const showNextGalleryImage = () => {
-        if (galleryFiles.length === 0) return;
-        setGalleryIndex(current => current === null ? 0 : (current + 1) % galleryFiles.length);
-    };
+    const galleryFiles = useMemo(() => driveFiles.filter(file => getPersistedDriveUploadSection(file) === 'gallery'), [driveFiles]);
+    const documentFiles = useMemo(() => driveFiles.filter(file => getPersistedDriveUploadSection(file) === 'files'), [driveFiles]);
 
     const projectCompletionStats = useMemo(() => {
         const rollup = resolveSubprojectCompletionRollup(subproject.details);
@@ -2067,47 +2018,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     return (
         <div className="detail-page">
-            {previewDriveFile && (
-                <div className="dashboard-modal-backdrop" onClick={() => setPreviewDriveFile(null)}>
-                    <div className="dashboard-modal dashboard-modal--wide drive-preview-modal" onClick={e => e.stopPropagation()}>
-                        <div className="dashboard-modal__header">
-                            <div>
-                                <h3>{previewDriveFile.file_name}</h3>
-                                <p className="dashboard-modal__metric-subtext">
-                                    {formatFileSize(previewDriveFile.file_size)} - {previewDriveFile.mime_type || 'File preview'}
-                                </p>
-                            </div>
-                            <button type="button" onClick={() => setPreviewDriveFile(null)} className="dashboard-modal__close" aria-label="Close preview">
-                                <X aria-hidden="true" />
-                            </button>
-                        </div>
-                        <div className="drive-preview-modal__body">
-                            {canPreviewSubprojectDriveFile(previewDriveFile) ? (
-                                <iframe
-                                    src={getSubprojectDrivePreviewUrl(previewDriveFile)}
-                                    title={`Preview ${previewDriveFile.file_name}`}
-                                    className="drive-preview-modal__frame"
-                                    allow="autoplay"
-                                />
-                            ) : (
-                                <div className="drive-preview-modal__empty">
-                                    <FileText aria-hidden="true" />
-                                    <p>This file type cannot be previewed in 4KIS.</p>
-                                </div>
-                            )}
-                        </div>
-                        <div className="drive-preview-modal__footer">
-                            <p>If the preview does not load, open the file directly in Google Drive.</p>
-                            {previewDriveFile.web_view_link && (
-                                <a className="btn btn-secondary" href={previewDriveFile.web_view_link} target="_blank" rel="noreferrer">
-                                    <ExternalLink aria-hidden="true" />
-                                    Open in Drive
-                                </a>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
             {driveFilePendingDelete && (
                 <div className="dashboard-modal-backdrop" onClick={() => !deletingDriveFileId && setDriveFilePendingDelete(null)}>
                     <div className="dashboard-modal dashboard-modal--compact" onClick={e => e.stopPropagation()}>
@@ -2132,49 +2042,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             <button type="button" className="btn btn-danger" onClick={handleDriveFileDelete} disabled={!!deletingDriveFileId}>
                                 {deletingDriveFileId ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
                                 Delete File
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {selectedGalleryFile && (
-                <div className="dashboard-modal-backdrop" onClick={() => setGalleryIndex(null)}>
-                    <div className="dashboard-modal dashboard-modal--wide ipo-gallery-modal" onClick={e => e.stopPropagation()}>
-                        <div className="dashboard-modal__header">
-                            <div>
-                                <h3>{selectedGalleryFile.file_name}</h3>
-                                <p className="dashboard-modal__metric-subtext">
-                                    {galleryIndex !== null ? `${galleryIndex + 1} of ${galleryFiles.length}` : 'Image preview'}
-                                </p>
-                            </div>
-                            <button type="button" onClick={() => setGalleryIndex(null)} className="dashboard-modal__close" aria-label="Close gallery">
-                                <X aria-hidden="true" />
-                            </button>
-                        </div>
-                        <div className="ipo-gallery-modal__body">
-                            <button type="button" className="ipo-gallery-modal__nav ipo-gallery-modal__nav--prev" onClick={showPreviousGalleryImage} aria-label="Previous image">
-                                <ChevronLeft aria-hidden="true" />
-                            </button>
-                            {galleryImageFailed ? (
-                                <div className="drive-preview-modal__empty">
-                                    <ImageIcon aria-hidden="true" />
-                                    <p>This image could not be loaded in 4KIS.</p>
-                                    {selectedGalleryFile.web_view_link && (
-                                        <a className="btn btn-secondary" href={selectedGalleryFile.web_view_link} target="_blank" rel="noreferrer">
-                                            <ExternalLink aria-hidden="true" />
-                                            Open in Drive
-                                        </a>
-                                    )}
-                                </div>
-                            ) : (
-                                <img
-                                    src={getSubprojectDriveImageUrl(selectedGalleryFile, 1600)}
-                                    alt={selectedGalleryFile.file_name}
-                                    onError={() => setGalleryImageFailed(true)}
-                                />
-                            )}
-                            <button type="button" className="ipo-gallery-modal__nav ipo-gallery-modal__nav--next" onClick={showNextGalleryImage} aria-label="Next image">
-                                <ChevronRight aria-hidden="true" />
                             </button>
                         </div>
                     </div>
@@ -2493,129 +2360,39 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     </CollapsibleDetailCard>
 
                     <CollapsibleDetailCard title="Gallery" isOpen={expandedSections.gallery} onToggle={() => toggleSection('gallery')}>
-                        {galleryFiles.length > 0 ? (
-                            <div className="ipo-gallery-grid">
-                                {galleryFiles.map((file, index) => (
-                                    <button
-                                        key={file.id}
-                                        type="button"
-                                        className="ipo-gallery-tile"
-                                        onClick={() => setGalleryIndex(index)}
-                                        title={`Preview ${file.file_name}`}
-                                    >
-                                        <img
-                                            src={getSubprojectDriveImageUrl(file, 420)}
-                                            alt={file.file_name}
-                                            loading="lazy"
-                                            onError={(event) => {
-                                                event.currentTarget.style.display = 'none';
-                                            }}
-                                        />
-                                        <span className="ipo-gallery-tile__fallback">
-                                            <ImageIcon aria-hidden="true" />
-                                        </span>
-                                        <span className="ipo-gallery-tile__caption">{file.file_name}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="detail-empty">No image files have been uploaded for this subproject yet.</p>
-                        )}
+                        <EntityGallery
+                            storageKey="subproject"
+                            files={galleryFiles}
+                            isLoading={isDriveLoading}
+                            canEdit={canEdit}
+                            canDelete={canDeleteDriveFiles}
+                            isConnected={!!driveStatus?.isConnected}
+                            getImageUrl={getSubprojectDriveImageUrl}
+                            uploadFile={uploadDriveFile}
+                            updateMetadata={(file, name, imageCaption) => updateSubprojectDriveFileMetadata(currentUser, file.id, name, imageCaption)}
+                            onFileAdded={file => setDriveFiles(current => [file, ...current])}
+                            onFileUpdated={file => setDriveFiles(current => current.map(item => item.id === file.id ? file : item))}
+                            onRequestDelete={requestDriveFileDelete}
+                            onRefresh={loadDriveFiles}
+                            onMessage={(message) => setDriveMessage(message)}
+                        />
                     </CollapsibleDetailCard>
 
                     <CollapsibleDetailCard title="Subproject Files" isOpen={expandedSections.files} onToggle={() => toggleSection('files')}>
-                        <div className="drive-file-card__header">
-                            <div>
-                                <p className="drive-file-card__copy">PDF and image documentation is stored by upload year under this subproject's Google Drive folder.</p>
-                            </div>
-                            <span className={`status-badge ${driveStatus?.isConnected ? 'status-badge--completed' : driveStatus?.tokenStatus === 'expired' ? 'status-badge--cancelled' : 'status-badge--neutral'}`}>
-                                <HardDrive aria-hidden="true" />
-                                {driveStatus?.isConnected ? 'Drive connected' : driveStatus?.tokenStatus === 'expired' ? 'Reconnect required' : 'Drive not connected'}
-                            </span>
-                        </div>
-
                         {driveMessage && <p className="drive-file-card__message" role="status">{driveMessage}</p>}
-
-                        <div className="drive-file-card__toolbar">
-                            <label
-                                htmlFor={`subproject-drive-upload-${subproject.id}`}
-                                className={`btn btn-primary ${(!canEdit || !driveStatus?.isConnected || isDriveUploading) ? 'is-disabled' : 'cursor-pointer'}`}
-                                title={!driveStatus?.isConnected ? 'Ask an Admin to reconnect Google Drive storage' : 'Upload Subproject file'}
-                            >
-                                {isDriveUploading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
-                                {isDriveUploading ? 'Uploading...' : 'Upload File'}
-                            </label>
-                            <input
-                                id={`subproject-drive-upload-${subproject.id}`}
-                                type="file"
-                                className="hidden"
-                                accept={SUBPROJECT_DRIVE_FILE_ACCEPT}
-                                onChange={handleDriveFileUpload}
-                                disabled={!canEdit || !driveStatus?.isConnected || isDriveUploading}
-                            />
-                            <button type="button" className="btn btn-secondary" onClick={loadDriveFiles} disabled={isDriveLoading || isDriveUploading}>
-                                {isDriveLoading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <HardDrive aria-hidden="true" />}
-                                Refresh
-                            </button>
-                        </div>
-
-                        {isDriveLoading ? (
-                            <div className="drive-file-card__loading">
-                                <Loader2 className="animate-spin" aria-hidden="true" />
-                                <span>Loading Subproject files...</span>
-                            </div>
-                        ) : driveFiles.length > 0 ? (
-                            <ul className="detail-list">
-                                {driveFiles.map(file => (
-                                    <li key={file.id} className="detail-list-item drive-file-card__item">
-                                        <div className="drive-file-card__file">
-                                            <FileText aria-hidden="true" />
-                                            <div className="min-w-0">
-                                                <p className="detail-list-title">{file.file_name}</p>
-                                                <p className="detail-list-copy">
-                                                    {formatFileSize(file.file_size)} - Uploaded by {file.uploaded_by_name || 'Unknown user'} - {formatDate(file.uploaded_at)}
-                                                    {file.folder_year ? ` - ${file.folder_year}` : ''}
-                                                </p>
-                                                <p className="detail-list-copy">
-                                                    Subprojects / {file.folder_year || 'Year'} / {file.operating_unit || 'Operating Unit'} / {file.ipo_name || 'IPO'} / {file.subproject_name || 'Subproject'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="drive-file-card__actions">
-                                            {canPreviewSubprojectDriveFile(file) && (
-                                                <button
-                                                    type="button"
-                                                    className="table-action table-action--primary"
-                                                    onClick={() => setPreviewDriveFile(file)}
-                                                >
-                                                    <Eye aria-hidden="true" />
-                                                    Preview
-                                                </button>
-                                            )}
-                                            {file.web_view_link && (
-                                                <a className="table-action table-action--primary" href={file.web_view_link} target="_blank" rel="noreferrer">
-                                                    <ExternalLink aria-hidden="true" />
-                                                    Open
-                                                </a>
-                                            )}
-                                            {canDeleteDriveFiles && (
-                                                <button
-                                                    type="button"
-                                                    className="table-action table-action--danger"
-                                                    onClick={() => requestDriveFileDelete(file)}
-                                                    disabled={deletingDriveFileId === file.id}
-                                                >
-                                                    {deletingDriveFileId === file.id ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
-                                                    Delete
-                                                </button>
-                                            )}
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : (
-                            <p className="detail-empty">No files have been uploaded for this subproject yet.</p>
-                        )}
+                        <EntityFilesList
+                            files={documentFiles}
+                            isLoading={isDriveLoading}
+                            canEdit={canEdit}
+                            canDelete={canDeleteDriveFiles}
+                            isConnected={!!driveStatus?.isConnected}
+                            uploadFile={uploadDriveFile}
+                            onFileAdded={file => setDriveFiles(current => [file, ...current])}
+                            onRequestDelete={requestDriveFileDelete}
+                            onRefresh={loadDriveFiles}
+                            getFolderPath={file => `Subprojects / ${file.folder_year || 'Year'} / ${file.operating_unit || 'Operating Unit'} / ${file.ipo_name || 'IPO'} / ${file.subproject_name || 'Subproject'}`}
+                            onMessage={(message) => setDriveMessage(message)}
+                        />
                     </CollapsibleDetailCard>
 
                 </div>

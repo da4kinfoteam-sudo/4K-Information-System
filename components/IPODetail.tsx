@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useEffect, FormEvent, useMemo, useCallback } from 'react';
-import { AlertCircle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Edit3, ExternalLink, Eye, FileText, HardDrive, Image as ImageIcon, Loader2, Pencil, Plus, Trash2, UploadCloud, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, ChevronDown, Edit3, ExternalLink, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, Subproject, Training, Commodity, CommodityNeed, referenceCommodityTypes, MarketingPartner, MarketLinkage, LodAssessment } from '../constants';
 import { formatMarketQuantityTotals, getIpoMarketSalesRows, summarizeIpoMarketSales } from '../lib/marketSalesAggregation';
 import LocationPicker, { parseLocation } from './LocationPicker';
@@ -10,20 +10,18 @@ import { useUserAccess, usePagination } from './mainfunctions/TableHooks';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
 import {
-    canPreviewIpoDriveFile,
     deleteIpoDriveFile,
     formatFileSize,
     getGoogleDriveStatus,
-    getIpoDrivePreviewUrl,
     getIpoDriveImageUrl,
     GoogleDriveStatus,
-    IPO_DRIVE_FILE_ACCEPT,
     IpoDriveFile,
-    isIpoDriveImageFile,
-    isAllowedIpoDriveFile,
     listIpoDriveFiles,
-    uploadIpoDriveFile
+    uploadIpoDriveFile,
+    updateIpoDriveFileMetadata,
+    DriveUploadSection
 } from '../lib/googleDriveStorage';
+import { EntityFilesList, EntityGallery, getPersistedDriveUploadSection } from './ui/DriveMediaSections';
 
 
 interface IPODetailProps {
@@ -278,13 +276,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
     const [driveStatus, setDriveStatus] = useState<GoogleDriveStatus | null>(null);
     const [driveFiles, setDriveFiles] = useState<IpoDriveFile[]>([]);
     const [isDriveLoading, setIsDriveLoading] = useState(true);
-    const [isDriveUploading, setIsDriveUploading] = useState(false);
     const [deletingDriveFileId, setDeletingDriveFileId] = useState<number | null>(null);
-    const [previewDriveFile, setPreviewDriveFile] = useState<IpoDriveFile | null>(null);
     const [driveFilePendingDelete, setDriveFilePendingDelete] = useState<IpoDriveFile | null>(null);
     const [driveToast, setDriveToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-    const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
-    const [galleryImageFailed, setGalleryImageFailed] = useState(false);
     const [expandedSections, setExpandedSections] = useState<Record<IpoDetailSectionKey, boolean>>({
         subprojects: false,
         trainings: false,
@@ -449,34 +443,16 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
         loadDriveFiles();
     }, [ipo.id, currentUser?.id]);
 
-    const handleDriveFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        event.target.value = '';
-        if (!file) return;
-        if (!isAllowedIpoDriveFile(file)) {
-            showDriveToast('error', 'Only PDF and image files are allowed. Please upload a PDF, PNG, JPG, WEBP, or GIF file.');
-            return;
-        }
+    const uploadDriveFile = async (file: File, uploadSection: DriveUploadSection) => {
         if (!canEdit) {
-            showDriveToast('error', 'You do not have permission to upload IPO files.');
-            return;
+            throw new Error('You do not have permission to upload IPO files.');
         }
         if (!driveStatus?.isConnected) {
-            showDriveToast('error', driveStatus?.connectionMessage || 'Ask an Admin to reconnect Google Drive storage.');
-            return;
+            throw new Error(driveStatus?.connectionMessage || 'Ask an Admin to reconnect Google Drive storage.');
         }
-
-        setIsDriveUploading(true);
-        try {
-            const uploaded = await uploadIpoDriveFile(currentUser, ipo.id, file);
-            setDriveFiles(prev => [uploaded, ...prev]);
-            showDriveToast('success', `${uploaded.file_name} uploaded successfully.`);
-            refreshHistory();
-        } catch (error: any) {
-            showDriveToast('error', error.message || 'Unable to upload IPO file.');
-        } finally {
-            setIsDriveUploading(false);
-        }
+        const uploaded = await uploadIpoDriveFile(currentUser, ipo.id, file, uploadSection);
+        refreshHistory();
+        return uploaded;
     };
 
     const requestDriveFileDelete = (file: IpoDriveFile) => {
@@ -558,28 +534,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
         histPagination.setItemsPerPage(5);
     }, []);
 
-    const galleryFiles = useMemo(() => driveFiles.filter(isIpoDriveImageFile), [driveFiles]);
-    const selectedGalleryFile = galleryIndex !== null ? galleryFiles[galleryIndex] : null;
-
-    useEffect(() => {
-        if (galleryIndex !== null && galleryIndex >= galleryFiles.length) {
-            setGalleryIndex(galleryFiles.length > 0 ? galleryFiles.length - 1 : null);
-        }
-    }, [galleryFiles.length, galleryIndex]);
-
-    useEffect(() => {
-        setGalleryImageFailed(false);
-    }, [galleryIndex]);
-
-    const showPreviousGalleryImage = () => {
-        if (galleryFiles.length === 0) return;
-        setGalleryIndex(current => current === null ? 0 : (current - 1 + galleryFiles.length) % galleryFiles.length);
-    };
-
-    const showNextGalleryImage = () => {
-        if (galleryFiles.length === 0) return;
-        setGalleryIndex(current => current === null ? 0 : (current + 1) % galleryFiles.length);
-    };
+    const galleryFiles = useMemo(() => driveFiles.filter(file => getPersistedDriveUploadSection(file) === 'gallery'), [driveFiles]);
+    const documentFiles = useMemo(() => driveFiles.filter(file => getPersistedDriveUploadSection(file) === 'files'), [driveFiles]);
 
     // Unique Years for Filters
     const spYears = useMemo(() => Array.from(new Set((subprojects || []).map(s => s.fundingYear))).filter(Boolean).sort().reverse(), [subprojects]);
@@ -1143,47 +1099,6 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                     </button>
                 </div>
             )}
-            {previewDriveFile && (
-                <div className="dashboard-modal-backdrop" onClick={() => setPreviewDriveFile(null)}>
-                    <div className="dashboard-modal dashboard-modal--wide drive-preview-modal" onClick={e => e.stopPropagation()}>
-                        <div className="dashboard-modal__header">
-                            <div>
-                                <h3>{previewDriveFile.file_name}</h3>
-                                <p className="dashboard-modal__metric-subtext">
-                                    {formatFileSize(previewDriveFile.file_size)} - {previewDriveFile.mime_type || 'File preview'}
-                                </p>
-                            </div>
-                            <button type="button" onClick={() => setPreviewDriveFile(null)} className="dashboard-modal__close" aria-label="Close preview">
-                                <X aria-hidden="true" />
-                            </button>
-                        </div>
-                        <div className="drive-preview-modal__body">
-                            {canPreviewIpoDriveFile(previewDriveFile) ? (
-                                <iframe
-                                    src={getIpoDrivePreviewUrl(previewDriveFile)}
-                                    title={`Preview ${previewDriveFile.file_name}`}
-                                    className="drive-preview-modal__frame"
-                                    allow="autoplay"
-                                />
-                            ) : (
-                                <div className="drive-preview-modal__empty">
-                                    <FileText aria-hidden="true" />
-                                    <p>This file type cannot be previewed in 4KIS.</p>
-                                </div>
-                            )}
-                        </div>
-                        <div className="drive-preview-modal__footer">
-                            <p>If the preview does not load, open the file directly in Google Drive.</p>
-                            {previewDriveFile.web_view_link && (
-                                <a className="btn btn-secondary" href={previewDriveFile.web_view_link} target="_blank" rel="noreferrer">
-                                    <ExternalLink aria-hidden="true" />
-                                    Open in Drive
-                                </a>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
             {driveFilePendingDelete && (
                 <div className="dashboard-modal-backdrop" onClick={() => !deletingDriveFileId && setDriveFilePendingDelete(null)}>
                     <div className="dashboard-modal dashboard-modal--compact" onClick={e => e.stopPropagation()}>
@@ -1208,49 +1123,6 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                             <button type="button" className="btn btn-danger" onClick={handleDriveFileDelete} disabled={!!deletingDriveFileId}>
                                 {deletingDriveFileId ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
                                 Delete File
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {selectedGalleryFile && (
-                <div className="dashboard-modal-backdrop" onClick={() => setGalleryIndex(null)}>
-                    <div className="dashboard-modal dashboard-modal--wide ipo-gallery-modal" onClick={e => e.stopPropagation()}>
-                        <div className="dashboard-modal__header">
-                            <div>
-                                <h3>{selectedGalleryFile.file_name}</h3>
-                                <p className="dashboard-modal__metric-subtext">
-                                    {galleryIndex !== null ? `${galleryIndex + 1} of ${galleryFiles.length}` : 'Image preview'}
-                                </p>
-                            </div>
-                            <button type="button" onClick={() => setGalleryIndex(null)} className="dashboard-modal__close" aria-label="Close gallery">
-                                <X aria-hidden="true" />
-                            </button>
-                        </div>
-                        <div className="ipo-gallery-modal__body">
-                            <button type="button" className="ipo-gallery-modal__nav ipo-gallery-modal__nav--prev" onClick={showPreviousGalleryImage} aria-label="Previous image">
-                                <ChevronLeft aria-hidden="true" />
-                            </button>
-                            {galleryImageFailed ? (
-                                <div className="drive-preview-modal__empty">
-                                    <ImageIcon aria-hidden="true" />
-                                    <p>This image preview could not be loaded inside 4KIS.</p>
-                                    {selectedGalleryFile.web_view_link && (
-                                        <a className="btn btn-secondary" href={selectedGalleryFile.web_view_link} target="_blank" rel="noreferrer">
-                                            <ExternalLink aria-hidden="true" />
-                                            Open in Drive
-                                        </a>
-                                    )}
-                                </div>
-                            ) : (
-                                <img
-                                    src={getIpoDriveImageUrl(selectedGalleryFile, 1600)}
-                                    alt={selectedGalleryFile.file_name}
-                                    onError={() => setGalleryImageFailed(true)}
-                                />
-                            )}
-                            <button type="button" className="ipo-gallery-modal__nav ipo-gallery-modal__nav--next" onClick={showNextGalleryImage} aria-label="Next image">
-                                <ChevronRight aria-hidden="true" />
                             </button>
                         </div>
                     </div>
@@ -1712,117 +1584,39 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
 
                     {/* Gallery Card */}
                     <CollapsibleDetailCard title="Gallery" isOpen={expandedSections.gallery} onToggle={() => toggleSection('gallery')}>
-                        {galleryFiles.length > 0 ? (
-                            <div className="ipo-gallery-grid">
-                                {galleryFiles.map((file, index) => (
-                                    <button
-                                        key={file.id}
-                                        type="button"
-                                        className="ipo-gallery-tile"
-                                        onClick={() => setGalleryIndex(index)}
-                                        title={`Preview ${file.file_name}`}
-                                    >
-                                        <img
-                                            src={getIpoDriveImageUrl(file, 420)}
-                                            alt={file.file_name}
-                                            loading="lazy"
-                                            onError={(event) => {
-                                                event.currentTarget.style.display = 'none';
-                                            }}
-                                        />
-                                        <span className="ipo-gallery-tile__fallback">
-                                            <ImageIcon aria-hidden="true" />
-                                        </span>
-                                        <span className="ipo-gallery-tile__caption">{file.file_name}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="detail-empty">No image files have been uploaded for this IPO yet.</p>
-                        )}
+                        <EntityGallery
+                            storageKey="ipo"
+                            files={galleryFiles}
+                            isLoading={isDriveLoading}
+                            canEdit={canEdit}
+                            canDelete={canDeleteDriveFiles}
+                            isConnected={!!driveStatus?.isConnected}
+                            getImageUrl={getIpoDriveImageUrl}
+                            uploadFile={uploadDriveFile}
+                            updateMetadata={(file, name, imageCaption) => updateIpoDriveFileMetadata(currentUser, file.id, name, imageCaption)}
+                            onFileAdded={file => setDriveFiles(current => [file, ...current])}
+                            onFileUpdated={file => setDriveFiles(current => current.map(item => item.id === file.id ? file : item))}
+                            onRequestDelete={requestDriveFileDelete}
+                            onRefresh={loadDriveFiles}
+                            onMessage={(message, hasErrors) => showDriveToast(hasErrors ? 'error' : 'success', message)}
+                        />
                     </CollapsibleDetailCard>
 
                     {/* IPO Files Card */}
                     <CollapsibleDetailCard title="IPO Files" isOpen={expandedSections.files} onToggle={() => toggleSection('files')}>
-                        <div className="drive-file-card__toolbar">
-                            <label
-                                htmlFor={`ipo-drive-upload-${ipo.id}`}
-                                className={`btn btn-primary ${(!canEdit || !driveStatus?.isConnected || isDriveUploading) ? 'is-disabled' : 'cursor-pointer'}`}
-                                title={!driveStatus?.isConnected ? 'Ask an Admin to reconnect Google Drive storage' : 'Upload IPO file'}
-                                aria-label={!driveStatus?.isConnected ? 'Ask an Admin to reconnect Google Drive storage' : 'Upload IPO file'}
-                            >
-                                {isDriveUploading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
-                                {isDriveUploading ? 'Uploading...' : 'Upload File'}
-                            </label>
-                            <input
-                                id={`ipo-drive-upload-${ipo.id}`}
-                                type="file"
-                                className="hidden"
-                                accept={IPO_DRIVE_FILE_ACCEPT}
-                                onChange={handleDriveFileUpload}
-                                disabled={!canEdit || !driveStatus?.isConnected || isDriveUploading}
-                            />
-                            <button type="button" className="btn btn-secondary" onClick={loadDriveFiles} disabled={isDriveLoading || isDriveUploading} title="Refresh IPO files" aria-label="Refresh IPO files">
-                                {isDriveLoading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <HardDrive aria-hidden="true" />}
-                                Refresh
-                            </button>
-                        </div>
-
-                        {isDriveLoading ? (
-                            <div className="drive-file-card__loading">
-                                <Loader2 className="animate-spin" aria-hidden="true" />
-                                <span>Loading IPO files...</span>
-                            </div>
-                        ) : driveFiles.length > 0 ? (
-                            <ul className="detail-list">
-                                {driveFiles.map(file => (
-                                    <li key={file.id} className="detail-list-item drive-file-card__item">
-                                        <div className="drive-file-card__file">
-                                            <FileText aria-hidden="true" />
-                                            <div className="min-w-0">
-                                                <p className="detail-list-title">{file.file_name}</p>
-                                                <p className="detail-list-copy">
-                                                    {formatFileSize(file.file_size)} - Uploaded by {file.uploaded_by_name || 'Unknown user'} - {formatDate(file.uploaded_at)}
-                                                    {file.folder_year ? ` - ${file.folder_year}` : ''}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="drive-file-card__actions">
-                                            {canPreviewIpoDriveFile(file) && (
-                                                <button
-                                                    type="button"
-                                                    className="table-action table-action--primary table-action--icon"
-                                                    onClick={() => setPreviewDriveFile(file)}
-                                                    title={`Preview ${file.file_name}`}
-                                                    aria-label={`Preview ${file.file_name}`}
-                                                >
-                                                    <Eye aria-hidden="true" />
-                                                </button>
-                                            )}
-                                            {file.web_view_link && (
-                                                <a className="table-action table-action--primary table-action--icon" href={file.web_view_link} target="_blank" rel="noreferrer" title={`Open ${file.file_name} in Drive`} aria-label={`Open ${file.file_name} in Drive`}>
-                                                    <ExternalLink aria-hidden="true" />
-                                                </a>
-                                            )}
-                                            {canDeleteDriveFiles && (
-                                                <button
-                                                    type="button"
-                                                    className="table-action table-action--danger table-action--icon"
-                                                    onClick={() => requestDriveFileDelete(file)}
-                                                    disabled={deletingDriveFileId === file.id}
-                                                    title={`Delete ${file.file_name}`}
-                                                    aria-label={`Delete ${file.file_name}`}
-                                                >
-                                                    {deletingDriveFileId === file.id ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
-                                                </button>
-                                            )}
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : (
-                            <p className="detail-empty">No files have been uploaded for this IPO yet.</p>
-                        )}
+                        <EntityFilesList
+                            files={documentFiles}
+                            isLoading={isDriveLoading}
+                            canEdit={canEdit}
+                            canDelete={canDeleteDriveFiles}
+                            isConnected={!!driveStatus?.isConnected}
+                            uploadFile={uploadDriveFile}
+                            onFileAdded={file => setDriveFiles(current => [file, ...current])}
+                            onRequestDelete={requestDriveFileDelete}
+                            onRefresh={loadDriveFiles}
+                            getFolderPath={file => `IPO Management / ${file.folder_year || 'Year'} / ${file.operating_unit || 'Operating Unit'} / ${ipo.name}`}
+                            onMessage={(message, hasErrors) => showDriveToast(hasErrors ? 'error' : 'success', message)}
+                        />
                     </CollapsibleDetailCard>
 
                     {/* History Card */}

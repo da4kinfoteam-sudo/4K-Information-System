@@ -1,6 +1,6 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, ChevronDown, Edit3, ExternalLink, Eye, FileText, HardDrive, Image as ImageIcon, Loader2, Plus, Trash2, UploadCloud, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ChevronDown, Edit3, Eye, Loader2, Plus, Trash2, X } from 'lucide-react';
 import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, ReferenceActivity } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
@@ -9,20 +9,18 @@ import { getBudgetLineAmount, getBudgetLineTag, isBudgetLineExcludedFromTargets 
 import { getActualDisbursementSummary, getActualObligationSummary } from '../lib/financialActualSummary';
 import { supabase } from '../supabaseClient';
 import {
-    ACTIVITY_DRIVE_FILE_ACCEPT,
     ActivityDriveFile,
-    canPreviewActivityDriveFile,
     deleteActivityDriveFile,
     formatFileSize,
     getActivityDriveImageUrl,
-    getActivityDrivePreviewUrl,
     getGoogleDriveStatus,
     GoogleDriveStatus,
-    isActivityDriveImageFile,
-    isAllowedActivityDriveFile,
     listActivityDriveFiles,
-    uploadActivityDriveFile
+    uploadActivityDriveFile,
+    updateActivityDriveFileMetadata,
+    DriveUploadSection
 } from '../lib/googleDriveStorage';
+import { EntityFilesList, EntityGallery, getPersistedDriveUploadSection } from './ui/DriveMediaSections';
 
 interface ActivityDetailProps {
     activity: Activity;
@@ -116,13 +114,9 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     const [driveStatus, setDriveStatus] = useState<GoogleDriveStatus | null>(null);
     const [driveFiles, setDriveFiles] = useState<ActivityDriveFile[]>([]);
     const [isDriveLoading, setIsDriveLoading] = useState(true);
-    const [isDriveUploading, setIsDriveUploading] = useState(false);
     const [deletingDriveFileId, setDeletingDriveFileId] = useState<number | null>(null);
     const [driveMessage, setDriveMessage] = useState<string | null>(null);
-    const [previewDriveFile, setPreviewDriveFile] = useState<ActivityDriveFile | null>(null);
     const [driveFilePendingDelete, setDriveFilePendingDelete] = useState<ActivityDriveFile | null>(null);
-    const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
-    const [galleryImageFailed, setGalleryImageFailed] = useState(false);
     const [expandedSections, setExpandedSections] = useState<Record<ActivityDetailSectionKey, boolean>>({
         monitoring: true,
         gallery: false,
@@ -336,43 +330,20 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
         loadMonitoringReports();
     }, [loadMonitoringReports]);
 
-    const handleDriveFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        event.target.value = '';
-        if (!file) return;
-
-        if (!isAllowedActivityDriveFile(file)) {
-            setDriveMessage('Only PDF and image files are allowed. Please upload a PDF, PNG, JPG, WEBP, or GIF file.');
-            return;
-        }
+    const uploadDriveFile = async (file: File, uploadSection: DriveUploadSection) => {
         if (!canEdit) {
-            setDriveMessage('You do not have permission to upload Activity files.');
-            return;
+            throw new Error('You do not have permission to upload Activity files.');
         }
         if (!driveStatus?.isConnected) {
-            setDriveMessage(driveStatus?.connectionMessage || 'Ask an Admin to reconnect Google Drive storage.');
-            return;
+            throw new Error(driveStatus?.connectionMessage || 'Ask an Admin to reconnect Google Drive storage.');
         }
         if (!activity.operatingUnit) {
-            setDriveMessage('This activity needs an operating unit before files can be uploaded.');
-            return;
+            throw new Error('This activity needs an operating unit before files can be uploaded.');
         }
         if (!activity.component) {
-            setDriveMessage('This activity needs a component before files can be uploaded.');
-            return;
+            throw new Error('This activity needs a component before files can be uploaded.');
         }
-
-        setIsDriveUploading(true);
-        setDriveMessage(null);
-        try {
-            const uploaded = await uploadActivityDriveFile(currentUser, activity.id, file);
-            setDriveFiles(prev => [uploaded, ...prev]);
-            setDriveMessage(`${uploaded.file_name} uploaded successfully.`);
-        } catch (error: any) {
-            setDriveMessage(error.message || 'Unable to upload Activity file.');
-        } finally {
-            setIsDriveUploading(false);
-        }
+        return uploadActivityDriveFile(currentUser, activity.id, file, uploadSection);
     };
 
     const requestDriveFileDelete = (file: ActivityDriveFile) => {
@@ -397,58 +368,11 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
         }
     };
 
-    const galleryFiles = useMemo(() => driveFiles.filter(isActivityDriveImageFile), [driveFiles]);
-    const selectedGalleryFile = galleryIndex !== null ? galleryFiles[galleryIndex] : null;
-
-    useEffect(() => {
-        if (galleryIndex !== null && galleryIndex >= galleryFiles.length) {
-            setGalleryIndex(galleryFiles.length > 0 ? galleryFiles.length - 1 : null);
-        }
-    }, [galleryFiles.length, galleryIndex]);
-
-    useEffect(() => {
-        setGalleryImageFailed(false);
-    }, [galleryIndex]);
+    const galleryFiles = useMemo(() => driveFiles.filter(file => getPersistedDriveUploadSection(file) === 'gallery'), [driveFiles]);
+    const documentFiles = useMemo(() => driveFiles.filter(file => getPersistedDriveUploadSection(file) === 'files'), [driveFiles]);
 
     return (
         <div className="detail-page animate-fadeIn">
-            {previewDriveFile && (
-                <div className="dashboard-modal-backdrop animate-fadeIn" onClick={() => setPreviewDriveFile(null)}>
-                    <div className="dashboard-modal dashboard-modal--wide drive-preview-modal" onClick={e => e.stopPropagation()}>
-                        <div className="dashboard-modal__header">
-                            <h3>{previewDriveFile.file_name}</h3>
-                            <button type="button" className="dashboard-modal__close" onClick={() => setPreviewDriveFile(null)} aria-label="Close preview">
-                                <X aria-hidden="true" />
-                            </button>
-                        </div>
-                        <div className="drive-preview-modal__body">
-                            {canPreviewActivityDriveFile(previewDriveFile) ? (
-                                <iframe
-                                    title={previewDriveFile.file_name}
-                                    src={getActivityDrivePreviewUrl(previewDriveFile)}
-                                    className="drive-preview-modal__frame"
-                                    allow="autoplay"
-                                />
-                            ) : (
-                                <div className="drive-preview-modal__empty">
-                                    <FileText aria-hidden="true" />
-                                    <p>Preview is not available for this file.</p>
-                                </div>
-                            )}
-                        </div>
-                        <div className="drive-preview-modal__footer">
-                            <p>If the preview does not load, open the file directly in Google Drive.</p>
-                            {previewDriveFile.web_view_link && (
-                                <a className="btn btn-primary" href={previewDriveFile.web_view_link} target="_blank" rel="noreferrer">
-                                    <ExternalLink aria-hidden="true" />
-                                    Open in Drive
-                                </a>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {driveFilePendingDelete && (
                 <div className="dashboard-modal-backdrop animate-fadeIn" onClick={() => !deletingDriveFileId && setDriveFilePendingDelete(null)}>
                     <div className="dashboard-modal dashboard-modal--compact" onClick={e => e.stopPropagation()}>
@@ -474,34 +398,6 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                 {deletingDriveFileId ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
                                 Delete File
                             </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {selectedGalleryFile && (
-                <div className="dashboard-modal-backdrop animate-fadeIn" onClick={() => setGalleryIndex(null)}>
-                    <div className="dashboard-modal dashboard-modal--wide drive-preview-modal" onClick={e => e.stopPropagation()}>
-                        <div className="dashboard-modal__header">
-                            <h3>{selectedGalleryFile.file_name}</h3>
-                            <button type="button" className="dashboard-modal__close" onClick={() => setGalleryIndex(null)} aria-label="Close gallery">
-                                <X aria-hidden="true" />
-                            </button>
-                        </div>
-                        <div className="drive-preview-modal__body">
-                            {!galleryImageFailed ? (
-                                <img
-                                    src={getActivityDriveImageUrl(selectedGalleryFile, 1400)}
-                                    alt={selectedGalleryFile.file_name}
-                                    className="max-h-[72vh] max-w-full rounded-lg object-contain"
-                                    onError={() => setGalleryImageFailed(true)}
-                                />
-                            ) : (
-                                <div className="drive-preview-modal__empty">
-                                    <ImageIcon aria-hidden="true" />
-                                    <p>Image preview is not available.</p>
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>
@@ -832,129 +728,39 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                     )}
 
                     <CollapsibleDetailCard title="Gallery" isOpen={expandedSections.gallery} onToggle={() => toggleSection('gallery')}>
-                        {galleryFiles.length > 0 ? (
-                            <div className="ipo-gallery-grid">
-                                {galleryFiles.map((file, index) => (
-                                    <button
-                                        key={file.id}
-                                        type="button"
-                                        className="ipo-gallery-tile"
-                                        onClick={() => setGalleryIndex(index)}
-                                        title={`Preview ${file.file_name}`}
-                                    >
-                                        <img
-                                            src={getActivityDriveImageUrl(file, 420)}
-                                            alt={file.file_name}
-                                            loading="lazy"
-                                            onError={(event) => {
-                                                event.currentTarget.style.display = 'none';
-                                            }}
-                                        />
-                                        <span className="ipo-gallery-tile__fallback">
-                                            <ImageIcon aria-hidden="true" />
-                                        </span>
-                                        <span className="ipo-gallery-tile__caption">{file.file_name}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="detail-empty">No image files have been uploaded for this activity yet.</p>
-                        )}
+                        <EntityGallery
+                            storageKey="activity"
+                            files={galleryFiles}
+                            isLoading={isDriveLoading}
+                            canEdit={canEdit}
+                            canDelete={canDeleteDriveFiles}
+                            isConnected={!!driveStatus?.isConnected}
+                            getImageUrl={getActivityDriveImageUrl}
+                            uploadFile={uploadDriveFile}
+                            updateMetadata={(file, name, imageCaption) => updateActivityDriveFileMetadata(currentUser, file.id, name, imageCaption)}
+                            onFileAdded={file => setDriveFiles(current => [file, ...current])}
+                            onFileUpdated={file => setDriveFiles(current => current.map(item => item.id === file.id ? file : item))}
+                            onRequestDelete={requestDriveFileDelete}
+                            onRefresh={loadDriveFiles}
+                            onMessage={(message) => setDriveMessage(message)}
+                        />
                     </CollapsibleDetailCard>
 
                     <CollapsibleDetailCard title="Activity Files" isOpen={expandedSections.files} onToggle={() => toggleSection('files')}>
-                        <div className="drive-file-card__header">
-                            <div>
-                                <p className="drive-file-card__copy">PDF and image documentation is stored by upload year under this activity's Google Drive folder.</p>
-                            </div>
-                            <span className={`status-badge ${driveStatus?.isConnected ? 'status-badge--completed' : driveStatus?.tokenStatus === 'expired' ? 'status-badge--cancelled' : 'status-badge--neutral'}`}>
-                                <HardDrive aria-hidden="true" />
-                                {driveStatus?.isConnected ? 'Drive connected' : driveStatus?.tokenStatus === 'expired' ? 'Reconnect required' : 'Drive not connected'}
-                            </span>
-                        </div>
-
                         {driveMessage && <p className="drive-file-card__message" role="status">{driveMessage}</p>}
-
-                        <div className="drive-file-card__toolbar">
-                            <label
-                                htmlFor={`activity-drive-upload-${activity.id}`}
-                                className={`btn btn-primary ${(!canEdit || !driveStatus?.isConnected || isDriveUploading) ? 'is-disabled' : 'cursor-pointer'}`}
-                                title={!driveStatus?.isConnected ? 'Ask an Admin to reconnect Google Drive storage' : 'Upload Activity file'}
-                            >
-                                {isDriveUploading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
-                                {isDriveUploading ? 'Uploading...' : 'Upload File'}
-                            </label>
-                            <input
-                                id={`activity-drive-upload-${activity.id}`}
-                                type="file"
-                                className="hidden"
-                                accept={ACTIVITY_DRIVE_FILE_ACCEPT}
-                                onChange={handleDriveFileUpload}
-                                disabled={!canEdit || !driveStatus?.isConnected || isDriveUploading}
-                            />
-                            <button type="button" className="btn btn-secondary" onClick={loadDriveFiles} disabled={isDriveLoading || isDriveUploading}>
-                                {isDriveLoading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <HardDrive aria-hidden="true" />}
-                                Refresh
-                            </button>
-                        </div>
-
-                        {isDriveLoading ? (
-                            <div className="drive-file-card__loading">
-                                <Loader2 className="animate-spin" aria-hidden="true" />
-                                <span>Loading Activity files...</span>
-                            </div>
-                        ) : driveFiles.length > 0 ? (
-                            <ul className="detail-list">
-                                {driveFiles.map(file => (
-                                    <li key={file.id} className="detail-list-item drive-file-card__item">
-                                        <div className="drive-file-card__file">
-                                            <FileText aria-hidden="true" />
-                                            <div className="min-w-0">
-                                                <p className="detail-list-title">{file.file_name}</p>
-                                                <p className="detail-list-copy">
-                                                    {formatFileSize(file.file_size)} - Uploaded by {file.uploaded_by_name || 'Unknown user'} - {formatDate(file.uploaded_at)}
-                                                    {file.folder_year ? ` - ${file.folder_year}` : ''}
-                                                </p>
-                                                <p className="detail-list-copy">
-                                                    Activities / {file.folder_year || 'Year'} / {file.operating_unit || 'Operating Unit'} / {file.component || 'Component'} / {file.activity_name || 'Activity'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="drive-file-card__actions">
-                                            {canPreviewActivityDriveFile(file) && (
-                                                <button
-                                                    type="button"
-                                                    className="table-action table-action--primary"
-                                                    onClick={() => setPreviewDriveFile(file)}
-                                                >
-                                                    <Eye aria-hidden="true" />
-                                                    Preview
-                                                </button>
-                                            )}
-                                            {file.web_view_link && (
-                                                <a className="table-action table-action--primary" href={file.web_view_link} target="_blank" rel="noreferrer">
-                                                    <ExternalLink aria-hidden="true" />
-                                                    Open
-                                                </a>
-                                            )}
-                                            {canDeleteDriveFiles && (
-                                                <button
-                                                    type="button"
-                                                    className="table-action table-action--danger"
-                                                    onClick={() => requestDriveFileDelete(file)}
-                                                    disabled={deletingDriveFileId === file.id}
-                                                >
-                                                    {deletingDriveFileId === file.id ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
-                                                    Delete
-                                                </button>
-                                            )}
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : (
-                            <p className="detail-empty">No files have been uploaded for this activity yet.</p>
-                        )}
+                        <EntityFilesList
+                            files={documentFiles}
+                            isLoading={isDriveLoading}
+                            canEdit={canEdit}
+                            canDelete={canDeleteDriveFiles}
+                            isConnected={!!driveStatus?.isConnected}
+                            uploadFile={uploadDriveFile}
+                            onFileAdded={file => setDriveFiles(current => [file, ...current])}
+                            onRequestDelete={requestDriveFileDelete}
+                            onRefresh={loadDriveFiles}
+                            getFolderPath={file => `Activities / ${file.folder_year || 'Year'} / ${file.operating_unit || 'Operating Unit'} / ${file.component || 'Component'} / ${file.activity_name || 'Activity'}`}
+                            onMessage={(message) => setDriveMessage(message)}
+                        />
                     </CollapsibleDetailCard>
                 </div>
 
