@@ -1,6 +1,6 @@
-
+﻿
 // Author: 4K 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Subproject, IPO, SubprojectDetail, operatingUnits, ouToRegionMap, filterYears } from '../constants';
 import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,8 +10,11 @@ import { downloadSubprojectsReport, downloadSubprojectsTemplate, handleSubprojec
 import useLocalStorageState from '../hooks/useLocalStorageState';
 import { supabase } from '../supabaseClient';
 import type { DataScope } from '../lib/scopedDataFetch';
-import { DcfScopeFilterPanel, DcfScopeFilterToggle, matchesDcfScope, useDcfScopeFilters } from './ui/DcfScopeFilters';
+import { DcfScopeFilterPanel, matchesDcfScope, useDcfScopeFilters } from './ui/DcfScopeFilters';
 import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
+import { ConfirmDialog, DataTablePagination, SortableTableHeader } from './ui/enterprise';
+import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from './ui/MajorDataTable';
+import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -44,149 +47,15 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const FilterIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-    </svg>
-);
-
 const calculateTotalBudget = (details: SubprojectDetail[]) => {
-    return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+    return details.reduce(
+        (total, item) => total + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)),
+        0
+    );
 };
 
 const commonInputClasses = "form-control";
 const DCF_SCOPE_COLUMN_KEYS = new Set(['fundingYear', 'operatingUnit', 'fundType', 'tier']);
-
-// --- COLUMN HEADER COMPONENT WITH FILTER ---
-interface SubprojectColumnHeaderProps {
-    label: string;
-    columnKey: keyof Subproject | 'totalBudget' | 'actualObligated' | 'actualDisbursed' | 'completionRate' | 'commodityTarget';
-    sortConfig: { key: string; direction: 'ascending' | 'descending' } | null;
-    onSort: (key: any, direction: 'ascending' | 'descending') => void;
-    filters: string[];
-    onFilterChange: (values: string[]) => void;
-    uniqueValues: string[];
-    isNumeric?: boolean;
-}
-
-const SubprojectColumnHeader: React.FC<SubprojectColumnHeaderProps> = ({ 
-    label, columnKey, sortConfig, onSort, filters, onFilterChange, uniqueValues, isNumeric 
-}) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
-    const menuRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const filteredValues = (uniqueValues || []).filter(v => v.toLowerCase().includes(searchTerm.toLowerCase()));
-    const isSorted = sortConfig?.key === columnKey;
-    const isFiltered = filters.length > 0;
-
-    const toggleFilter = (value: string) => {
-        if (filters.includes(value)) {
-            onFilterChange(filters.filter(f => f !== value));
-        } else {
-            onFilterChange([...filters, value]);
-        }
-    };
-
-    return (
-        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 relative group select-none whitespace-nowrap">
-            <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsOpen(!isOpen)}>
-                <div className="flex items-center gap-1">
-                    {label}
-                    {isSorted && (
-                        <span className="text-emerald-600 dark:text-emerald-400">
-                            {sortConfig?.direction === 'ascending' ? '▲' : '▼'}
-                        </span>
-                    )}
-                </div>
-                <div className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 ${isFiltered ? 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/50' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`}>
-                    <FilterIcon />
-                </div>
-            </div>
-
-            {isOpen && (
-                <div ref={menuRef} className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 rounded-md shadow-xl border border-gray-200 dark:border-gray-700 z-50 text-sm normal-case font-normal text-gray-700 dark:text-gray-200">
-                    <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-1">
-                        <button 
-                            onClick={() => { onSort(columnKey, 'ascending'); setIsOpen(false); }}
-                            className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
-                        >
-                            <span>▲</span> Sort Ascending
-                        </button>
-                        <button 
-                            onClick={() => { onSort(columnKey, 'descending'); setIsOpen(false); }}
-                            className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
-                        >
-                            <span>▼</span> Sort Descending
-                        </button>
-                    </div>
-
-                    {!isNumeric && (
-                        <>
-                            <div className="p-2">
-                                <input 
-                                    type="text" 
-                                    placeholder={`Search ${label}...`}
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="max-h-48 overflow-y-auto px-2 pb-2 custom-scrollbar">
-                                <label className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={filters.length === 0} 
-                                        onChange={() => onFilterChange([])} 
-                                        className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                                    />
-                                    <span className="truncate italic text-gray-500">(Select All)</span>
-                                </label>
-                                {filteredValues.map(val => (
-                                    <label key={val} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={filters.includes(val)} 
-                                            onChange={() => toggleFilter(val)}
-                                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                                        />
-                                        <span className="truncate" title={val}>{val}</span>
-                                    </label>
-                                ))}
-                            </div>
-                            <div className="p-2 border-t border-gray-200 dark:border-gray-700 flex justify-between">
-                                <button 
-                                    onClick={() => onFilterChange([])}
-                                    className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline"
-                                >
-                                    Clear
-                                </button>
-                                <button 
-                                    onClick={() => setIsOpen(false)}
-                                    className="text-xs px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700"
-                                >
-                                    Done
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </div>
-            )}
-        </th>
-    );
-};
-
 
 const Subprojects: React.FC<SubprojectsProps> = ({ 
     ipos, subprojects, setSubprojects, setIpos, onSelectIpo, onSelectSubproject, 
@@ -194,6 +63,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     onDataScopeChange
 }) => {
     const { currentUser } = useAuth();
+    const tableStoragePrefix = `subprojects_${currentUser?.id || 'anonymous'}`;
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Subprojects');
     const { getDeleteDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
@@ -212,23 +82,24 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     const [isUploading, setIsUploading] = useState(false);
 
     // Filters - Persistent State
-    const [savedSearchTerm, setSavedSearchTerm] = useLocalStorageState('subprojects_searchTerm', '');
+    const [savedSearchTerm, setSavedSearchTerm] = useLocalStorageState(`${tableStoragePrefix}_searchTerm`, '');
     const [searchTerm, setSearchTerm] = useState(savedSearchTerm);
     
     // Column Filters
-    const [savedColumnFilters, setSavedColumnFilters] = useLocalStorageState<Record<string, string[]>>('subprojects_columnFilters', {});
+    const [savedColumnFilters, setSavedColumnFilters] = useLocalStorageState<Record<string, string[]>>(`${tableStoragePrefix}_columnFilters`, {});
     const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>(savedColumnFilters);
+    const [isColumnFilterOpen, setIsColumnFilterOpen] = useState(false);
 
     // Sorting - Persistent State
     type SortKeys = keyof Subproject | 'totalBudget' | 'actualObligated' | 'actualDisbursed' | 'completionRate' | 'commodityTarget';
-    const [sortConfig, setSortConfig] = useLocalStorageState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>('subprojects_sortConfig', { key: 'startDate', direction: 'descending' });
+    const [sortConfig, setSortConfig] = useLocalStorageState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>(`${tableStoragePrefix}_sortConfig`, { key: 'startDate', direction: 'descending' });
     
-    const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const dcfFilters = useDcfScopeFilters({
         storageKey: 'subprojects_dcf_scope',
         moduleName: 'Subprojects',
         onDataScopeChange
     });
+    const applyExternalScope = dcfFilters.applyScope;
 
     useEffect(() => {
         const cleanedFilters = Object.fromEntries(
@@ -245,9 +116,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         if (externalFilters) {
             const newFilters: Record<string, string[]> = {};
             
-            if (externalFilters.year) {
-                newFilters['fundingYear'] = [externalFilters.year];
-            }
+            const scopeUpdates: Parameters<typeof applyExternalScope>[0] = {};
+            if (externalFilters.year) scopeUpdates.selectedYear = externalFilters.year;
             if (externalFilters.region) {
                 // Improved logic: Filter OUs where the mapped region name includes the filter text
                 // This handles "Region 3" vs "Region III" loose matching
@@ -258,9 +128,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                     return mappedRegion.toLowerCase().includes(filterRegionLower);
                 });
 
-                if (targetOUs.length > 0) {
-                    newFilters['operatingUnit'] = targetOUs;
-                }
+                if (targetOUs.length > 0) scopeUpdates.selectedOu = targetOUs[0];
             }
             if (externalFilters.status) {
                 newFilters['status'] = [externalFilters.status];
@@ -273,13 +141,14 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             if (Object.keys(newFilters).length > 0) {
                 setColumnFilters(prev => ({ ...prev, ...newFilters }));
             }
+            if (Object.keys(scopeUpdates).length > 0) applyExternalScope(scopeUpdates);
 
             // Clear the external filters so they don't re-apply on remount
             if (onClearExternalFilters) {
                 onClearExternalFilters();
             }
         }
-    }, [externalFilters, onClearExternalFilters]);
+    }, [applyExternalScope, externalFilters, onClearExternalFilters]);
 
     const initiallyFilteredSubprojects = useMemo(() => {
         let filtered = subprojects.filter(s => matchesDcfScope(s as any, dcfFilters.value, 'fundingYear'));
@@ -391,13 +260,26 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         return filtered;
     }, [initiallyFilteredSubprojects, columnFilters, sortConfig]);
 
+    useEffect(() => {
+        if (!isSelectionMode) return;
+        const visibleIds = new Set(processedSubprojects.map(item => item.id));
+        setSelectedIds(previous => {
+            const next = previous.filter(id => visibleIds.has(id));
+            return next.length === previous.length ? previous : next;
+        });
+    }, [isSelectionMode, processedSubprojects, setSelectedIds]);
+
     // Use Shared Pagination Hook
     const { 
         currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedSubprojects 
     } = usePagination(processedSubprojects, [searchTerm, columnFilters, sortConfig]);
 
-    const handleSort = (key: SortKeys, direction: 'ascending' | 'descending') => {
-        setSortConfig({ key, direction });
+    const handleSort = (key: string) => {
+        const typedKey = key as SortKeys;
+        setSortConfig(previous => ({
+            key: typedKey,
+            direction: previous?.key === typedKey && previous.direction === 'ascending' ? 'descending' : 'ascending'
+        }));
     };
 
     const handleColumnFilterChange = (columnKey: string, values: string[]) => {
@@ -430,21 +312,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         setColumnFilters({});
         setSavedColumnFilters({});
     }
-
-    const getScopeColumnFilter = (key: 'fundingYear' | 'operatingUnit' | 'fundType' | 'tier') => {
-        const value = key === 'fundingYear'
-            ? dcfFilters.selectedYear
-            : key === 'operatingUnit'
-                ? dcfFilters.selectedOu
-                : key === 'fundType'
-                    ? dcfFilters.selectedFundType
-                    : dcfFilters.selectedTier;
-        return value === 'All' ? [] : [value];
-    };
-
-    const handleToggleRow = (id: number) => {
-        setExpandedRowId(prev => (prev === id ? null : id));
-    };
 
     const canDeleteSubprojectByPolicy = (subproject: Subproject) => getDeleteDecision({
         moduleKey: 'subprojects',
@@ -705,320 +572,94 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         }
     };
 
+    const columnFilterFields = [
+        { key: 'name', label: 'Subproject Name', values: uniqueValues.name },
+        { key: 'indigenousPeopleOrganization', label: 'IPO', values: uniqueValues.indigenousPeopleOrganization },
+        { key: 'status', label: 'Status', values: uniqueValues.status }
+    ];
+
     return (
         <div className="data-list-page">
-            {isDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold">Confirm Deletion</h3>
-                        <p className="my-4">Are you sure you want to delete "{subprojectToDelete?.name}"? This action cannot be undone.</p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmDelete} className="btn btn-danger">Delete</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {isMultiDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
-                        <p className="my-4 text-gray-700 dark:text-gray-300">
-                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected subproject(s)? 
-                            This action cannot be undone.
-                        </p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmMultiDelete} className="btn btn-danger">Delete All Selected</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {isDeleteModalOpen && <ConfirmDialog title="Confirm deletion" description={<>Are you sure you want to delete “{subprojectToDelete?.name}”? This action cannot be undone.</>} confirmLabel="Delete" onCancel={() => setIsDeleteModalOpen(false)} onConfirm={confirmDelete} />}
+            {isMultiDeleteModalOpen && <ConfirmDialog title={`Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'entry' : 'entries'}?`} description="This action cannot be undone. The selected records will be permanently removed." confirmLabel="Delete" onCancel={() => setIsMultiDeleteModalOpen(false)} onConfirm={confirmMultiDelete} />}
+            <ColumnFilterDialog open={isColumnFilterOpen} fields={columnFilterFields} filters={columnFilters} onApply={(filters) => { setColumnFilters(filters); setSavedColumnFilters(filters); }} onClose={() => setIsColumnFilterOpen(false)} />
 
             <div className="data-list-header">
                 <h2 className="data-list-title">Subprojects Management</h2>
-                <div className="data-list-actions">
-                    <DcfScopeFilterToggle idPrefix="subprojects-dcf" filters={dcfFilters} />
-                    {canEdit && (
-                        <button onClick={onCreateSubproject} className="btn btn-primary btn-responsive" title="Add New Subproject">
-                            <Plus className="btn-symbol" aria-hidden="true" />
-                            <span className="btn-text">Add New Subproject</span>
-                        </button>
-                    )}
-                </div>
+                {canEdit && <button onClick={onCreateSubproject} className="btn btn-primary"><Plus aria-hidden="true" /> Add New Subproject</button>}
             </div>
             <DcfScopeFilterPanel idPrefix="subprojects-dcf" filters={dcfFilters} />
-            <div className="data-table-card">
-                <div className="data-table-toolbar">
-                    <div className="data-toolbar-row">
-                    <div className="data-toolbar-group">
-                        <input
-                            type="text"
-                            placeholder="Search Subproject..."
-                            value={searchTerm}
-                            onChange={(e) => {
-                                setSearchTerm(e.target.value);
-                                setSavedSearchTerm(e.target.value);
-                            }}
-                            className={`data-table-search w-full md:w-64 ${commonInputClasses} mt-0`}
-                        />
-                        {Object.keys(columnFilters).length > 0 && (
-                            <button onClick={clearColumnFilters} className="text-sm text-red-500 hover:text-red-700 underline">
-                                Reset Filters
-                            </button>
-                        )}
-                    </div>
-                    <div className="data-toolbar-group data-toolbar-group--actions">
-                        {isSelectionMode && selectedIds.length > 0 && (
-                            <button 
-                                onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
-                                className={`btn ${selectionIntent === 'delete' ? 'btn-danger' : 'btn-info'}`}
-                            >
-                                {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
-                            </button>
-                        )}
-                        <button onClick={() => downloadSubprojectsReport(processedSubprojects)} className="btn btn-primary btn-responsive" title="Download Report">
-                            <Download className="btn-symbol" aria-hidden="true" />
-                            <span className="btn-text">Download Report</span>
-                        </button>
-                        {canEdit && (
-                            <>
-                                <button onClick={downloadSubprojectsTemplate} className="btn btn-secondary btn-responsive" title="Download Template">
-                                    <FileSpreadsheet className="btn-symbol" aria-hidden="true" />
-                                    <span className="btn-text">Template</span>
-                                </button>
-                                <label htmlFor="subproject-upload" className={`btn btn-primary btn-responsive ${isUploading ? 'is-disabled' : 'cursor-pointer'}`} title={isUploading ? 'Uploading...' : 'Upload'}>
-                                    <Upload className="btn-symbol" aria-hidden="true" />
-                                    <span className="btn-text">{isUploading ? 'Uploading...' : 'Upload'}</span>
-                                </label>
-                                <input id="subproject-upload" type="file" className="hidden" onChange={(e) => handleSubprojectsUpload(e, subprojects, setSubprojects, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
-                                <button 
-                                    onClick={() => handleToggleMode('clone')} 
-                                    className={`btn btn-secondary btn-icon ${isSelectionMode && selectionIntent === 'clone' ? 'is-active-clone' : ''}`} 
-                                    title="Toggle Clone Mode"
-                                >
-                                    <DuplicateIcon />
-                                </button>
-                                <button
-                                    onClick={() => handleToggleMode('delete')}
-                                    className={`btn btn-secondary btn-icon ${isSelectionMode && selectionIntent === 'delete' ? 'is-active-danger' : ''}`}
-                                    title="Toggle Multi-Delete Mode"
-                                >
-                                    <TrashIcon />
-                                </button>
-                            </>
-                        )}
-                    </div>
-                    </div>
-                </div>
 
-                <div className="data-table-scroll overflow-x-auto pb-24">
-                    <table className="data-table min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead className="bg-gray-50 dark:bg-gray-700">
-                            <tr>
-                                <th scope="col" className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
-                                <SubprojectColumnHeader label="Name" columnKey="name" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['name'] || []} onFilterChange={(v) => handleColumnFilterChange('name', v)} uniqueValues={uniqueValues.name} />
-                                <SubprojectColumnHeader label="OU" columnKey="operatingUnit" sortConfig={sortConfig} onSort={handleSort} filters={getScopeColumnFilter('operatingUnit')} onFilterChange={(v) => handleColumnFilterChange('operatingUnit', v)} uniqueValues={uniqueValues.operatingUnit} />
-                                <SubprojectColumnHeader label="IPO" columnKey="indigenousPeopleOrganization" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['indigenousPeopleOrganization'] || []} onFilterChange={(v) => handleColumnFilterChange('indigenousPeopleOrganization', v)} uniqueValues={uniqueValues.indigenousPeopleOrganization} />
-                                <SubprojectColumnHeader label="Fund Year" columnKey="fundingYear" sortConfig={sortConfig} onSort={handleSort} filters={getScopeColumnFilter('fundingYear')} onFilterChange={(v) => handleColumnFilterChange('fundingYear', v)} uniqueValues={uniqueValues.fundingYear} />
-                                <SubprojectColumnHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={handleSort} filters={getScopeColumnFilter('fundType')} onFilterChange={(v) => handleColumnFilterChange('fundType', v)} uniqueValues={uniqueValues.fundType} />
-                                <SubprojectColumnHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={handleSort} filters={getScopeColumnFilter('tier')} onFilterChange={(v) => handleColumnFilterChange('tier', v)} uniqueValues={uniqueValues.tier} />
-                                <SubprojectColumnHeader label="Project Status" columnKey="status" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['status'] || []} onFilterChange={(v) => handleColumnFilterChange('status', v)} uniqueValues={uniqueValues.status} />
-                                <SubprojectColumnHeader label="Commodity target" columnKey="commodityTarget" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
-                                <SubprojectColumnHeader label="Budget" columnKey="totalBudget" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
-                                <SubprojectColumnHeader label="Completion rate" columnKey="completionRate" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">Workflow Status</th>
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
-                                    {isSelectionMode ? (
-                                        <div className="flex items-center justify-end gap-2">
-                                            <span className="text-xs">Select All</span>
-                                            <input type="checkbox" onChange={(e) => handleSelectAll(e, paginatedSubprojects)} checked={paginatedSubprojects.length > 0 && paginatedSubprojects.every(s => selectedIds.includes(s.id))} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
-                                        </div>
-                                    ) : ("Actions")}
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {paginatedSubprojects.map((s) => {
+            <div className="data-table-card major-table-card">
+                <MajorTableToolbar
+                    searchTerm={searchTerm}
+                    onSearchChange={(value) => { setSearchTerm(value); setSavedSearchTerm(value); }}
+                    searchPlaceholder="Search subprojects..."
+                    activeFilterCount={Object.keys(columnFilters).length}
+                    onOpenFilters={() => setIsColumnFilterOpen(true)}
+                    actions={isSelectionMode
+                        ? <BulkSelectionBar intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} />
+                        : <>
+                        <button onClick={() => downloadSubprojectsReport(processedSubprojects)} className="btn btn-secondary"><Download aria-hidden="true" /> Export</button>
+                        {canEdit && <>
+                            <button onClick={downloadSubprojectsTemplate} className="btn btn-secondary"><FileSpreadsheet aria-hidden="true" /> Template</button>
+                            <label htmlFor="subproject-upload" className={`btn btn-secondary ${isUploading ? 'is-disabled' : 'cursor-pointer'}`}><Upload aria-hidden="true" /> {isUploading ? 'Uploading...' : 'Import'}</label>
+                            <input id="subproject-upload" type="file" className="hidden" onChange={(e) => handleSubprojectsUpload(e, subprojects, setSubprojects, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
+                            <button onClick={() => handleToggleMode('clone')} className="btn btn-secondary" aria-label="Clone multiple subprojects"><DuplicateIcon /> Clone</button>
+                            <button onClick={() => handleToggleMode('delete')} className="btn btn-secondary" aria-label="Delete multiple subprojects"><TrashIcon /> Delete</button>
+                        </>}
+                    </>}
+                />
+
+                <div className="data-table-scroll">
+                    <table className="data-table">
+                        <thead><tr>
+                            {isSelectionMode && <th className="data-table__cell--selection"><SelectionCheckbox aria-label="Select all subprojects on this page" onChange={(e) => handleSelectAll(e, paginatedSubprojects)} checked={paginatedSubprojects.length > 0 && paginatedSubprojects.every(item => selectedIds.includes(item.id))} indeterminate={paginatedSubprojects.some(item => selectedIds.includes(item.id)) && !paginatedSubprojects.every(item => selectedIds.includes(item.id))} /></th>}
+                            <SortableTableHeader label="Code" columnKey="uid" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="Subproject Name" columnKey="name" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="Operating Unit" columnKey="operatingUnit" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="IPO" columnKey="indigenousPeopleOrganization" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="Fund Year" columnKey="fundingYear" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="Commodity Target" columnKey="commodityTarget" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="Budget" columnKey="totalBudget" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="Status" columnKey="status" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="Completion Rate" columnKey="completionRate" sortConfig={sortConfig} onSort={handleSort} />
+                            <th>Workflow Status</th>
+                        </tr></thead>
+                        <tbody>
+                            {paginatedSubprojects.map(s => {
                                 const details = s.details || [];
                                 const budget = calculateTotalBudget(details);
-                                const actualObligated = details.reduce((sum, d) => sum + (d.actualObligationAmount || 0), 0);
-                                const actualDisbursed = details.reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
-                                const totalItems = details.length;
-                                const completedItems = details.filter(d => d.actualDeliveryDate).length;
-                                const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
-                                const commodities = s.subprojectCommodities && s.subprojectCommodities.length > 0 ? s.subprojectCommodities.map(c => `${c.name} (${c.area} ${c.typeName === 'Livestock' ? 'heads' : 'ha'})`).join(', ') : 'N/A';
-
-                                return (
-                                <React.Fragment key={s.id}>
-                                    <tr onClick={() => handleToggleRow(s.id)} className="cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-900/10">
-                                        <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === s.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
-                                        <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white min-w-[200px]">
-                                            <button onClick={(e) => {e.stopPropagation(); onSelectSubproject(s);}} className="table-link">
-                                                {s.name || 'Unnamed Subproject'}
-                                            </button>
-                                            <div className="text-xs text-gray-400">{s.uid || 'No UID'}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.operatingUnit || 'N/A'}</td>
-                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300">{s.indigenousPeopleOrganization || 'N/A'}</td>
-                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.fundingYear || 'N/A'}</td>
-                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.fundType || 'N/A'}</td>
-                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.tier || 'N/A'}</td>
-                                         <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(s.status)}>{s.status || 'Unknown'}</span></td>
-                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 min-w-[150px]">{commodities}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(budget)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                            <div className="flex items-center">
-                                                <span className="mr-2 text-xs font-medium">{completionRate}%</span>
-                                                <div className="w-20 bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
-                                                    <div className={`h-1.5 rounded-full ${completionRate === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${completionRate}%` }}></div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex flex-col gap-1 items-start">
-                                                {getWorkflowStatusBadge(s.workflow_status)}
-                                                {s.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
-                                                    <div className="flex gap-1 mt-1">
-                                                        <button 
-                                                            onClick={(e) => handleApprove(s.id, e)} 
-                                                            className="action-mini action-mini--approve"
-                                                            title="Approve"
-                                                        >
-                                                            <Check className="h-3 w-3" />
-                                                        </button>
-                                                        <button 
-                                                            onClick={(e) => handleReject(s.id, e)} 
-                                                            className="action-mini action-mini--reject"
-                                                            title="Reject"
-                                                        >
-                                                            <X className="h-3 w-3" />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
-                                            {canEdit ? (
-                                                <div className="flex items-center justify-end gap-3">
-                                                    {isSelectionMode && (
-                                                        <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={(e) => { e.stopPropagation(); handleSelectRow(s.id); }} onClick={(e) => e.stopPropagation()} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
-                                                    )}
-                                                    <button onClick={(e) => { e.stopPropagation(); onSelectSubproject(s); }} className="table-action table-action--primary">Details</button>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(s); }} className="table-action table-action--danger">Delete</button>
-                                                </div>
-                                            ) : (
-                                                <button onClick={(e) => { e.stopPropagation(); onSelectSubproject(s); }} className="table-action table-action--primary">View Details</button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                    {expandedRowId === s.id && (
-                                        <tr className="bg-gray-50 dark:bg-gray-900/50">
-                                            <td colSpan={11} className="p-4">
-                                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                                    <div className="space-y-4">
-                                                        <div>
-                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Project Details</h4>
-                                                            <div className="space-y-2 text-sm">
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Location:</strong> <span className="text-gray-900 dark:text-gray-100">{s.location || 'N/A'}</span></p>
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Package:</strong> <span className="text-gray-900 dark:text-gray-100">{s.packageType || 'N/A'}</span></p>
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Status:</strong> <span className={getStatusBadge(s.status)}>{s.status || 'Unknown'}</span></p>
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Encoded by:</strong> <span className="text-gray-900 dark:text-gray-100">{s.encodedBy || 'N/A'}</span></p>
-                                                            </div>
-                                                        </div>
-                                                        <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
-                                                            <h4 className="font-semibold text-md mb-2 text-blue-700 dark:text-blue-300">Timeline</h4>
-                                                            <div className="space-y-1 text-sm">
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Start Date:</strong> {formatDate(s.startDate)}</p>
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Target Completion:</strong> {formatDate(s.estimatedCompletionDate)}</p>
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Actual Completion:</strong> {formatDate(s.actualCompletionDate)}</p>
-                                                            </div>
-                                                        </div>
-                                                        {s.remarks && (
-                                                            <div>
-                                                                <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Remarks</h4>
-                                                                <p className="text-sm text-gray-600 dark:text-gray-300 italic">{s.remarks}</p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    
-                                                    <div className="space-y-4 text-sm bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg">
-                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget & Particulars</h4>
-                                                        {details.length > 0 ? (
-                                                            <ul className="space-y-1">
-                                                                {details.map(detail => (
-                                                                    <li key={detail.id} className="flex justify-between items-start p-1 border-b border-gray-200 dark:border-gray-700 last:border-0">
-                                                                        <div>
-                                                                            <span className="block font-medium text-gray-800 dark:text-gray-200">{detail.particulars || 'Unnamed Item'}</span>
-                                                                            <span className="text-xs text-gray-500 dark:text-gray-400">{detail.uacsCode || 'No UACS'} | {detail.numberOfUnits || 0} {detail.unitOfMeasure || 'units'}</span>
-                                                                            <span className="text-xs text-gray-400 block">Obl: {formatMonthYear(detail.obligationMonth)} | Disb: {formatMonthYear(detail.disbursementMonth)}</span>
-                                                                        </div>
-                                                                        <span className="font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap">{formatCurrency((detail.pricePerUnit || 0) * (detail.numberOfUnits || 0))}</span>
-                                                                    </li>
-                                                                ))}
-                                                                <li className="flex justify-between items-center p-1 border-t border-gray-300 dark:border-gray-600 mt-2 pt-2 font-bold text-gray-900 dark:text-white"><span>Total</span><span>{formatCurrency(calculateTotalBudget(details))}</span></li>
-                                                            </ul>
-                                                        ) : ( <p className="text-sm text-gray-500 dark:text-gray-400 italic">No budget items listed.</p> )}
-                                                        
-                                                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700 mt-2">
-                                                            <p><strong className="text-gray-500 dark:text-gray-400">Funding Year:</strong> <span className="text-gray-900 dark:text-gray-100">{s.fundingYear ?? 'N/A'}</span></p>
-                                                            <p><strong className="text-gray-500 dark:text-gray-400">Fund Type:</strong> <span className="text-gray-900 dark:text-gray-100">{s.fundType ?? 'N/A'}</span></p>
-                                                            <p><strong className="text-gray-500 dark:text-gray-400">Tier:</strong> <span className="text-gray-900 dark:text-gray-100">{s.tier ?? 'N/A'}</span></p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="space-y-4 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
-                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Accomplishment Brief</h4>
-                                                        <div className="space-y-3 text-sm">
-                                                            <div className="flex justify-between items-center">
-                                                                <span className="text-gray-600 dark:text-gray-400">Physical Completion</span>
-                                                                <span className={`font-bold ${completionRate === 100 ? 'text-green-600' : 'text-blue-600'}`}>{completionRate}%</span>
-                                                            </div>
-                                                            <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
-                                                                <div className={`h-2 rounded-full ${completionRate === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${completionRate}%` }}></div>
-                                                            </div>
-                                                            <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
-                                                                <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Actual Obligated</span><span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(actualObligated)}</span></div>
-                                                                <div className="flex justify-between mt-1"><span className="text-gray-500 dark:text-gray-400">Actual Disbursed</span><span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(actualDisbursed)}</span></div>
-                                                            </div>
-                                                            {s.subprojectCommodities && s.subprojectCommodities.length > 0 && (
-                                                                <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
-                                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-semibold uppercase">Impact</p>
-                                                                    {s.subprojectCommodities.map((c, i) => (
-                                                                        <div key={i} className="flex justify-between text-xs"><span>{c.name || 'Unknown'}</span><span className="font-medium">{c.actualYield ? c.actualYield : '-'} {c.typeName === 'Livestock' ? 'heads' : 'yield'} (Actual)</span></div>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </React.Fragment>
-                            );})}
+                                const completionRate = details.length ? Math.round((details.filter(detail => detail.actualDeliveryDate).length / details.length) * 100) : 0;
+                                const commodities = s.subprojectCommodities?.map(commodity => `${commodity.name} (${commodity.area} ${commodity.typeName === 'Livestock' ? 'heads' : 'ha'})`).join(', ') || 'N/A';
+                                return <tr
+                                    key={s.id}
+                                    className={isSelectionMode ? (selectedIds.includes(s.id) ? `data-table__row--selected${selectionIntent === 'delete' ? ' data-table__row--selected-danger' : ''}` : undefined) : 'data-table__row--interactive'}
+                                    tabIndex={isSelectionMode ? undefined : 0}
+                                    aria-label={isSelectionMode ? undefined : `View details for ${s.name || s.uid}`}
+                                    onClick={isSelectionMode ? undefined : () => onSelectSubproject(s)}
+                                    onKeyDown={isSelectionMode ? undefined : event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectSubproject(s); } }}
+                                >
+                                    {isSelectionMode && <td className="data-table__cell--selection"><SelectionCheckbox aria-label={`Select ${s.name || s.uid}`} checked={selectedIds.includes(s.id)} onChange={() => handleSelectRow(s.id)} /></td>}
+                                    <td className="data-table__cell--mono"><TruncatedTableCell value={s.uid || 'No code'} /></td>
+                                    <td className="data-table__cell--primary"><TruncatedTableCell value={s.name || 'Unnamed Subproject'} /></td>
+                                    <td><TruncatedTableCell value={s.operatingUnit} /></td>
+                                    <td><TruncatedTableCell value={s.indigenousPeopleOrganization} /></td>
+                                    <td>{s.fundingYear || '—'}</td><td>{s.fundType || '—'}</td><td>{s.tier || '—'}</td>
+                                    <td><TruncatedTableCell value={commodities} /></td>
+                                    <td className="data-table__cell--numeric">{formatCurrency(budget)}</td>
+                                    <td><span className={getStatusBadge(s.status)}>{s.status || 'Unknown'}</span></td>
+                                    <td>{completionRate}%</td>
+                                    <td><div className="data-table__actions">{getWorkflowStatusBadge(s.workflow_status)}{s.workflow_status === 'PENDING' && canApprove(currentUser?.role) && <><button onClick={(e) => handleApprove(s.id, e)} className="action-mini action-mini--approve" aria-label={`Approve ${s.name}`}><Check aria-hidden="true" /></button><button onClick={(e) => handleReject(s.id, e)} className="action-mini action-mini--reject" aria-label={`Reject ${s.name}`}><X aria-hidden="true" /></button></>}</div></td>
+                                </tr>;
+                            })}
+                            {paginatedSubprojects.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 13 : 12}>No subprojects match the current filters.</td></tr>}
                         </tbody>
                     </table>
                 </div>
-                 
-                 <div className="data-table-pagination py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm">
-                        <span className="text-gray-700 dark:text-gray-300">Show</span>
-                        <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">
-                            {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
-                        </select>
-                        <span className="text-gray-700 dark:text-gray-300">entries</span>
-                    </div>
-                     <div className="flex items-center gap-4 text-sm">
-                        <span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, processedSubprojects.length)} to {Math.min(currentPage * itemsPerPage, processedSubprojects.length)} of {processedSubprojects.length} entries</span>
-                        <div className="flex items-center gap-2">
-                            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
-                            <span className="px-2 font-medium">{currentPage} / {totalPages}</span>
-                            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
-                        </div>
-                    </div>
-                </div>
+                <DataTablePagination currentPage={currentPage} totalPages={totalPages} totalItems={processedSubprojects.length} itemsPerPage={itemsPerPage} onPageChange={setCurrentPage} onItemsPerPageChange={setItemsPerPage} />
             </div>
         </div>
     );

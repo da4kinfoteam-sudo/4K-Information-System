@@ -1,6 +1,6 @@
 
 // Author: 4K 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents, ActivityComponentType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
@@ -10,20 +10,23 @@ import { useSelection, useUserAccess, usePagination } from '../mainfunctions/Tab
 import { supabase } from '../../supabaseClient';
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
-import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Check, Download, FileSpreadsheet, Plus, Upload } from 'lucide-react';
+import { Search, X, Check, Download, FileSpreadsheet, Plus, Upload } from 'lucide-react';
 import { createStaffingExpenseId } from '../../lib/staffingExpenseIdentity';
+import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
+import { ConfirmDialog, DataTablePagination, SortableTableHeader } from '../ui/enterprise';
+import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from '../ui/MajorDataTable';
 
 declare const XLSX: any;
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
 );
 
 const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
+    <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
     </svg>
 );
@@ -39,6 +42,14 @@ const getHiringStatusBadge = (status: StaffingRequirement['hiringStatus']) => {
         default: return 'status-badge status-badge--neutral';
     }
 }
+
+const getStaffingBudget = (item: StaffingRequirement) => {
+    if (!item.expenses?.length) return Number(item.annualSalary) || 0;
+    return item.expenses.reduce(
+        (total, expense) => total + (isBudgetLineExcludedFromTargets(expense) ? 0 : getBudgetLineAmount(expense)),
+        0
+    );
+};
 
 export const parseStaffingRequirementRow = (row: any, commonData: any): StaffingRequirement => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -73,131 +84,9 @@ interface StaffingRequirementsTabProps {
     onSelect: (item: StaffingRequirement) => void;
 }
 
-const FilterIcon = () => (
-    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
-    </svg>
-);
-
-// StaffingRequirementColumnHeader component
-interface StaffingRequirementColumnHeaderProps {
-    label: string;
-    columnKey: keyof StaffingRequirement;
-    sortConfig: { key: string; direction: 'ascending' | 'descending' } | null;
-    onSort: (key: any, direction: 'ascending' | 'descending') => void;
-    filters: string[];
-    onFilterChange: (values: string[]) => void;
-    uniqueValues: string[];
-    isNumeric?: boolean;
-}
-
-const StaffingRequirementColumnHeader: React.FC<StaffingRequirementColumnHeaderProps> = ({ 
-    label, columnKey, sortConfig, onSort, filters, onFilterChange, uniqueValues, isNumeric 
-}) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
-    const menuRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const filteredValues = (uniqueValues || []).filter(v => String(v).toLowerCase().includes(searchTerm.toLowerCase()));
-    const isSorted = sortConfig?.key === columnKey;
-    const isFiltered = (filters || []).length > 0;
-
-    const toggleFilter = (value: string) => {
-        const currentFilters = filters || [];
-        if (currentFilters.includes(value)) {
-            onFilterChange(currentFilters.filter(f => f !== value));
-        } else {
-            onFilterChange([...currentFilters, value]);
-        }
-    };
-
-    return (
-        <th className={`px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 relative group select-none whitespace-nowrap ${isNumeric ? 'text-right' : ''}`}>
-            <div className={`flex items-center justify-between cursor-pointer ${isNumeric ? 'flex-row-reverse' : ''}`} onClick={() => setIsOpen(!isOpen)}>
-                <div className="flex items-center gap-1">
-                    {label}
-                    {isSorted && (
-                        <span className="text-emerald-600 dark:text-emerald-400">
-                            {sortConfig?.direction === 'ascending' ? '▲' : '▼'}
-                        </span>
-                    )}
-                </div>
-                <div className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 ${isFiltered ? 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/50' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`}>
-                    <FilterIcon />
-                </div>
-            </div>
-
-            {isOpen && (
-                <div ref={menuRef} className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 rounded-md shadow-xl border border-gray-200 dark:border-gray-700 z-50 text-sm normal-case font-normal text-gray-700 dark:text-gray-200">
-                    <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-1">
-                        <button 
-                            onClick={() => { onSort(columnKey, 'ascending'); setIsOpen(false); }}
-                            className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
-                        >
-                            <span>▲</span> Sort Ascending
-                        </button>
-                        <button 
-                            onClick={() => { onSort(columnKey, 'descending'); setIsOpen(false); }}
-                            className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
-                        >
-                            <span>▼</span> Sort Descending
-                        </button>
-                    </div>
-
-                    {!isNumeric && (
-                        <>
-                            <div className="p-2">
-                                <input 
-                                    type="text" 
-                                    placeholder={`Search ${label}...`}
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="max-h-48 overflow-y-auto px-2 pb-2 custom-scrollbar">
-                                <label className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={filters.length === 0} 
-                                        onChange={() => onFilterChange([])} 
-                                        className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                                    />
-                                    <span className="truncate italic text-gray-500">(Select All)</span>
-                                </label>
-                                {filteredValues.map(val => (
-                                    <label key={val} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={filters.includes(String(val))} 
-                                            onChange={() => toggleFilter(String(val))} 
-                                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                                        />
-                                        <span className="truncate">{val || '(Empty)'}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </>
-                    )}
-                </div>
-            )}
-        </th>
-    );
-};
-
 export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = ({ items, setItems, uacsCodes, onSelect }) => {
     const { currentUser } = useAuth();
+    const tableStoragePrefix = `programManagement_staffing_${currentUser?.id || 'anonymous'}`;
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
     const { getDeleteDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
@@ -216,7 +105,8 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     };
 
     // Filters - Persistent
-    const [columnFilters, setColumnFilters] = useLocalStorageState<{ [key: string]: string[] }>('programManagement_staffing_columnFilters', {});
+    const [columnFilters, setColumnFilters] = useLocalStorageState<{ [key: string]: string[] }>(`${tableStoragePrefix}_columnFilters`, {});
+    const [isColumnFilterOpen, setIsColumnFilterOpen] = useState(false);
 
     useEffect(() => {
         const cleanedFilters = Object.fromEntries(
@@ -229,8 +119,8 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     }, [columnFilters, setColumnFilters]);
 
     // Search and Column Filtering/Sorting
-    const [searchTerm, setSearchTerm] = useLocalStorageState('programManagement_staffing_searchTerm', '');
-    const [sortConfig, setSortConfig] = useLocalStorageState<{ key: string; direction: 'ascending' | 'descending' }>('programManagement_staffing_sortConfig', { key: 'id', direction: 'descending' });
+    const [searchTerm, setSearchTerm] = useLocalStorageState(`${tableStoragePrefix}_searchTerm`, '');
+    const [sortConfig, setSortConfig] = useLocalStorageState<{ key: string; direction: 'ascending' | 'descending' }>(`${tableStoragePrefix}_sortConfig`, { key: 'id', direction: 'descending' });
 
     const { 
         isSelectionMode, selectedIds, setSelectedIds, 
@@ -346,8 +236,8 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
         // Sorting
         return [...filtered].sort((a, b) => {
-            const aValue = a[sortConfig.key as keyof StaffingRequirement];
-            const bValue = b[sortConfig.key as keyof StaffingRequirement];
+            const aValue = sortConfig.key === 'budget' ? getStaffingBudget(a) : a[sortConfig.key as keyof StaffingRequirement];
+            const bValue = sortConfig.key === 'budget' ? getStaffingBudget(b) : b[sortConfig.key as keyof StaffingRequirement];
 
             if (aValue === bValue) return 0;
             
@@ -394,6 +284,15 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
         return values;
     }, [items]);
+
+    useEffect(() => {
+        if (!isSelectionMode) return;
+        const visibleIds = new Set(filteredItems.map(item => item.id));
+        setSelectedIds(previous => {
+            const next = previous.filter(id => visibleIds.has(id));
+            return next.length === previous.length ? previous : next;
+        });
+    }, [filteredItems, isSelectionMode, setSelectedIds]);
 
     const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination(filteredItems, []);
 
@@ -713,13 +612,12 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
     // Import/Export
     const getWorkflowStatusBadge = (status?: string) => {
-        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider inline-block";
-        let classes = `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
+        let classes = 'status-badge status-badge--compact status-badge--neutral';
         switch (status) {
-            case 'APPROVED': classes = `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`; break;
-            case 'PENDING': classes = `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`; break;
-            case 'REJECTED': classes = `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`; break;
-            case 'DRAFT': classes = `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800`; break;
+            case 'APPROVED': classes = 'status-badge status-badge--compact status-badge--approved'; break;
+            case 'PENDING': classes = 'status-badge status-badge--compact status-badge--pending'; break;
+            case 'REJECTED': classes = 'status-badge status-badge--compact status-badge--rejected'; break;
+            case 'DRAFT': classes = 'status-badge status-badge--compact status-badge--draft'; break;
         }
         return <span className={classes}>{status || 'DRAFT'}</span>;
     };
@@ -861,7 +759,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                     <fieldset className="form-fieldset">
                         <legend className="form-legend">Position Profile</legend>
                         <div className="form-grid">
-                            <div><label className="form-label">Position Title <span className="text-red-500">*</span></label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={getInputClasses('personnelPosition')} /></div>
+                            <div><label className="form-label">Position Title <span className="form-required">*</span></label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={getInputClasses('personnelPosition')} /></div>
                             <div>
                                 <label className="form-label">Component</label>
                                 <select name="component" value={formData.component} onChange={handleInputChange} className={getInputClasses('component')}>
@@ -879,8 +777,8 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                             <div><label className="form-label">Employment Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={getInputClasses('status')}><option value="Permanent">Permanent</option><option value="Contractual">Contractual</option><option value="COS">COS</option><option value="Job Order">Job Order</option></select></div>
                             <div><label className="form-label">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={getInputClasses('salaryGrade')} /></div>
                             <div><label className="form-label">Personnel Type</label><select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={getInputClasses('personnelType')}><option value="Technical">Technical</option><option value="Administrative">Administrative</option><option value="Support">Support</option></select></div>
-                            <div className="md:col-span-1">
-                                <label className="form-label">Operating Unit <span className="text-red-500">*</span></label>
+                            <div>
+                                <label className="form-label">Operating Unit <span className="form-required">*</span></label>
                                 <select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={`${getInputClasses('operatingUnit')} `}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select>
                             </div>
                         </div>
@@ -890,7 +788,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                     <fieldset className="form-fieldset">
                         <legend className="form-legend">Funding Source</legend>
                         <div className="program-form-grid program-form-grid--four">
-                            <div><label className="form-label">Fund Year <span className="text-red-500">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
+                            <div><label className="form-label">Fund Year <span className="form-required">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
                             <div><label className="form-label">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                             <div><label className="form-label">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                             <div className="form-check-group">
@@ -937,9 +835,9 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                             <h4 className="detail-section-title detail-section-title--ruled">Add Financial Item</h4>
                             <div className="program-form-grid program-form-grid--four">
                                 <div><label className="form-label">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={getInputClasses('objectType')}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="form-label">Particular <span className="text-red-500">*</span></label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setCurrentExpense(prev => ({...prev, uacsCode: ''})); if (validationErrors.includes('expenseParticular')) setValidationErrors(prev => prev.filter(err => err !== 'expenseParticular')); }} className={getInputClasses('expenseParticular')}><option value="">Select</option>{uacsCodes[currentExpense.objectType] && Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                <div><label className="form-label">Particular <span className="form-required">*</span></label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setCurrentExpense(prev => ({...prev, uacsCode: ''})); if (validationErrors.includes('expenseParticular')) setValidationErrors(prev => prev.filter(err => err !== 'expenseParticular')); }} className={getInputClasses('expenseParticular')}><option value="">Select</option>{uacsCodes[currentExpense.objectType] && Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                                 <div>
-                                    <label className="form-label">UACS Code <span className="text-red-500">*</span></label>
+                                    <label className="form-label">UACS Code <span className="form-required">*</span></label>
                                     <input 
                                         list="uacs-codes-list"
                                         name="uacsCode" 
@@ -1001,7 +899,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                             
                             <div className="form-grid">
                                 <div>
-                                    <label className="form-label">Obligation Date <span className="text-red-500">*</span></label>
+                                    <label className="form-label">Obligation Date <span className="form-required">*</span></label>
                                     <MonthYearPicker 
                                         value={currentExpense.obligationDate} 
                                         onChange={(val) => {
@@ -1013,7 +911,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                         className={validationErrors.includes('obligationDate') ? 'form-control--invalid' : ''}
                                     />
                                 </div>
-                                <div><label className="form-label">Amount <span className="text-red-500">*</span></label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={getInputClasses('amount')} min="0" /></div>
+                                <div><label className="form-label">Amount <span className="form-required">*</span></label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={getInputClasses('amount')} min="0" /></div>
                             </div>
                             
                             <div className="mb-3">
@@ -1047,256 +945,33 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         );
     }
 
-    // List View
+    const requestSort = (key: string) => handleSort(key, sortConfig.key === key && sortConfig.direction === 'ascending' ? 'descending' : 'ascending');
+    const tableFilterFields = [
+        { key: 'hiringStatus', label: 'Status', values: uniqueValues.hiringStatus || [] },
+        { key: 'personnelPosition', label: 'Position', values: uniqueValues.personnelPosition || [] },
+        { key: 'personnelType', label: 'Personnel Type', values: uniqueValues.personnelType || [] }
+    ];
+
+    // Compact list view
     return (
-        <div className="data-table-card animate-fadeIn">
-            {isDeleteModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Deletion</h3><p className="my-4 text-gray-600 dark:text-gray-300">Are you sure?</p><div className="flex justify-end gap-4"><button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button><button onClick={handleDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Delete</button></div></div></div>)}
-            {isMultiDeleteModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Bulk Deletion</h3><p className="my-4 text-gray-600 dark:text-gray-300">Delete {selectedIds.length} items?</p><div className="flex justify-end gap-4"><button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button><button onClick={handleMultiDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Delete All</button></div></div></div>)}
-
-            <div className="data-table-toolbar">
-            <div className="data-toolbar-row">
-                <div className="data-toolbar-group">
-                    <div className="relative flex-1 md:flex-none">
-                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Search className="h-4 w-4 text-gray-400" />
-                        </span>
-                        <input 
-                            type="text" 
-                            placeholder="Search Staffing Requirements..." 
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="data-table-search block w-full md:w-72 pl-10 pr-3"
-                        />
-                        {searchTerm && (
-                            <button 
-                                onClick={() => setSearchTerm('')}
-                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                            >
-                                <X className="h-4 w-4" />
-                            </button>
-                        )}
-                    </div>
-                </div>
-                <div className="data-toolbar-group data-toolbar-group--actions">
-                    {isSelectionMode && selectedIds.length > 0 && (
-                        <button 
-                            onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
-                            className={`btn ${selectionIntent === 'delete' ? 'btn-danger' : 'btn-info'}`}
-                        >
-                            {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
-                        </button>
-                    )}
-                    {canEdit && (
-                        <button 
-                            onClick={() => { setView('form'); }} 
-                            className="btn btn-primary btn-responsive"
-                            title="Add New"
-                        >
-                            <Plus className="btn-symbol" aria-hidden="true" />
-                            <span className="btn-text">Add New</span>
-                        </button>
-                    )}
-                    <button onClick={handleDownloadReport} className="btn btn-primary btn-responsive" title="Download Report">
-                        <Download className="btn-symbol" aria-hidden="true" />
-                        <span className="btn-text">Download Report</span>
-                    </button>
-                    {canEdit && (
-                        <>
-                            <button onClick={handleDownloadTemplate} className="btn btn-secondary btn-responsive" title="Download Template">
-                                <FileSpreadsheet className="btn-symbol" aria-hidden="true" />
-                                <span className="btn-text">Template</span>
-                            </button>
-                            <label className={`btn btn-primary btn-responsive ${isUploading ? 'is-disabled' : 'cursor-pointer'}`} title={isUploading ? 'Uploading...' : 'Upload XLSX'}>
-                                <Upload className="btn-symbol" aria-hidden="true" />
-                                <span className="btn-text">{isUploading ? 'Uploading...' : 'Upload XLSX'}</span>
-                                <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
-                            </label>
-                            <button 
-                                onClick={() => handleToggleMode('clone')} 
-                                className={`btn btn-secondary btn-icon ${isSelectionMode && selectionIntent === 'clone' ? 'is-active-clone' : ''}`} 
-                                title="Toggle Clone Mode"
-                            >
-                                <DuplicateIcon />
-                            </button>
-                            <button 
-                                onClick={() => handleToggleMode('delete')} 
-                                className={`btn btn-secondary btn-icon ${isSelectionMode && selectionIntent === 'delete' ? 'is-active-danger' : ''}`} 
-                                title="Toggle Multi-Delete Mode"
-                            >
-                                <TrashIcon />
-                            </button>
-                        </>
-                    )}
-                </div>
-            </div>
-            </div>
-
-            <div className="data-table-scroll">
-                <table className="data-table min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead>
-                        <tr>
-                            <StaffingRequirementColumnHeader 
-                                label="UID" 
-                                columnKey="uid" 
-                                sortConfig={sortConfig} 
-                                onSort={handleSort} 
-                                filters={columnFilters.uid || []} 
-                                onFilterChange={(val) => handleColumnFilterChange('uid', val)} 
-                                uniqueValues={uniqueValues.uid} 
-                            />
-                            <StaffingRequirementColumnHeader 
-                                label="OU" 
-                                columnKey="operatingUnit" 
-                                sortConfig={sortConfig} 
-                                onSort={handleSort} 
-                                filters={columnFilters.operatingUnit || []} 
-                                onFilterChange={(val) => handleColumnFilterChange('operatingUnit', val)} 
-                                uniqueValues={uniqueValues.operatingUnit} 
-                            />
-                            <StaffingRequirementColumnHeader 
-                                label="Status" 
-                                columnKey="hiringStatus" 
-                                sortConfig={sortConfig} 
-                                onSort={handleSort} 
-                                filters={columnFilters.hiringStatus || []} 
-                                onFilterChange={(val) => handleColumnFilterChange('hiringStatus', val)} 
-                                uniqueValues={uniqueValues.hiringStatus} 
-                            />
-                            <StaffingRequirementColumnHeader 
-                                label="Position" 
-                                columnKey="personnelPosition" 
-                                sortConfig={sortConfig} 
-                                onSort={handleSort} 
-                                filters={columnFilters.personnelPosition || []} 
-                                onFilterChange={(val) => handleColumnFilterChange('personnelPosition', val)} 
-                                uniqueValues={uniqueValues.personnelPosition} 
-                            />
-                            <StaffingRequirementColumnHeader 
-                                label="Type" 
-                                columnKey="personnelType" 
-                                sortConfig={sortConfig} 
-                                onSort={handleSort} 
-                                filters={columnFilters.personnelType || []} 
-                                onFilterChange={(val) => handleColumnFilterChange('personnelType', val)} 
-                                uniqueValues={uniqueValues.personnelType} 
-                            />
-                            <StaffingRequirementColumnHeader 
-                                label="Annual Salary" 
-                                columnKey="annualSalary" 
-                                sortConfig={sortConfig} 
-                                onSort={handleSort} 
-                                filters={[]} 
-                                onFilterChange={() => {}} 
-                                uniqueValues={[]} 
-                                isNumeric
-                            />
-                            <StaffingRequirementColumnHeader 
-                                label="Fund Year" 
-                                columnKey="fundYear" 
-                                sortConfig={sortConfig} 
-                                onSort={handleSort} 
-                                filters={columnFilters.fundYear || []} 
-                                onFilterChange={(val) => handleColumnFilterChange('fundYear', val)} 
-                                uniqueValues={uniqueValues.fundYear} 
-                            />
-                            <StaffingRequirementColumnHeader 
-                                label="Fund Type" 
-                                columnKey="fundType" 
-                                sortConfig={sortConfig} 
-                                onSort={handleSort} 
-                                filters={columnFilters.fundType || []} 
-                                onFilterChange={(val) => handleColumnFilterChange('fundType', val)} 
-                                uniqueValues={uniqueValues.fundType} 
-                            />
-                            <StaffingRequirementColumnHeader 
-                                label="Tier" 
-                                columnKey="tier" 
-                                sortConfig={sortConfig} 
-                                onSort={handleSort} 
-                                filters={columnFilters.tier || []} 
-                                onFilterChange={(val) => handleColumnFilterChange('tier', val)} 
-                                uniqueValues={uniqueValues.tier} 
-                            />
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Workflow Status</th>
-                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                {isSelectionMode ? "Select" : "Actions"}
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                        {paginatedData.map((item) => (
-                            <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getHiringStatusBadge(item.hiringStatus)}>{item.hiringStatus}</span></td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                    {item.personnelPosition}
-                                    <div className="text-xs text-gray-400">SG-{item.salaryGrade}</div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.personnelType}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.annualSalary)}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{item.fundYear}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{item.fundType}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{item.tier}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-xs">
-                                    <div className="flex flex-col gap-1 items-start">
-                                        {getWorkflowStatusBadge(item.workflow_status)}
-                                        {item.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
-                                            <div className="flex gap-1 mt-1">
-                                                <button 
-                                                    onClick={(e) => handleApprove(item.id, e)} 
-                                                    className="action-mini action-mini--approve"
-                                                    title="Approve"
-                                                >
-                                                    <Check className="h-3 w-3" />
-                                                </button>
-                                                <button 
-                                                    onClick={(e) => handleReject(item.id, e)} 
-                                                    className="action-mini action-mini--reject"
-                                                    title="Reject"
-                                                >
-                                                    <X className="h-3 w-3" />
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10 shadow-[-4px_0_6px_rgba(0,0,0,0.02)]">
-                                        {isSelectionMode ? (
-                                            <input 
-                                                type="checkbox" 
-                                                checked={selectedIds.includes(item.id)} 
-                                                onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
-                                                className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
-                                            />
-                                        ) : (
-                                            <div className="flex justify-end gap-3">
-                                                {canEdit ? (
-                                                    <>
-                                                        <button onClick={() => onSelect(item)} className="table-action table-action--primary">Details</button>
-                                                        <button 
-                                                            onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} 
-                                                            className="table-action table-action--danger"
-                                                        >
-                                                            Delete
-                                                        </button>
-                                                    </>
-                                                ) : (
-                                                    <button onClick={() => onSelect(item)} className="table-action table-action--primary">View Details</button>
-                                                )}
-                                            </div>
-                                        )}
-                                    </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-            
-            <div className="data-table-pagination py-4 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm"><span className="text-gray-700 dark:text-gray-300">Show</span><select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm">{[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}</select><span className="text-gray-700 dark:text-gray-300">entries</span></div>
-                <div className="flex items-center gap-4 text-sm"><span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredItems.length)} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} entries</span><div className="flex items-center gap-2"><button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button><span className="px-2 font-medium">{currentPage} / {totalPages}</span><button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button></div></div>
-            </div>
+        <div className="data-table-card major-table-card animate-fadeIn">
+            {isDeleteModalOpen && <ConfirmDialog title="Confirm deletion" description="Delete this record? This action cannot be undone." confirmLabel="Delete record" onCancel={() => setIsDeleteModalOpen(false)} onConfirm={handleDelete} />}
+            {isMultiDeleteModalOpen && <ConfirmDialog title={`Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'entry' : 'entries'}?`} description="This action cannot be undone. The selected records will be permanently removed." confirmLabel="Delete" onCancel={() => setIsMultiDeleteModalOpen(false)} onConfirm={handleMultiDelete} />}
+            <ColumnFilterDialog open={isColumnFilterOpen} fields={tableFilterFields} filters={columnFilters} onApply={setColumnFilters} onClose={() => setIsColumnFilterOpen(false)} />
+            <MajorTableToolbar searchTerm={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Search staffing requirements..." activeFilterCount={Object.keys(columnFilters).length} onOpenFilters={() => setIsColumnFilterOpen(true)} actions={isSelectionMode ? <BulkSelectionBar intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} /> : <>
+                {canEdit && <button onClick={() => setView('form')} className="btn btn-primary"><Plus aria-hidden="true" /> Add New</button>}
+                <button onClick={handleDownloadReport} className="btn btn-secondary"><Download aria-hidden="true" /> Export</button>
+                {canEdit && <><button onClick={handleDownloadTemplate} className="btn btn-secondary"><FileSpreadsheet aria-hidden="true" /> Template</button><label className={`btn btn-secondary ${isUploading ? 'is-disabled' : ''}`}><Upload aria-hidden="true" /> {isUploading ? 'Uploading...' : 'Import'}<input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} /></label><button onClick={() => handleToggleMode('clone')} className="btn btn-secondary" aria-label="Clone multiple staffing requirements"><DuplicateIcon /> Clone</button><button onClick={() => handleToggleMode('delete')} className="btn btn-secondary" aria-label="Delete multiple staffing requirements"><TrashIcon /> Delete</button></>}
+            </>} />
+            <div className="data-table-scroll"><table className="data-table"><thead><tr>
+                {isSelectionMode && <th className="data-table__cell--selection"><SelectionCheckbox aria-label="Select all staffing requirements on this page" onChange={(event) => handleSelectAll(event, paginatedData)} checked={paginatedData.length > 0 && paginatedData.every(item => selectedIds.includes(item.id))} indeterminate={paginatedData.some(item => selectedIds.includes(item.id)) && !paginatedData.every(item => selectedIds.includes(item.id))} /></th>}
+                <SortableTableHeader label="Code" columnKey="uid" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="OU" columnKey="operatingUnit" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Status" columnKey="hiringStatus" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Position" columnKey="personnelPosition" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Annual Salary" columnKey="annualSalary" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Fund Year" columnKey="fundYear" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Budget" columnKey="budget" sortConfig={sortConfig} onSort={requestSort} /><th>Workflow Status</th>
+            </tr></thead><tbody>
+                {paginatedData.map(item => <tr key={item.id} className={isSelectionMode ? (selectedIds.includes(item.id) ? `data-table__row--selected${selectionIntent === 'delete' ? ' data-table__row--selected-danger' : ''}` : undefined) : 'data-table__row--interactive'} tabIndex={isSelectionMode ? undefined : 0} aria-label={isSelectionMode ? undefined : `View details for ${item.uid}`} onClick={isSelectionMode ? undefined : () => onSelect(item)} onKeyDown={isSelectionMode ? undefined : event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(item); } }}>{isSelectionMode && <td className="data-table__cell--selection"><SelectionCheckbox aria-label={`Select ${item.uid}`} checked={selectedIds.includes(item.id)} onChange={() => handleSelectRow(item.id)} /></td>}<td className="data-table__cell--mono"><TruncatedTableCell value={item.uid} /></td><td><TruncatedTableCell value={item.operatingUnit} /></td><td><span className={getHiringStatusBadge(item.hiringStatus)}>{item.hiringStatus}</span></td><td className="data-table__cell--primary"><TruncatedTableCell value={item.personnelPosition} /></td><td className="data-table__cell--numeric">{formatCurrency(item.annualSalary)}</td><td>{item.fundYear}</td><td>{item.fundType}</td><td>{item.tier}</td><td className="data-table__cell--numeric">{formatCurrency(getStaffingBudget(item))}</td><td>{getWorkflowStatusBadge(item.workflow_status)}</td></tr>)}
+                {paginatedData.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 11 : 10}>No staffing requirements match the current filters.</td></tr>}
+            </tbody></table></div>
+            <DataTablePagination currentPage={currentPage} itemsPerPage={itemsPerPage} totalItems={filteredItems.length} totalPages={totalPages} onPageChange={setCurrentPage} onItemsPerPageChange={setItemsPerPage} />
         </div>
     );
+
 };

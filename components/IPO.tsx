@@ -11,6 +11,8 @@ import { downloadIposReport, downloadIposTemplate, handleIposUpload } from './ma
 import { useAuth } from '../contexts/AuthContext';
 import { fetchAll } from '../hooks/useSupabaseTable';
 import useLocalStorageState from '../hooks/useLocalStorageState';
+import { ConfirmDialog, DataTablePagination, SortableTableHeader as CanonicalSortableTableHeader } from './ui/enterprise';
+import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from './ui/MajorDataTable';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -31,7 +33,7 @@ interface IPOsProps {
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
 );
@@ -65,8 +67,9 @@ const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
 const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories, externalFilters, onClearExternalFilters, gidaAreas, elcacAreas }) => {
     const { currentUser } = useAuth();
+    const tableStoragePrefix = `ipos_${currentUser?.id || 'anonymous'}`;
     const { canEdit } = useUserAccess('IPO Management');
-    const isAdmin = currentUser?.role === 'Administrator';
+    const isAdmin = currentUser?.role === 'Administrator' || currentUser?.role === 'Super Admin';
     const { logAction } = useLogAction();
     const [formData, setFormData] = useState(defaultFormData);
     const [baseRegion, setBaseRegion] = useState(''); // Track base region from dropdown
@@ -108,9 +111,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
 
     // Persistent Filters using useLocalStorageState
-    const [searchTerm, setSearchTerm] = useLocalStorageState('ipos_searchTerm', '');
-    const [regionFilter, setRegionFilter] = useLocalStorageState('ipos_regionFilter', 'All');
-    const [flagFilter, setFlagFilter] = useLocalStorageState('ipos_flagFilter', { 
+    const [searchTerm, setSearchTerm] = useLocalStorageState(`${tableStoragePrefix}_searchTerm`, '');
+    const [regionFilter, setRegionFilter] = useLocalStorageState(`${tableStoragePrefix}_regionFilter`, 'All');
+    const [flagFilter, setFlagFilter] = useLocalStorageState(`${tableStoragePrefix}_flagFilter`, {
         womenLed: false, 
         withinGida: false, 
         withinElcac: false, 
@@ -119,6 +122,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         withTrainings: false
     });
     const [areFlagFiltersOpen, setAreFlagFiltersOpen] = useState(false);
+    const [isColumnFilterOpen, setIsColumnFilterOpen] = useState(false);
+    const [ipoColumnFilters, setIpoColumnFilters] = useLocalStorageState<Record<string, string[]>>(`${tableStoragePrefix}_columnFilters`, {});
 
     type SortKeys = keyof IPO | 'totalInvested';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'registrationDate', direction: 'descending' });
@@ -267,6 +272,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         if (regionFilter !== 'All') {
             filteredIpos = filteredIpos.filter(ipo => ipo.region === regionFilter);
         }
+        if ((ipoColumnFilters.region || []).length > 0) {
+            filteredIpos = filteredIpos.filter(ipo => ipoColumnFilters.region.includes(ipo.region));
+        }
         
         if (flagFilter.womenLed) {
             filteredIpos = filteredIpos.filter(ipo => ipo.isWomenLed);
@@ -293,6 +301,15 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 (t.participatingIpos || []).forEach(p => iposWithTr.add(p));
             });
             filteredIpos = filteredIpos.filter(ipo => iposWithTr.has(ipo.name));
+        }
+
+        const commodityFilters = ipoColumnFilters.commodities || [];
+        if (commodityFilters.length > 0) {
+            filteredIpos = filteredIpos.filter(ipo => (ipo.commodities || []).some(commodity => commodityFilters.includes(commodity.particular)));
+        }
+        const levelFilters = ipoColumnFilters.levelOfDevelopment || [];
+        if (levelFilters.length > 0) {
+            filteredIpos = filteredIpos.filter(ipo => levelFilters.includes(String(latestLevels[ipo.id] || ipo.levelOfDevelopment || '')));
         }
 
         if (searchTerm) {
@@ -334,12 +351,21 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         }
 
         return filteredIpos;
-    }, [ipos, searchTerm, regionFilter, sortConfig, flagFilter, calculateTotalInvestment, subprojects, activities]);
+    }, [ipos, searchTerm, regionFilter, sortConfig, flagFilter, ipoColumnFilters, latestLevels, calculateTotalInvestment, subprojects, activities]);
+
+    useEffect(() => {
+        if (!isSelectionMode) return;
+        const visibleIds = new Set(processedIpos.map(item => item.id));
+        setSelectedIds(previous => {
+            const next = previous.filter(id => visibleIds.has(id));
+            return next.length === previous.length ? previous : next;
+        });
+    }, [isSelectionMode, processedIpos]);
     
     // Use Shared Pagination Hook
     const { 
         currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedIpos 
-    } = usePagination(processedIpos, [searchTerm, regionFilter, flagFilter, sortConfig]);
+    } = usePagination(processedIpos, [searchTerm, regionFilter, flagFilter, ipoColumnFilters, sortConfig]);
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -728,15 +754,14 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     const commonInputClasses = "form-control";
     
     const SortableHeader: React.FC<{ sortKey: SortKeys; label: string; className?: string; }> = ({ sortKey, label, className }) => {
-      const isSorted = sortConfig?.key === sortKey;
-      const directionIcon = isSorted ? (sortConfig?.direction === 'ascending' ? '▲' : '▼') : '↕';
       return (
-        <th scope="col" className={`px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider ${className}`}>
-            <button onClick={() => requestSort(sortKey)} className="flex items-center gap-1.5 group">
-              <span>{label}</span>
-              <span className={`transition-opacity ${isSorted ? 'opacity-100' : 'opacity-30 group-hover:opacity-100'}`}>{directionIcon}</span>
-            </button>
-        </th>
+        <CanonicalSortableTableHeader
+            label={label}
+            columnKey={sortKey}
+            sortConfig={sortConfig}
+            onSort={requestSort}
+            className={className}
+        />
       )
     }
 
@@ -805,319 +830,130 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         }
     };
 
+    const ipoFilterFields = [
+        { key: 'region', label: 'Location', values: Array.from(new Set(ipos.map(ipo => ipo.region).filter(Boolean))).sort() },
+        { key: 'flags', label: 'Flags', values: ['Women-Led', 'GIDA', 'ELCAC', 'SCAD', 'With Subprojects', 'With Trainings'] },
+        { key: 'commodities', label: 'Commodities', values: Array.from(new Set(ipos.flatMap(ipo => (ipo.commodities || []).map(commodity => commodity.particular)).filter(Boolean))).sort() },
+        { key: 'levelOfDevelopment', label: 'Level of Development', values: ['1', '2', '3', '4', '5'] }
+    ];
+    const selectedFlagNames = [
+        flagFilter.womenLed && 'Women-Led',
+        flagFilter.withinGida && 'GIDA',
+        flagFilter.withinElcac && 'ELCAC',
+        flagFilter.withScad && 'SCAD',
+        flagFilter.withSubprojects && 'With Subprojects',
+        flagFilter.withTrainings && 'With Trainings'
+    ].filter(Boolean) as string[];
+    const dialogFilters = {
+        ...ipoColumnFilters,
+        ...(regionFilter !== 'All' && !(ipoColumnFilters.region || []).length ? { region: [regionFilter] } : {}),
+        ...(selectedFlagNames.length ? { flags: selectedFlagNames } : {})
+    };
+    const applyIpoFilters = (filters: Record<string, string[]>) => {
+        const flags = filters.flags || [];
+        setFlagFilter({
+            womenLed: flags.includes('Women-Led'),
+            withinGida: flags.includes('GIDA'),
+            withinElcac: flags.includes('ELCAC'),
+            withScad: flags.includes('SCAD'),
+            withSubprojects: flags.includes('With Subprojects'),
+            withTrainings: flags.includes('With Trainings')
+        });
+        setRegionFilter('All');
+        const { flags: _flags, ...persistentFilters } = filters;
+        setIpoColumnFilters(persistentFilters);
+    };
+    const activeIpoFilterCount = Object.keys(dialogFilters).filter(key => dialogFilters[key]?.length).length;
+
     const renderListView = () => (
         <div className="data-list-page">
+            <ColumnFilterDialog open={isColumnFilterOpen} fields={ipoFilterFields} filters={dialogFilters} onApply={applyIpoFilters} onClose={() => setIsColumnFilterOpen(false)} />
             <div className="data-list-header">
-                 <h2 className="data-list-title">IPO Management</h2>
-                 {canEdit && (
-                     <button
-                        onClick={handleAddNewClick}
-                        className="btn btn-primary btn-responsive"
-                        title="Add New IPO"
-                    >
-                        <Plus className="btn-symbol" aria-hidden="true" />
-                        <span className="btn-text">Add New IPO</span>
-                     </button>
-                 )}
+                <h2 className="data-list-title">IPO Management</h2>
+                {canEdit && <button onClick={handleAddNewClick} className="btn btn-primary"><Plus aria-hidden="true" /> Add New IPO</button>}
             </div>
-            <div className="data-table-card">
-                 <div className="data-table-toolbar">
-                    <div className="data-toolbar-row">
-                        <div className="data-toolbar-group">
-                            <input
-                                type="text"
-                                placeholder="Search by name, contact, location or commodity..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className={`data-table-search data-table-search--list ${commonInputClasses} mt-0`}
-                            />
-                            <div className="data-toolbar-group data-toolbar-filter">
-                                <label className="data-toolbar-label">Region:</label>
-                                <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className={`data-table-select data-table-select--compact ${commonInputClasses} mt-0`}>
-                                    <option value="All">All Regions</option>
-                                    {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <div className="data-toolbar-group data-toolbar-group--actions">
-                            {isAdmin && isSelectionMode && selectedIds.length > 0 && (
-                                <button onClick={() => setIsMultiDeleteModalOpen(true)} className="btn btn-danger">
-                                    Delete Selected ({selectedIds.length})
-                                </button>
-                            )}
-                            <button onClick={() => downloadIposReport(processedIpos)} className="btn btn-primary btn-responsive" title="Download Report">
-                                <Download className="btn-symbol" aria-hidden="true" />
-                                <span className="btn-text">Download Report</span>
-                            </button>
-                            {canEdit && (
-                                <>
-                                    <button onClick={downloadIposTemplate} className="btn btn-secondary btn-responsive" title="Download Template">
-                                        <FileSpreadsheet className="btn-symbol" aria-hidden="true" />
-                                        <span className="btn-text">Template</span>
-                                    </button>
-                                    <label htmlFor="ipo-upload" className={`btn btn-primary btn-responsive ${isUploading ? 'is-disabled' : 'cursor-pointer'}`} title={isUploading ? 'Uploading...' : 'Upload'}>
-                                        <Upload className="btn-symbol" aria-hidden="true" />
-                                        <span className="btn-text">{isUploading ? 'Uploading...' : 'Upload'}</span>
-                                    </label>
-                                    <input id="ipo-upload" type="file" className="hidden" onChange={(e) => handleIposUpload(e, ipos, setIpos, logAction, setIsUploading, gidaAreas, elcacAreas)} accept=".xlsx, .xls" disabled={isUploading} />
-                                    {isAdmin && (
-                                        <button
-                                            onClick={handleToggleSelectionMode}
-                                            className={`btn btn-secondary btn-icon ${isSelectionMode ? 'is-active-danger' : ''}`}
-                                            title="Toggle Multi-Delete Mode"
-                                        >
-                                            <TrashIcon />
-                                        </button>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    <button
-                        type="button"
-                        className={`filter-checkbar-toggle ${areFlagFiltersOpen ? 'is-open' : ''}`}
-                        onClick={() => setAreFlagFiltersOpen(prev => !prev)}
-                        aria-expanded={areFlagFiltersOpen}
-                    >
-                        <span>
-                            <SlidersHorizontal className="filter-checkbar-toggle__icon" aria-hidden="true" />
-                            Filters
-                            {activeFlagFilterCount > 0 && <span className="filter-checkbar-toggle__count">{activeFlagFilterCount}</span>}
-                        </span>
-                        <ChevronDown className="filter-checkbar-toggle__chevron" aria-hidden="true" />
-                    </button>
-                     
-                    <div className={`filter-checkbar ${areFlagFiltersOpen ? 'is-open' : ''}`}>
-                        <label className="filter-check">
-                            <input type="checkbox" name="womenLed" checked={flagFilter.womenLed} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
-                            <span className="text-gray-700 dark:text-gray-300">Women-Led</span>
-                        </label>
-                        <label className="filter-check">
-                            <input type="checkbox" name="withinGida" checked={flagFilter.withinGida} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
-                            <span className="text-gray-700 dark:text-gray-300">Within GIDA</span>
-                        </label>
-                        <label className="filter-check">
-                            <input type="checkbox" name="withinElcac" checked={flagFilter.withinElcac} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
-                            <span className="text-gray-700 dark:text-gray-300">Within ELCAC</span>
-                        </label>
-                        <label className="filter-check">
-                            <input type="checkbox" name="withScad" checked={flagFilter.withScad} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
-                            <span className="text-gray-700 dark:text-gray-300">With SCAD</span>
-                        </label>
-                         <label className="filter-check">
-                            <input type="checkbox" name="withSubprojects" checked={flagFilter.withSubprojects} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
-                            <span className="text-gray-700 dark:text-gray-300">With Subprojects</span>
-                        </label>
-                        <label className="filter-check">
-                            <input type="checkbox" name="withTrainings" checked={flagFilter.withTrainings} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
-                            <span className="text-gray-700 dark:text-gray-300">With Trainings</span>
-                        </label>
-                    </div>
-                 </div>
-
-                <div className="data-table-scroll overflow-x-auto">
-                    <table className="data-table min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead className="bg-gray-50 dark:bg-gray-700">
-                            <tr>
-                                <th className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
-                                <SortableHeader sortKey="name" label="IPO Name" className="min-w-[200px]" />
-                                <SortableHeader sortKey="location" label="Location" />
-                                <SortableHeader sortKey="contactPerson" label="Contact" />
-                                <SortableHeader sortKey="registrationDate" label="Registered" />
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Flags</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Commodities</th>
-                                <SortableHeader sortKey="levelOfDevelopment" label="Level" />
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Workflow Status</th>
-                                {isAdmin && (
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
-                                        {isSelectionMode ? (
-                                            <div className="flex items-center justify-end gap-2">
-                                                <span className="text-xs">Select All</span>
-                                                <input 
-                                                    type="checkbox" 
-                                                    onChange={handleSelectAll} 
-                                                    checked={paginatedIpos.length > 0 && paginatedIpos.every(i => selectedIds.includes(i.id))}
-                                                    className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                                                />
-                                            </div>
-                                        ) : "Actions"}
-                                    </th>
-                                )}
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {paginatedIpos.map((ipo) => {
-                                const relatedSubprojects = (subprojects || []).filter(sp => sp.indigenousPeopleOrganization === ipo.name);
-                                const completedSubprojects = relatedSubprojects.filter(sp => sp.status === 'Completed');
-                                const totalInvestment = calculateTotalInvestment(ipo.name);
-                                const totalAllocation = calculateTotalAllocation(ipo.name);
-                                const totalLandArea = (ipo.commodities || []).reduce((sum, c) => sum + (Number(c.value) || 0), 0);
-                                const trainingCount = linkedTrainings.filter(t => (t.participatingIpos || []).includes(ipo.name) && t.status === 'Completed').length;
-
-                                return (
-                                <React.Fragment key={ipo.id}>
-                                    <tr onClick={() => handleToggleRow(ipo.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                        <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === ipo.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                            </svg>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">
-                                            <button onClick={(e) => { e.stopPropagation(); onSelectIpo(ipo); }} className="table-link">
-                                                {ipo.name}
-                                            </button>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                            {ipo.location.split(',').slice(1).join(',').trim() || ipo.location}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                            <div>{ipo.contactPerson}</div>
-                                            <div className="text-xs text-gray-400">{ipo.contactNumber}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(ipo.registrationDate)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                            <div className="flex flex-wrap gap-1 max-w-[150px]">
-                                                {ipo.isWomenLed && <span className="status-badge status-badge--pink" title="Women-Led">WL</span>}
-                                                {ipo.isWithinGida && <span className="status-badge status-badge--purple" title="GIDA">GIDA</span>}
-                                                {ipo.isWithinElcac && <span className="status-badge status-badge--orange" title="ELCAC">ELCAC</span>}
-                                                {ipo.isWithScad && <span className="status-badge status-badge--cyan" title="SCAD">SCAD</span>}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 max-w-[200px]">
-                                            {ipo.commodities.map(c => c.particular).join(', ')}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 rounded-md mx-auto block w-10">{latestLevels[ipo.id] || ipo.levelOfDevelopment || '-'}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex flex-col gap-1 items-start">
-                                                {getWorkflowStatusBadge(ipo.workflow_status)}
-                                                {ipo.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
-                                                    <div className="flex gap-1 mt-1">
-                                                        <button 
-                                                            onClick={(e) => handleApprove(ipo.id, e)} 
-                                                            className="action-mini action-mini--approve"
-                                                            title="Approve"
-                                                        >
-                                                            <Check className="h-3 w-3" />
-                                                        </button>
-                                                        <button 
-                                                            onClick={(e) => handleReject(ipo.id, e)} 
-                                                            className="action-mini action-mini--reject"
-                                                            title="Reject"
-                                                        >
-                                                            <X className="h-3 w-3" />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </td>
-                                        {isAdmin && (
-                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
-                                                <div className="flex items-center justify-end">
-                                                    {isSelectionMode ? (
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={selectedIds.includes(ipo.id)} 
-                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(ipo.id); }} 
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                                                        />
-                                                    ) : (
-                                                        <button onClick={(e) => handleDeleteClick(ipo, e)} className="table-action table-action--danger">Delete</button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        )}
-                                    </tr>
-                                    {expandedRowId === ipo.id && (
-                                        <tr className="bg-gray-50 dark:bg-gray-900/50">
-                                            <td colSpan={9} className="p-4">
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                                    <div>
-                                                        <h4 className="font-semibold text-sm text-gray-700 dark:text-gray-200 mb-2">IPO Details</h4>
-                                                        <div className="space-y-1 text-sm text-gray-600 dark:text-gray-300">
-                                                            <p><strong>ICC:</strong> {ipo.indigenousCulturalCommunity}</p>
-                                                            <p><strong>AD No:</strong> {ipo.ancestralDomainNo || 'N/A'}</p>
-                                                            <p><strong>Reg. Body:</strong> {ipo.registeringBody}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-semibold text-sm text-gray-700 dark:text-gray-200 mb-2">Engagement Summary</h4>
-                                                        <div className="space-y-1 text-sm text-gray-600 dark:text-gray-300">
-                                                            <p><strong>Total Investment:</strong> {formatCurrency(totalInvestment)}</p>
-                                                            <p><strong>Total Allocation:</strong> {formatCurrency(totalAllocation)}</p>
-                                                            <p><strong>Total Land Area:</strong> {totalLandArea.toLocaleString()} ha</p>
-                                                            <p><strong>Subprojects (Completed):</strong> {completedSubprojects.length}</p>
-                                                            <p><strong>Trainings Attended (Completed):</strong> {trainingCount}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-semibold text-sm text-gray-700 dark:text-gray-200 mb-2">Subprojects</h4>
-                                                        {relatedSubprojects.length > 0 ? (
-                                                            <ul className="text-xs space-y-1">
-                                                                {relatedSubprojects.map(sp => (
-                                                                    <li key={sp.id} className="flex justify-between">
-                                                                        <span className="truncate max-w-[150px]" title={sp.name}>{sp.name}</span>
-                                                                        <span className={getProjectStatusBadgeClass(sp.status)}>{sp.status}</span>
-                                                                    </li>
-                                                                ))}
-                                                            </ul>
-                                                        ) : <p className="text-xs text-gray-500 italic">No subprojects linked.</p>}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </React.Fragment>
-                            )})}
+            <div className="data-table-card major-table-card">
+                <MajorTableToolbar
+                    searchTerm={searchTerm}
+                    onSearchChange={setSearchTerm}
+                    searchPlaceholder="Search IPOs..."
+                    activeFilterCount={activeIpoFilterCount}
+                    onOpenFilters={() => setIsColumnFilterOpen(true)}
+                    actions={isSelectionMode
+                        ? <BulkSelectionBar intent="delete" count={selectedIds.length} onConfirm={() => setIsMultiDeleteModalOpen(true)} onClear={() => setSelectedIds([])} onCancel={handleToggleSelectionMode} />
+                        : <>
+                        <button onClick={() => downloadIposReport(processedIpos)} className="btn btn-secondary"><Download aria-hidden="true" /> Export</button>
+                        {canEdit && <>
+                            <button onClick={downloadIposTemplate} className="btn btn-secondary"><FileSpreadsheet aria-hidden="true" /> Template</button>
+                            <label htmlFor="ipo-upload-major" className={`btn btn-secondary ${isUploading ? 'is-disabled' : ''}`}><Upload aria-hidden="true" /> {isUploading ? 'Uploading...' : 'Import'}</label>
+                            <input id="ipo-upload-major" type="file" className="hidden" onChange={(event) => handleIposUpload(event, ipos, setIpos, logAction, setIsUploading, gidaAreas, elcacAreas)} accept=".xlsx,.xls" disabled={isUploading} />
+                            {isAdmin && <button onClick={handleToggleSelectionMode} className="btn btn-secondary" aria-label="Delete multiple IPOs"><TrashIcon /> Delete</button>}
+                        </>}
+                    </>}
+                />
+                <div className="data-table-scroll">
+                    <table className="data-table">
+                        <thead><tr>
+                            {isSelectionMode && <th className="data-table__cell--selection"><SelectionCheckbox aria-label="Select all IPOs on this page" onChange={handleSelectAll} checked={paginatedIpos.length > 0 && paginatedIpos.every(ipo => selectedIds.includes(ipo.id))} indeterminate={paginatedIpos.some(ipo => selectedIds.includes(ipo.id)) && !paginatedIpos.every(ipo => selectedIds.includes(ipo.id))} /></th>}
+                            <CanonicalSortableTableHeader label="IPO ID" columnKey="id" sortConfig={sortConfig} onSort={requestSort} />
+                            <CanonicalSortableTableHeader label="IPO Name" columnKey="name" sortConfig={sortConfig} onSort={requestSort} />
+                            <CanonicalSortableTableHeader label="Location" columnKey="location" sortConfig={sortConfig} onSort={requestSort} />
+                            <th>Flags</th><th>Commodities</th>
+                            <CanonicalSortableTableHeader label="Level of Development" columnKey="levelOfDevelopment" sortConfig={sortConfig} onSort={requestSort} />
+                        </tr></thead>
+                        <tbody>
+                            {paginatedIpos.map(ipo => {
+                                const flags = [ipo.isWomenLed && 'Women-Led', ipo.isWithinGida && 'GIDA', ipo.isWithinElcac && 'ELCAC', ipo.isWithScad && 'SCAD'].filter(Boolean) as string[];
+                                const commodities = (ipo.commodities || []).map(commodity => commodity.particular).filter(Boolean);
+                                const flagPreview = flags.length ? `${flags[0]}${flags.length > 1 ? ` +${flags.length - 1}` : ''}` : '—';
+                                const commodityPreview = commodities.length ? `${commodities[0]}${commodities.length > 1 ? ` +${commodities.length - 1}` : ''}` : '—';
+                                return <tr
+                                    key={ipo.id}
+                                    className={isSelectionMode ? (selectedIds.includes(ipo.id) ? 'data-table__row--selected data-table__row--selected-danger' : undefined) : 'data-table__row--interactive'}
+                                    tabIndex={isSelectionMode ? undefined : 0}
+                                    aria-label={isSelectionMode ? undefined : `View details for ${ipo.name}`}
+                                    onClick={isSelectionMode ? undefined : () => onSelectIpo(ipo)}
+                                    onKeyDown={isSelectionMode ? undefined : event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectIpo(ipo); } }}
+                                >
+                                    {isSelectionMode && <td className="data-table__cell--selection"><SelectionCheckbox aria-label={`Select ${ipo.name}`} checked={selectedIds.includes(ipo.id)} onChange={() => handleSelectRow(ipo.id)} /></td>}
+                                    <td className="data-table__cell--mono">{ipo.id}</td>
+                                    <td className="data-table__cell--primary"><TruncatedTableCell value={ipo.name} /></td>
+                                    <td><TruncatedTableCell value={ipo.location} /></td>
+                                    <td><TruncatedTableCell className="status-badge status-badge--compact status-badge--info" value={flagPreview} fullText={flags.join(', ') || 'No flags'} /></td>
+                                    <td><TruncatedTableCell value={commodityPreview} fullText={commodities.join(', ') || 'No commodities'} /></td>
+                                    <td><span className="data-table-level">{latestLevels[ipo.id] || ipo.levelOfDevelopment || '—'}</span></td>
+                                </tr>;
+                            })}
+                            {paginatedIpos.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 7 : 6}>No IPOs match the current filters.</td></tr>}
                         </tbody>
                     </table>
                 </div>
-                 {/* Pagination */}
-                 <div className="data-table-pagination">
-                    <div className="data-table-pagination__page-size">
-                        <span>Rows</span>
-                        <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">
-                            {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
-                        </select>
-                        <span className="data-table-pagination__entries-label">per page</span>
-                    </div>
-                     <div className="data-table-pagination__status">
-                        <span className="data-table-pagination__range">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, processedIpos.length)} to {Math.min(currentPage * itemsPerPage, processedIpos.length)} of {processedIpos.length} entries</span>
-                        <span className="data-table-pagination__compact-range">{processedIpos.length === 0 ? '0 records' : `${Math.min((currentPage - 1) * itemsPerPage + 1, processedIpos.length)}-${Math.min(currentPage * itemsPerPage, processedIpos.length)} of ${processedIpos.length}`}</span>
-                        <div className="data-table-pagination__controls">
-                            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1}>Previous</button>
-                            <span>{currentPage} / {totalPages}</span>
-                            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages}>Next</button>
-                        </div>
-                    </div>
-                </div>
+                <DataTablePagination currentPage={currentPage} totalPages={totalPages} totalItems={processedIpos.length} itemsPerPage={itemsPerPage} onPageChange={setCurrentPage} onItemsPerPageChange={setItemsPerPage} />
             </div>
         </div>
     );
 
     const renderFormView = () => (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">{view === 'edit' ? 'Edit IPO' : 'Add New IPO'}</h3>
-                <button onClick={handleCancelEdit} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Back to List</button>
+        <div className="form-page">
+            <div className="data-list-header">
+                <h2 className="data-list-title">{view === 'edit' ? 'Edit IPO' : 'Add New IPO'}</h2>
+                <button type="button" onClick={handleCancelEdit} className="btn btn-secondary">Back to list</button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-6">
-                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">IPO Profile</legend>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="md:col-span-3">
-                            <label htmlFor="name" className="block text-sm font-medium">IPO Name</label>
+            <form onSubmit={handleSubmit} className="form-stack form-stack--spacious">
+                <fieldset className="form-fieldset">
+                    <legend className="form-legend">IPO Profile</legend>
+                    <div className="form-grid">
+                        <div className="form-field--full">
+                            <label htmlFor="name" className="form-label">IPO Name</label>
                             <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} />
                         </div>
-                         <div className="md:col-span-3">
-                            <label htmlFor="indigenousCulturalCommunity" className="block text-sm font-medium">Indigenous Cultural Community (ICC)</label>
+                         <div className="form-field--full">
+                            <label htmlFor="indigenousCulturalCommunity" className="form-label">Indigenous Cultural Community (ICC)</label>
                             <input type="text" name="indigenousCulturalCommunity" id="indigenousCulturalCommunity" value={formData.indigenousCulturalCommunity} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
                         
-                        <div className="md:col-span-3">
-                            <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">IPO Location</label>
+                        <div className="form-field--full">
+                            <label htmlFor="location" className="form-label">IPO Location</label>
                             <LocationPicker 
                                 value={formData.location} 
                                 onChange={handleLocationChange} 
@@ -1125,13 +961,13 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                 required 
                             />
                         </div>
-                        <div className="md:col-span-3">
-                            <label htmlFor="ancestralDomainNo" className="block text-sm font-medium">Ancestral Domain No.</label>
+                        <div className="form-field--full">
+                            <label htmlFor="ancestralDomainNo" className="form-label">Ancestral Domain No.</label>
                             <input type="text" name="ancestralDomainNo" id="ancestralDomainNo" value={formData.ancestralDomainNo} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
 
                          <div>
-                            <label htmlFor="registeringBody" className="block text-sm font-medium">Registering Body</label>
+                            <label htmlFor="registeringBody" className="form-label">Registering Body</label>
                             <select name="registeringBody" id="registeringBody" value={formData.registeringBody} onChange={handleInputChange} className={commonInputClasses}>
                                 {registeringBodyOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                 <option value="Others">Others</option>
@@ -1139,181 +975,181 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                          </div>
                          {formData.registeringBody === 'Others' && (
                             <div>
-                                <label htmlFor="otherRegisteringBody" className="block text-sm font-medium">Please Specify</label>
+                                <label htmlFor="otherRegisteringBody" className="form-label">Please Specify</label>
                                 <input type="text" name="otherRegisteringBody" id="otherRegisteringBody" value={otherRegisteringBody} onChange={(e) => setOtherRegisteringBody(e.target.value)} required className={commonInputClasses} />
                             </div>
                          )}
-                          <div className={formData.registeringBody === 'Others' ? '' : 'md:col-start-2'}>
-                            <label htmlFor="registrationDate" className="block text-sm font-medium">Registration Date</label>
+                          <div>
+                            <label htmlFor="registrationDate" className="form-label">Registration Date</label>
                             <input type="date" name="registrationDate" id="registrationDate" value={formData.registrationDate || ''} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
 
                          <div>
-                            <label htmlFor="contactPerson" className="block text-sm font-medium">Contact Person</label>
+                            <label htmlFor="contactPerson" className="form-label">Contact Person</label>
                             <input type="text" name="contactPerson" id="contactPerson" value={formData.contactPerson} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
                         <div>
-                            <label htmlFor="contactNumber" className="block text-sm font-medium">Contact Number</label>
+                            <label htmlFor="contactNumber" className="form-label">Contact Number</label>
                             <input type="text" name="contactNumber" id="contactNumber" value={formData.contactNumber} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
 
-                        <div className="md:col-span-3 flex items-center flex-wrap gap-x-8 gap-y-2 pt-2">
-                             <label htmlFor="isWomenLed" className="flex items-center gap-2 text-sm font-medium">
-                                <input type="checkbox" name="isWomenLed" id="isWomenLed" checked={formData.isWomenLed} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                        <div className="form-field--full form-check-group">
+                             <label htmlFor="isWomenLed" className="form-check">
+                                <input type="checkbox" name="isWomenLed" id="isWomenLed" checked={formData.isWomenLed} onChange={handleInputChange} className="form-checkbox" />
                                 <span>Women-led</span>
                             </label>
-                            <label htmlFor="isWithinGida" className="flex items-center gap-2 text-sm font-medium">
-                                <input type="checkbox" name="isWithinGida" id="isWithinGida" checked={formData.isWithinGida} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                            <label htmlFor="isWithinGida" className="form-check">
+                                <input type="checkbox" name="isWithinGida" id="isWithinGida" checked={formData.isWithinGida} onChange={handleInputChange} className="form-checkbox" />
                                 <span>Within GIDA area</span>
                             </label>
-                            <label htmlFor="isWithinElcac" className="flex items-center gap-2 text-sm font-medium">
-                                <input type="checkbox" name="isWithinElcac" id="isWithinElcac" checked={formData.isWithinElcac} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                            <label htmlFor="isWithinElcac" className="form-check">
+                                <input type="checkbox" name="isWithinElcac" id="isWithinElcac" checked={formData.isWithinElcac} onChange={handleInputChange} className="form-checkbox" />
                                 <span>Within ELCAC area</span>
                             </label>
-                            <label className="flex items-center gap-2 text-sm font-medium text-gray-400 dark:text-gray-500">
-                                <input type="checkbox" name="isWithScad" checked={formData.isWithScad} disabled className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                            <label className="form-check is-disabled">
+                                <input type="checkbox" name="isWithScad" checked={formData.isWithScad} disabled className="form-checkbox" />
                                 <span>With SCAD</span>
                             </label>
                         </div>
                     </div>
                 </fieldset>
 
-                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Commodities</legend>
-                    <div className="space-y-2 mb-4">
+                <fieldset className="form-fieldset">
+                    <legend className="form-legend">Commodities</legend>
+                    <div className="form-repeat-list form-repeat-list--unbounded">
                         {formData.commodities.map((commodity, index) => (
-                            <div key={index} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingCommodityIndex === index ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
-                                <div className="flex flex-col">
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-semibold">{commodity.particular}</span>
-                                        <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
+                            <div key={index} className={`form-repeat-card ${editingCommodityIndex === index ? 'is-editing' : ''}`}>
+                                <div>
+                                    <div className="form-repeat-card__title">
+                                        <span>{commodity.particular}</span>
+                                        <span className="form-repeat-card__type"> ({commodity.type}) — </span>
                                         <span>
                                             {commodity.value.toLocaleString()} {commodity.type === 'Livestock' ? 'heads' : 'ha'}
                                             {commodity.yield ? ` | Yield: ${commodity.yield}` : ''}
                                         </span>
                                         {commodity.isScad && <span className="status-badge status-badge--compact status-badge--cyan">SCAD</span>}
                                     </div>
-                                    <div className="text-xs text-gray-500 mt-1 pl-1">
+                                    <div className="form-repeat-card__meta form-repeat-card__meta--inline">
                                         {(commodity.marketingPercentage || 0) > 0 && <span>Mktg: {commodity.marketingPercentage}%</span>}
-                                        {(commodity.foodSecurityPercentage || 0) > 0 && <span className="ml-2">FS: {commodity.foodSecurityPercentage}%</span>}
-                                        {(commodity.averageIncome || 0) > 0 && <span className="ml-2">Inc: ₱{commodity.averageIncome?.toLocaleString()}</span>}
+                                        {(commodity.foodSecurityPercentage || 0) > 0 && <span>FS: {commodity.foodSecurityPercentage}%</span>}
+                                        {(commodity.averageIncome || 0) > 0 && <span>Inc: ₱{commodity.averageIncome?.toLocaleString()}</span>}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                <div className="form-repeat-card__actions">
+                                    <button type="button" onClick={() => handleEditCommodity(index)} className="table-action" aria-label={`Edit ${commodity.particular}`}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                     </button>
-                                    <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-gray-400 hover:text-red-500">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    <button type="button" onClick={() => handleRemoveCommodity(index)} className="table-action table-action--danger" aria-label={`Remove ${commodity.particular}`}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                     </button>
                                 </div>
                             </div>
                         ))}
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                    <div className="form-grid form-grid--four form-grid--compact form-grid--align-end">
                          <div>
-                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
-                            <select name="type" value={currentCommodity.type} onChange={handleCommodityChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                            <label className="form-label">Type</label>
+                            <select name="type" value={currentCommodity.type} onChange={handleCommodityChange} className="form-control form-control--compact">
                                 <option value="">Select Type</option>
                                 {referenceCommodityTypes.map(type => ( <option key={type} value={type}>{type}</option> ))}
                             </select>
                         </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular</label>
-                            <select name="particular" value={currentCommodity.particular} onChange={handleCommodityChange} disabled={!currentCommodity.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
+                        <div className="form-field--span-two">
+                            <label className="form-label">Particular</label>
+                            <select name="particular" value={currentCommodity.particular} onChange={handleCommodityChange} disabled={!currentCommodity.type} className="form-control form-control--compact">
                                 <option value="">Select Particular</option>
                                 {currentCommodity.type && commodityCategories[currentCommodity.type] && commodityCategories[currentCommodity.type].map(item => ( <option key={item} value={item}>{item}</option> ))}
                             </select>
                         </div>
-                         <div className="flex items-end gap-2">
-                            <div className="flex-1">
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{currentCommodity.type === 'Livestock' ? 'Number of Heads' : 'Area (Hectares)'}</label>
-                                <input type="number" name="value" value={currentCommodity.value} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                         <div className="form-grid form-grid--two form-grid--compact form-grid--align-end">
+                            <div>
+                                <label className="form-label">{currentCommodity.type === 'Livestock' ? 'Number of Heads' : 'Area (Hectares)'}</label>
+                                <input type="number" name="value" value={currentCommodity.value} onChange={handleCommodityChange} min="0" step="any" className="form-control form-control--compact" />
                             </div>
                             {currentCommodity.type !== 'Livestock' && (
-                                <div className="flex-1">
-                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Avg Yield</label>
-                                    <input type="number" name="yield" value={currentCommodity.yield} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                <div>
+                                    <label className="form-label">Avg Yield</label>
+                                    <input type="number" name="yield" value={currentCommodity.yield} onChange={handleCommodityChange} min="0" step="any" className="form-control form-control--compact" />
                                 </div>
                             )}
                         </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end mt-3 border-t border-gray-100 dark:border-gray-700 pt-3">
+                    <div className="form-grid form-grid--four form-grid--compact form-grid--align-end form-divider">
                         <div>
-                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Marketing %</label>
-                            <input type="number" name="marketingPercentage" value={currentCommodity.marketingPercentage} onChange={handleCommodityChange} min="0" max="100" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" placeholder="0-100" />
+                            <label className="form-label">Marketing %</label>
+                            <input type="number" name="marketingPercentage" value={currentCommodity.marketingPercentage} onChange={handleCommodityChange} min="0" max="100" className="form-control form-control--compact" placeholder="0-100" />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Food Security %</label>
-                            <input type="number" name="foodSecurityPercentage" value={currentCommodity.foodSecurityPercentage} onChange={handleCommodityChange} min="0" max="100" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" placeholder="0-100" />
+                            <label className="form-label">Food Security %</label>
+                            <input type="number" name="foodSecurityPercentage" value={currentCommodity.foodSecurityPercentage} onChange={handleCommodityChange} min="0" max="100" className="form-control form-control--compact" placeholder="0-100" />
                         </div>
                         <div>
                             {Number(currentCommodity.marketingPercentage) > 0 && (
-                                <div className="animate-fadeIn">
-                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Average Income (PHP)</label>
-                                    <input type="number" name="averageIncome" value={currentCommodity.averageIncome} onChange={handleCommodityChange} min="0" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" placeholder="0.00" />
+                                <div>
+                                    <label className="form-label">Average Income (PHP)</label>
+                                    <input type="number" name="averageIncome" value={currentCommodity.averageIncome} onChange={handleCommodityChange} min="0" className="form-control form-control--compact" placeholder="0.00" />
                                 </div>
                             )}
                         </div>
-                        <div className="flex justify-end items-end h-full">
+                        <div className="form-action-row">
                             {editingCommodityIndex !== null ? (
-                                <div className="flex gap-1 w-full">
-                                    <button type="button" onClick={handleAddCommodity} className="h-9 px-3 flex-grow inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button>
-                                    <button type="button" onClick={handleCancelCommodityEdit} className="h-9 px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
+                                <div className="form-action-row">
+                                    <button type="button" onClick={handleAddCommodity} className="btn btn-primary btn-compact">Update</button>
+                                    <button type="button" onClick={handleCancelCommodityEdit} className="btn btn-secondary btn-compact">Cancel</button>
                                 </div>
                             ) : (
-                                <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900">+</button>
+                                <button type="button" onClick={handleAddCommodity} className="btn btn-primary btn-icon" aria-label="Add commodity">+</button>
                             )}
                         </div>
                     </div>
-                    <div className="mt-2">
-                        <label className="flex items-center gap-2 text-sm font-medium">
-                            <input type="checkbox" name="isScad" checked={currentCommodity.isScad} onChange={handleCommodityChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                    <div className="form-check-group">
+                        <label className="form-check">
+                            <input type="checkbox" name="isScad" checked={currentCommodity.isScad} onChange={handleCommodityChange} className="form-checkbox" />
                             <span>SCAD commodity</span>
                         </label>
                     </div>
                 </fieldset>
                 
 
-                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Membership Information</legend>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <fieldset className="form-fieldset">
+                    <legend className="form-legend">Membership Information</legend>
+                    <div className="form-grid">
                         <div>
-                            <label htmlFor="totalMembers" className="block text-sm font-medium">Total Members</label>
+                            <label htmlFor="totalMembers" className="form-label">Total Members</label>
                             <input type="number" name="totalMembers" id="totalMembers" value={formData.totalMembers} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
                         <div>
-                            <label htmlFor="totalIpMembers" className="block text-sm font-medium">Total IP Members</label>
+                            <label htmlFor="totalIpMembers" className="form-label">Total IP Members</label>
                             <input type="number" name="totalIpMembers" id="totalIpMembers" value={formData.totalIpMembers} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
                         <div>
-                            <label htmlFor="total4PsMembers" className="block text-sm font-medium">Total 4Ps Beneficiaries</label>
+                            <label htmlFor="total4PsMembers" className="form-label">Total 4Ps Beneficiaries</label>
                             <input type="number" name="total4PsMembers" id="total4PsMembers" value={formData.total4PsMembers} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
                         <div>
-                            <label htmlFor="totalMaleMembers" className="block text-sm font-medium">Male Members</label>
+                            <label htmlFor="totalMaleMembers" className="form-label">Male Members</label>
                             <input type="number" name="totalMaleMembers" id="totalMaleMembers" value={formData.totalMaleMembers} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
                         <div>
-                            <label htmlFor="totalFemaleMembers" className="block text-sm font-medium">Female Members</label>
+                            <label htmlFor="totalFemaleMembers" className="form-label">Female Members</label>
                             <input type="number" name="totalFemaleMembers" id="totalFemaleMembers" value={formData.totalFemaleMembers} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium">&nbsp;</label>
-                            <span className="text-sm text-gray-500">Total: {(formData.totalMaleMembers || 0) + (formData.totalFemaleMembers || 0)}</span>
+                            <span className="form-label">Gender total</span>
+                            <span className="form-summary-value">{(formData.totalMaleMembers || 0) + (formData.totalFemaleMembers || 0)}</span>
                         </div>
                         <div>
-                            <label htmlFor="totalYouthMembers" className="block text-sm font-medium">Youth Members</label>
+                            <label htmlFor="totalYouthMembers" className="form-label">Youth Members</label>
                             <input type="number" name="totalYouthMembers" id="totalYouthMembers" value={formData.totalYouthMembers} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
                         <div>
-                            <label htmlFor="totalSeniorMembers" className="block text-sm font-medium">Senior Citizen Members</label>
+                            <label htmlFor="totalSeniorMembers" className="form-label">Senior Citizen Members</label>
                             <input type="number" name="totalSeniorMembers" id="totalSeniorMembers" value={formData.totalSeniorMembers} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
                     </div>
                 </fieldset>
 
-                <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="form-footer">
                     <button type="button" onClick={handleCancelEdit} className="btn btn-secondary">
                         Cancel
                     </button>
@@ -1328,32 +1164,23 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     return (
         <div>
             {isDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Deletion</h3>
-                        <p className="my-4 text-gray-700 dark:text-gray-300">Are you sure you want to delete "{ipoToDelete?.name}"? This action cannot be undone.</p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmDelete} className="btn btn-danger">Delete</button>
-                        </div>
-                    </div>
-                </div>
+                <ConfirmDialog
+                    title="Confirm deletion"
+                    description={`Delete ${ipoToDelete?.name || 'this IPO'}? This action cannot be undone.`}
+                    confirmLabel="Delete IPO"
+                    onCancel={() => setIsDeleteModalOpen(false)}
+                    onConfirm={confirmDelete}
+                />
             )}
             
             {isMultiDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
-                        <p className="my-4 text-gray-700 dark:text-gray-300">
-                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected IPO(s)? 
-                            This action cannot be undone.
-                        </p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmMultiDelete} className="btn btn-danger">Delete All Selected</button>
-                        </div>
-                    </div>
-                </div>
+                <ConfirmDialog
+                    title={`Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'entry' : 'entries'}?`}
+                    description="This action cannot be undone. The selected records will be permanently removed."
+                    confirmLabel="Delete"
+                    onCancel={() => setIsMultiDeleteModalOpen(false)}
+                    onConfirm={confirmMultiDelete}
+                />
             )}
 
             {view === 'list' ? renderListView() : renderFormView()}

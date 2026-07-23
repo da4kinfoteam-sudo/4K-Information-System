@@ -1,15 +1,14 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     BarChart3,
     BookOpen,
     Briefcase,
     CalendarDays,
     CheckCircle2,
+    ChevronDown,
     CircleDollarSign,
     ClipboardList,
     Database,
-    FileText,
     Folder,
     Home,
     LayoutDashboard,
@@ -17,240 +16,241 @@ import {
     Settings,
     Store,
     TrendingUp,
-    UsersRound
+    UsersRound,
+    X,
 } from 'lucide-react';
-import { navigationStructure, NavItem } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
+import useLocalStorageState from '../hooks/useLocalStorageState';
+import {
+    AppNavigationItem,
+    appNavigationStructure,
+    navigationBranchMatchesPath,
+    navigationItemMatchesPath,
+} from '../lib/appNavigation';
 
 interface SidebarProps {
     isOpen: boolean;
-    toggleSidebar: () => void;
     closeSidebar: () => void;
     currentPage: string;
     setCurrentPage: (page: string, options?: { resetReports?: boolean }) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, currentPage, setCurrentPage }) => {
+const navIconMap: Record<string, React.ReactNode> = {
+    Homepage: <Home />,
+    Reports: <BarChart3 />,
+    Dashboard: <LayoutDashboard />,
+    Subprojects: <Folder />,
+    Activities: <CalendarDays />,
+    'Program Management': <Briefcase />,
+    Financial: <CircleDollarSign />,
+    Physical: <TrendingUp />,
+    IPOs: <UsersRound />,
+    Resources: <Database />,
+    'Marketing Database': <Store />,
+    'Level of Development': <MapPinned />,
+    'Commodity Mapping': <MapPinned />,
+    References: <BookOpen />,
+    'User Settings': <Settings />,
+    'Accomplishment Forms': <CheckCircle2 />,
+    'Data Collection Forms': <ClipboardList />,
+};
+
+type ExpandedGroupsByUser = Record<string, Record<string, boolean>>;
+
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, setCurrentPage }) => {
     const { currentUser, hasAccess } = useAuth();
-    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+    const navRef = useRef<HTMLElement>(null);
+    const [sessionExpansion, setSessionExpansion] = useState<Record<string, boolean>>({});
+    const [expandedGroupsByUser, setExpandedGroupsByUser] = useLocalStorageState<ExpandedGroupsByUser>('sidebar_navigation_groups', {});
+    const userStorageKey = currentUser?.id ? String(currentUser.id) : 'anonymous';
+    const persistedExpansion = expandedGroupsByUser[userStorageKey] || {};
 
-    const navIconMap: Record<string, React.ReactNode> = {
-        'Homepage': <Home />,
-        'Reports': <BarChart3 />,
-        'Dashboard': <LayoutDashboard />,
-        'Data Collection Forms': <ClipboardList />,
-        'Subprojects': <Folder />,
-        'Activities': <CalendarDays />,
-        'Program Management': <Briefcase />,
-        'Accomplishment Forms': <CheckCircle2 />,
-        'Financial': <CircleDollarSign />,
-        'Physical': <TrendingUp />,
-        'Indigenous Peoples Organization': <UsersRound />,
-        'Resources': <Database />,
-        'Marketing Database': <Store />,
-        'Level of Development': <MapPinned />,
-        'Commodity Mapping': <MapPinned />,
-        'References': <BookOpen />,
-        'User Settings': <Settings />
+    const canViewItem = (item: AppNavigationItem): boolean => {
+        if (item.hiddenFor?.includes(currentUser?.role || '')) return false;
+        if (item.allowedRoles && !item.allowedRoles.includes(currentUser?.role || '')) return false;
+        if (item.module && !hasAccess(item.module, 'view')) return false;
+        return true;
     };
 
-    const getInitials = (name: string) => name
-        .split(' ')
-        .filter(Boolean)
-        .slice(0, 2)
-        .map(part => part[0])
-        .join('')
-        .toUpperCase();
+    const visibleNavigation = (() => {
+        const filterItem = (item: AppNavigationItem): AppNavigationItem | null => {
+            if (!canViewItem(item)) return null;
+            const children = item.children
+                ?.map(filterItem)
+                .filter((child): child is AppNavigationItem => child !== null);
+            if (item.children && (!children || children.length === 0)) return null;
+            return { ...item, children };
+        };
+        return appNavigationStructure
+            .map(filterItem)
+            .filter((item): item is AppNavigationItem => item !== null);
+    })();
 
-    // Auto-expand groups based on current page
     useEffect(() => {
-        const newExpanded = new Set(expandedGroups);
-        let changed = false;
-        navigationStructure.forEach(item => {
-            if (item.children) {
-                if (item.children.some(child => child.href === currentPage)) {
-                    if (!newExpanded.has(item.name)) {
-                        newExpanded.add(item.name);
-                        changed = true;
-                    }
-                }
-            }
+        setSessionExpansion({});
+        const focusFrame = window.requestAnimationFrame(() => {
+            const activeLink = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+            activeLink?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         });
-        if (changed) setExpandedGroups(newExpanded);
+        return () => window.cancelAnimationFrame(focusFrame);
     }, [currentPage]);
-
-    const toggleGroup = (name: string) => {
-        setExpandedGroups(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(name)) newSet.delete(name);
-            else newSet.add(name);
-            return newSet;
-        });
-    };
 
     const handleLinkClick = (href: string) => {
         setCurrentPage(href, { resetReports: href === '/reports' });
-        if (window.innerWidth < 768) {
-            closeSidebar();
-        }
+        if (window.innerWidth < 768) closeSidebar();
     };
 
-    const ChevronDown = () => (
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-    );
+    const toggleGroup = (item: AppNavigationItem, expanded: boolean) => {
+        const nextExpanded = !expanded;
+        setSessionExpansion(previous => ({ ...previous, [item.id]: nextExpanded }));
+        setExpandedGroupsByUser(previous => ({
+            ...previous,
+            [userStorageKey]: {
+                ...(previous[userStorageKey] || {}),
+                [item.id]: nextExpanded,
+            },
+        }));
+    };
 
-    const ChevronRight = () => (
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-    );
-
-    const renderNavIcon = (item: NavItem) => (
+    const renderIcon = (item: AppNavigationItem) => (
         <span className="app-sidebar__nav-icon" aria-hidden="true">
-            {navIconMap[item.name] || item.icon || <span className="app-sidebar__nav-initials">{getInitials(item.name)}</span>}
+            {navIconMap[item.name] || <ClipboardList />}
         </span>
     );
 
-    const renderNavItem = (item: NavItem) => {
-        // Legacy Permission Check
-        if (item.hiddenFor && currentUser && item.hiddenFor.includes(currentUser.role)) {
-            return null;
+    const renderLink = (item: AppNavigationItem, depth: number, parentId?: string) => {
+        if (!item.href) return null;
+        const active = item.kind === 'link' && navigationItemMatchesPath(item, currentPage);
+        return (
+            <a
+                href={`/#${item.href}`}
+                onClick={event => {
+                    event.preventDefault();
+                    handleLinkClick(item.href!);
+                }}
+                className={`app-sidebar__nav-item app-sidebar__nav-item--depth-${Math.min(depth, 2)} ${active ? 'app-sidebar__nav-item--active' : ''}`}
+                aria-current={active ? 'page' : undefined}
+                title={item.title || item.name}
+                data-parent-navigation={parentId}
+            >
+                {depth === 0 && renderIcon(item)}
+                <span className="app-sidebar__label">{item.name}</span>
+            </a>
+        );
+    };
+
+    const renderItem = (item: AppNavigationItem, depth = 0): React.ReactNode => {
+        if (item.kind === 'link') {
+            return <li key={item.id}>{renderLink(item, depth)}</li>;
         }
 
-        // Granular Management checks based on modules
-        if (item.name === 'Homepage') return (
-            <li key={item.name} className="mb-1">
-                <a
-                    href={item.href}
-                    onClick={(e) => { e.preventDefault(); if(item.href) handleLinkClick(item.href); }}
-                    className={`app-sidebar__nav-item ${item.href === currentPage ? 'app-sidebar__nav-item--active' : ''}`}
-                    title={item.name}
-                >
-                    {renderNavIcon(item)}
-                    <span className="app-sidebar__label">{item.name}</span>
-                </a>
-            </li>
-        );
-
-        const moduleMapping: Record<string, string> = {
-            'Dashboards': 'Dashboards',
-            'Reports': 'Reports',
-            'Subprojects': 'Subprojects',
-            'Activities': 'Activities',
-            'Program Management': 'Program Management',
-            'Financial': 'Accomplishment - Financial',
-            'Physical': 'Accomplishment - Physical',
-            'Indigenous Peoples Organization': 'IPO Management',
-            'Marketing Database': 'Marketing Database',
-            'Level of Development': 'Level of Development',
-            'Commodity Mapping': 'Commodity Mapping',
-            'References': 'References'
-        };
-
-        const checkAccessRecursive = (navItem: NavItem): boolean => {
-            if (navItem.children) {
-                return navItem.children.some(child => checkAccessRecursive(child));
-            }
-            const moduleName = moduleMapping[navItem.name] || navItem.name;
-            return hasAccess(moduleName, 'view');
-        };
-
-        if (!checkAccessRecursive(item)) return null;
-
-        const isGroup = !!item.children;
-        const isExpanded = expandedGroups.has(item.name);
-        const isActive = item.href === currentPage || (isGroup && item.children?.some(c => c.href === currentPage));
-
-        if (isGroup) {
+        if (item.kind === 'section') {
             return (
-                <li key={item.name} className="mb-1">
-                    <button
-                        onClick={() => toggleGroup(item.name)}
-                        className={`app-sidebar__nav-item ${isActive ? 'app-sidebar__nav-item--active' : ''}`}
-                        title={item.name}
-                    >
-                        {renderNavIcon(item)}
-                        <span className="app-sidebar__label">{item.name}</span>
-                        <span className="app-sidebar__chevron">{isExpanded ? <ChevronDown /> : <ChevronRight />}</span>
-                    </button>
-                    {isExpanded && (
-                        <ul className="app-sidebar__subnav space-y-1">
-                            {item.children?.map(child => renderNavItem(child))}
-                        </ul>
-                    )}
+                <li className="app-sidebar__section" key={item.id}>
+                    <span className="app-sidebar__section-label">{item.name === 'Homepage' ? 'Overview' : item.name}</span>
+                    <ul className="app-sidebar__section-items">
+                        {item.children?.map(child => renderItem(child, 0))}
+                    </ul>
                 </li>
             );
         }
 
+        const activeBranch = navigationBranchMatchesPath(item, currentPage);
+        const persisted = persistedExpansion[item.id] === true;
+        const expanded = sessionExpansion[item.id] ?? (activeBranch || persisted);
+        const submenuId = `sidebar-group-${item.id}`;
+
         return (
-            <li key={item.name} className="mb-1">
-                <a
-                    href={item.href}
-                    onClick={(e) => { e.preventDefault(); if(item.href) handleLinkClick(item.href); }}
-                    className={`app-sidebar__nav-item ${item.href === currentPage ? 'app-sidebar__nav-item--active' : ''}`}
-                    title={item.name}
-                >
-                    {renderNavIcon(item)}
-                    <span className="app-sidebar__label">{item.name}</span>
-                </a>
+            <li
+                className={`app-sidebar__tree-item app-sidebar__tree-item--${item.kind} ${activeBranch ? 'app-sidebar__tree-item--active-branch' : ''}`}
+                key={item.id}
+            >
+                <div className={`app-sidebar__disclosure-row app-sidebar__disclosure-row--depth-${Math.min(depth, 2)}`}>
+                    <button
+                        type="button"
+                        className={`app-sidebar__disclosure-trigger ${item.kind === 'group' ? 'app-sidebar__disclosure-trigger--group' : ''}`}
+                        onClick={() => toggleGroup(item, expanded)}
+                        aria-expanded={expanded}
+                        aria-controls={submenuId}
+                        aria-label={`${expanded ? 'Collapse' : 'Expand'} ${item.name}`}
+                        title={`${expanded ? 'Collapse' : 'Expand'} ${item.name}`}
+                    >
+                        {item.kind === 'disclosure' && renderIcon(item)}
+                        <span className={item.kind === 'group' ? 'app-sidebar__group-label' : 'app-sidebar__label'}>{item.name}</span>
+                        <ChevronDown className="app-sidebar__disclosure-chevron" aria-hidden="true" />
+                    </button>
+                </div>
+                <div className="app-sidebar__submenu-shell" hidden={!expanded}>
+                    <ul id={submenuId} className="app-sidebar__subnav">
+                        {item.children?.map(child => renderItem(child, depth + 1))}
+                    </ul>
+                </div>
             </li>
         );
     };
 
     return (
         <>
-            {/* Overlay for mobile */}
             <div
-                className={`app-sidebar-overlay md:hidden ${isOpen ? '' : 'app-sidebar-overlay--hidden'}`}
+                className={`app-sidebar-overlay ${isOpen ? '' : 'app-sidebar-overlay--hidden'}`}
                 onClick={closeSidebar}
-            ></div>
-
-            {/* Sidebar Wrapper */}
+                aria-hidden="true"
+            />
             <div className={`app-sidebar-shell ${isOpen ? 'app-sidebar-shell--open' : ''}`}>
-                {/* Main Aside */}
                 <aside
                     className={`app-sidebar ${isOpen ? 'app-sidebar--open' : ''}`}
+                    aria-label="Primary navigation"
+                    aria-hidden={!isOpen}
+                    inert={!isOpen}
                 >
-                    {/* Header / Logo */}
                     <div className="relative flex-shrink-0">
-                        <a href="/" onClick={(e) => { e.preventDefault(); setCurrentPage('/'); }} className="app-sidebar__brand group">
-                            <div className="app-sidebar__logo group-hover:shadow-md transition-shadow">
-                                <img 
-                                    src="/assets/4klogo.png" 
-                                    alt="DA 4K Logo" 
-                                />
-                            </div>
-                            <div className="app-sidebar__title">
+                        <a
+                            href="/#/"
+                            onClick={event => {
+                                event.preventDefault();
+                                handleLinkClick('/');
+                            }}
+                            className="app-sidebar__brand"
+                        >
+                            <span className="app-sidebar__logo">
+                                <img src="/assets/4klogo.png" alt="4K Program" />
+                            </span>
+                            <span className="app-sidebar__title">
                                 <strong>4K Information System</strong>
-                            </div>
+                                <span>Department of Agriculture</span>
+                            </span>
                         </a>
-                        
-                        {/* Mobile Close Button */}
-                        <button onClick={closeSidebar} className="app-sidebar__mobile-close md:hidden" aria-label="Close sidebar">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
+                        <button
+                            type="button"
+                            onClick={closeSidebar}
+                            className="app-sidebar__mobile-close"
+                            aria-label="Close navigation"
+                            title="Close navigation"
+                        >
+                            <X aria-hidden="true" />
                         </button>
                     </div>
 
-                    {/* Navigation */}
-                    <nav className="app-sidebar__nav custom-scrollbar">
+                    <nav ref={navRef} className="app-sidebar__nav">
                         <ul className="app-sidebar__nav-list">
-                            {navigationStructure.map(item => renderNavItem(item))}
+                            {visibleNavigation.map(item => item.kind === 'link' ? (
+                                <li className="app-sidebar__section" key={item.id}>
+                                    {item.name === 'Homepage' && <span className="app-sidebar__section-label">Overview</span>}
+                                    <ul className="app-sidebar__section-items">{renderItem(item)}</ul>
+                                </li>
+                            ) : renderItem(item))}
                         </ul>
                     </nav>
-                    
-                    {/* Footer / Settings */}
+
                     <div className="app-sidebar__footer">
-                        <a 
-                            href="/settings"
-                            onClick={(e) => {
-                                e.preventDefault();
+                        <a
+                            href="/#/settings"
+                            onClick={event => {
+                                event.preventDefault();
                                 handleLinkClick('/settings');
                             }}
                             className={`app-sidebar__nav-item ${currentPage === '/settings' ? 'app-sidebar__nav-item--active' : ''}`}
+                            aria-current={currentPage === '/settings' ? 'page' : undefined}
                             title="User Settings"
                         >
                             <span className="app-sidebar__nav-icon" aria-hidden="true">{navIconMap['User Settings']}</span>

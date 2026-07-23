@@ -1,6 +1,6 @@
 // Author: 4K 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, operatingUnits, ouToRegionMap, OfficeRequirement, StaffingRequirement, OtherProgramExpense, filterYears, MarketingPartner } from '../constants';
+import React, { useState, useMemo } from 'react';
+import { Subproject, IPO, Training, OtherActivity, ouToRegionMap, OfficeRequirement, StaffingRequirement, OtherProgramExpense, MarketingPartner } from '../constants';
 import PhysicalDashboard from './dashboards/PhysicalDashboard';
 import FinancialDashboard from './dashboards/FinancialDashboard';
 import GADDashboard from './dashboards/GADDashboard';
@@ -12,11 +12,12 @@ import AgriculturalInterventionsDashboard from './dashboards/AgriculturalInterve
 import CommodityDashboard from './dashboards/CommodityDashboard';
 import AwardsRankingsDashboard from './dashboards/AwardsRankingsDashboard';
 import { ModalItem } from './dashboards/DashboardComponents';
-import { useAuth } from '../contexts/AuthContext';
-import { ChevronDown, ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import type { DataScope } from '../lib/scopedDataFetch';
+import type { DashboardPageKey } from '../lib/appNavigation';
+import { DcfScopeFilterPanel, useDcfScopeFilters } from './ui/DcfScopeFilters';
 
 export interface DashboardsPageProps {
+    activePage: DashboardPageKey;
     subprojects: Subproject[];
     ipos: IPO[];
     trainings: Training[];
@@ -35,59 +36,21 @@ export interface DashboardsPageProps {
     onDataScopeChange?: (scope: Partial<DataScope>) => void;
 }
 
-type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'Commodities' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income' | 'SCAD' | 'Agricultural Interventions' | 'Awards and Rankings';
-
 const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
-    const { currentUser, getVisibilityScope } = useAuth();
-    const visibilityScope = getVisibilityScope('Dashboards');
-    const isLockedToOwnOu = visibilityScope === 'Own OU';
-    const canViewAwards = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
     const { onDataScopeChange } = props;
-
-    const [activeTab, setActiveTab] = useState<DashboardTab>('Physical');
+    const activeTab = props.activePage;
     const [modalData, setModalData] = useState<{ title: string; items: ModalItem[] } | null>(null);
-    const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
-    const [selectedOu, setSelectedOu] = useState<string>(isLockedToOwnOu ? (currentUser?.operatingUnit || 'All') : 'All');
-    const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
-    const [selectedFundType, setSelectedFundType] = useState<string>('Current');
-    const [filtersOpen, setFiltersOpen] = useState(false);
-    const dashboardTabsRef = useRef<HTMLElement | null>(null);
-
-    const scrollDashboardTabs = (direction: 'left' | 'right') => {
-        dashboardTabsRef.current?.scrollBy({
-            left: direction === 'left' ? -280 : 280,
-            behavior: 'smooth',
-        });
-    };
-
-    useEffect(() => {
-        onDataScopeChange?.({
-            year: selectedYear,
-            operatingUnit: selectedOu,
-            tier: selectedTier,
-            fundType: selectedFundType,
-            canViewAllOus: !isLockedToOwnOu,
-            requestedBy: currentUser?.id ?? null
-        });
-    }, [currentUser?.id, isLockedToOwnOu, onDataScopeChange, selectedFundType, selectedOu, selectedTier, selectedYear]);
-
-    // Enforce User OU restriction on mount/change
-    useEffect(() => {
-        if (isLockedToOwnOu && currentUser) {
-            setSelectedOu(currentUser.operatingUnit);
-        }
-    }, [currentUser, isLockedToOwnOu]);
-
-    useEffect(() => {
-        if (!canViewAwards && activeTab === 'Awards and Rankings') {
-            setActiveTab('Physical');
-        }
-    }, [activeTab, canViewAwards]);
-
-    const availableYears = useMemo(() => {
-        return [...filterYears].sort((a, b) => parseInt(b) - parseInt(a));
-    }, []);
-
+    const dcfFilters = useDcfScopeFilters({
+        storageKey: 'dashboards_dcf_scope',
+        moduleName: 'Dashboards',
+        onDataScopeChange
+    });
+    const {
+        selectedYear,
+        selectedOu,
+        selectedTier,
+        selectedFundType
+    } = dcfFilters.value;
     const filteredData = useMemo(() => {
         // Deep sanitization helper: ensures array exists and filters out null/undefined items inside it
         const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
@@ -221,138 +184,13 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
         };
     }, [props.subprojects, props.ipos, props.trainings, props.otherActivities, props.officeReqs, props.staffingReqs, props.otherProgramExpenses, selectedYear, selectedTier, selectedFundType]);
 
-    const TabButton: React.FC<{ tabName: DashboardTab; label: string }> = ({ tabName, label }) => {
-        const isActive = activeTab === tabName;
-        return (
-            <button
-                type="button"
-                onClick={() => setActiveTab(tabName)}
-                className={`data-tab ${isActive ? 'is-active' : ''}`}
-            >
-                {label}
-            </button>
-        );
-    };
-
     return (
         <div className="data-list-page dashboards-page">
             <div className="data-list-header">
                 <h2 className="data-list-title">Strategic Dashboard</h2>
-                <div className="page-filter-toggle">
-                    <span className="page-filter-summary">
-                        {[selectedOu === 'All' ? 'All OUs' : selectedOu, selectedTier, selectedFundType, selectedYear].join(' / ')}
-                    </span>
-                    <button
-                        type="button"
-                        className={`btn btn-secondary page-filter-button ${filtersOpen ? 'is-open' : ''}`}
-                        onClick={() => setFiltersOpen(prev => !prev)}
-                        aria-expanded={filtersOpen}
-                        aria-controls="dashboard-filter-panel"
-                    >
-                        <SlidersHorizontal aria-hidden="true" />
-                        <span>Filters</span>
-                        <ChevronDown aria-hidden="true" className="page-filter-button__chevron" />
-                    </button>
-                </div>
             </div>
+            <DcfScopeFilterPanel idPrefix="dashboard-dcf" filters={dcfFilters} />
 
-            <div id="dashboard-filter-panel" className={`report-filter-panel dashboard-filter-panel page-filter-panel ${filtersOpen ? 'is-open' : ''}`} hidden={!filtersOpen}>
-                <div className="report-filter-grid">
-                     <div className="report-filter">
-                        <label htmlFor="ou-filter" className="form-label">OU</label>
-                        <select 
-                            id="ou-filter"
-                            value={selectedOu}
-                            onChange={(e) => setSelectedOu(e.target.value)}
-                            disabled={isLockedToOwnOu}
-                            className="form-control"
-                        >
-                            <option value="All">All OUs</option>
-                            {operatingUnits.map(ou => (
-                                <option key={ou} value={ou}>{ou}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="report-filter">
-                        <label htmlFor="tier-filter" className="form-label">Tier</label>
-                        <select 
-                            id="tier-filter"
-                            value={selectedTier}
-                            onChange={(e) => setSelectedTier(e.target.value)}
-                            className="form-control"
-                        >
-                            <option value="All">All Tiers</option>
-                            {tiers.map(tier => (
-                                <option key={tier} value={tier}>{tier}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="report-filter">
-                        <label htmlFor="fund-type-filter" className="form-label">Fund Type</label>
-                        <select 
-                            id="fund-type-filter"
-                            value={selectedFundType}
-                            onChange={(e) => setSelectedFundType(e.target.value)}
-                            className="form-control"
-                        >
-                            <option value="All">All Fund Types</option>
-                            {fundTypes.map(ft => (
-                                <option key={ft} value={ft}>{ft}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="report-filter">
-                        <label htmlFor="year-filter" className="form-label">Year</label>
-                        <select 
-                            id="year-filter"
-                            value={selectedYear}
-                            onChange={(e) => setSelectedYear(e.target.value)}
-                            className="form-control"
-                        >
-                            <option value="All">All Years</option>
-                            {availableYears.map(year => (
-                                <option key={year} value={year}>{year}</option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            {/* Tabs Section */}
-            <div className="report-tabs-card dashboard-tabs-card">
-                <div className="dashboard-tabs-scroll-shell">
-                    <button
-                        type="button"
-                        className="dashboard-tabs-arrow dashboard-tabs-arrow--left"
-                        onClick={() => scrollDashboardTabs('left')}
-                        aria-label="Scroll dashboard tabs left"
-                    >
-                        <ChevronLeft aria-hidden="true" />
-                    </button>
-                    <nav ref={dashboardTabsRef} className="data-tabs dashboard-tabs-scroll" aria-label="Dashboard tabs">
-                        <TabButton tabName="Physical" label="Physical" />
-                        <TabButton tabName="Financial" label="Financial" />
-                        <TabButton tabName="SCAD" label="SCAD" />
-                        <TabButton tabName="Agricultural Interventions" label="Agricultural Interventions" />
-                        <TabButton tabName="Farm Productivity and Income" label="Farm Productivity and Income" />
-                        <TabButton tabName="Commodities" label="Commodities" />
-                        <TabButton tabName="IPO Level of Development" label="IPO Level of Development" />
-                        <TabButton tabName="GAD" label="GAD" />
-                        <TabButton tabName="Nutrition" label="Nutrition" />
-                        {canViewAwards && <TabButton tabName="Awards and Rankings" label="Awards and Rankings" />}
-                    </nav>
-                    <button
-                        type="button"
-                        className="dashboard-tabs-arrow dashboard-tabs-arrow--right"
-                        onClick={() => scrollDashboardTabs('right')}
-                        aria-label="Scroll dashboard tabs right"
-                    >
-                        <ChevronRight aria-hidden="true" />
-                    </button>
-                </div>
-            </div>
-
-            {/* Tab Content */}
             <div className="dashboard-tab-content">
                 {activeTab === 'Physical' && (
                     <PhysicalDashboard 

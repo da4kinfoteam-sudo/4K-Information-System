@@ -34,6 +34,7 @@ import CommodityMappingPage from './components/resources/CommodityMappingPage';
 import LODPage from './components/LOD/LODPage';
 import LODDetails from './components/LOD/LODDetails';
 import AIChatbot from './components/AIChatbot'; // Import Chatbot
+import { EmptyState, ErrorState, LoadingState } from './components/ui/enterprise';
 
 import useLocalStorageState from './hooks/useLocalStorageState';
 import { useSupabaseTable } from './hooks/useSupabaseTable'; 
@@ -45,6 +46,17 @@ import { DataScope, getDataScopeKey, loadScopedAppData } from './lib/scopedDataF
 import { clearUserCache, getScopeCacheMeta, readScopedCache, writeScopedCache } from './lib/localScopedCache';
 import { normalizeStaffingExpenses } from './lib/staffingExpenseIdentity';
 import { emptyIpoLinkedDcfRecords, fetchIpoLinkedDcfRecords, IpoLinkedDcfRecords } from './lib/ipoLinkedDcfRecords';
+import { fetchWorkflowEntityById, fetchWorkflowIpos } from './lib/workflowLookups';
+import {
+    getCanonicalModuleRoute,
+    getNavigationPageTitle,
+    isDashboardPagePath,
+    isProgramManagementPagePath,
+    isReferencePagePath,
+    resolveDashboardPage,
+    resolveProgramManagementPage,
+    resolveReferencePage,
+} from './lib/appNavigation';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
@@ -62,10 +74,12 @@ import {
     applyTheme,
     getSavedThemePreference,
     getSystemThemePreference,
-    resolveInitialTheme,
+    resolveThemeMode,
+    resolveThemePreference,
     saveThemePreference,
     THEME_STORAGE_KEY,
-    ThemeMode
+    ThemeMode,
+    ThemePreference
 } from './lib/theme';
 
 const parseAppRoute = (fullPath: string) => {
@@ -97,6 +111,8 @@ const buildDetailPath = (path: string, id?: number | string | null) => {
 // Helper to format page names for "Back to..." buttons
 const getPageName = (path: string) => {
     const routePath = parseAppRoute(path).path;
+    const navigationTitle = getNavigationPageTitle(routePath);
+    if (navigationTitle) return navigationTitle;
     if (routePath === '/') return 'Dashboard';
     if (routePath === '/ipo-detail') return 'IPO Details';
     if (routePath === '/ipo') return 'IPO List';
@@ -112,25 +128,11 @@ const getPageName = (path: string) => {
 };
 
 const AccessDenied: React.FC<{ onBackToHome: () => void }> = ({ onBackToHome }) => (
-    <div className="flex flex-col items-center justify-center h-full space-y-6 text-center">
-        <div className="bg-red-100 dark:bg-red-900/30 p-6 rounded-full">
-            <svg className="w-16 h-16 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-        </div>
-        <div>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">403 Access Denied</h2>
-            <p className="text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-                You do not have permission to view this specific page or module based on your current role and settings.
-            </p>
-        </div>
-        <button 
-            onClick={onBackToHome}
-            className="px-6 py-2 bg-accent text-white rounded-md font-medium hover:bg-opacity-90 transition-colors shadow-sm"
-        >
-            Return to Dashboard
-        </button>
-    </div>
+    <ErrorState
+        title="403 · Access denied"
+        message="Your current role does not have permission to view this page or module."
+        action={<button onClick={onBackToHome} className="btn btn-primary">Return to Dashboard</button>}
+    />
 );
 
 const DetailRouteFallback: React.FC<{
@@ -139,19 +141,11 @@ const DetailRouteFallback: React.FC<{
     actionLabel: string;
     onAction: () => void;
 }> = ({ title, message, actionLabel, onAction }) => (
-    <div className="flex h-full items-center justify-center p-6">
-        <div className="max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">{title}</h2>
-            <p className="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">{message}</p>
-            <button
-                type="button"
-                onClick={onAction}
-                className="mt-6 rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-opacity-90"
-            >
-                {actionLabel}
-            </button>
-        </div>
-    </div>
+    <EmptyState
+        title={title}
+        message={message}
+        action={<button type="button" onClick={onAction} className="btn btn-primary">{actionLabel}</button>}
+    />
 );
 
 interface NavigationOptions {
@@ -185,7 +179,8 @@ const AppContent: React.FC = () => {
     const { getStatusDecision } = useDcfPolicyGuard();
     // Initialize Sidebar state based on screen width (Open on Desktop by default)
     const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 768);
-    const [themeMode, setThemeMode] = useState<ThemeMode>(() => resolveInitialTheme());
+    const [themePreference, setThemePreferenceState] = useState<ThemePreference>(() => resolveThemePreference());
+    const [themeMode, setThemeMode] = useState<ThemeMode>(() => resolveThemeMode(resolveThemePreference()));
     const [currentPage, setCurrentPage] = useState('/');
     const currentRoute = useMemo(() => parseAppRoute(currentPage), [currentPage]);
     const routePath = currentRoute.path;
@@ -217,6 +212,8 @@ const AppContent: React.FC = () => {
     const scopedTableOptions = { autoFetch: false };
     const [subprojects, setSubprojects, subprojectsSync] = useSupabaseTable<Subproject>('subprojects', sampleSubprojects, scopedTableOptions);
     const [ipos, setIpos, iposSync] = useSupabaseTable<IPO>('ipos', sampleIPOs, scopedTableOptions);
+    const [activityWorkflowIpos, setActivityWorkflowIpos] = useState<IPO[]>([]);
+    const [subprojectWorkflowIpos, setSubprojectWorkflowIpos] = useState<IPO[]>([]);
     const [activities, setActivities, activitiesSync] = useSupabaseTable<Activity>('activities', sampleActivities, scopedTableOptions);
     const [marketingPartners, setMarketingPartners, marketingPartnersSync] = useSupabaseTable<MarketingPartner>('marketing_partners', sampleMarketingPartners, scopedTableOptions);
     
@@ -224,6 +221,37 @@ const AppContent: React.FC = () => {
     const [officeReqs, setOfficeReqs, officeReqsSync] = useSupabaseTable<OfficeRequirement>('office_requirements', sampleOfficeRequirements, scopedTableOptions);
     const [staffingReqs, setStaffingReqs, staffingReqsSync] = useSupabaseTable<StaffingRequirement>('staffing_requirements', sampleStaffingRequirements, scopedTableOptions);
     const [otherProgramExpenses, setOtherProgramExpenses, otherProgramExpensesSync] = useSupabaseTable<OtherProgramExpense>('other_program_expenses', sampleOtherProgramExpenses, scopedTableOptions);
+
+    useEffect(() => {
+        if (!isAuthReady || !currentUser) return;
+        let cancelled = false;
+        const loadWorkflowLookups = async () => {
+            try {
+                const [activityIpos, subprojectIpos] = await Promise.all([
+                    fetchWorkflowIpos({
+                        canViewAllOperatingUnits: getVisibilityScope('Activities') === 'All',
+                        operatingUnit: currentUser.operatingUnit
+                    }),
+                    fetchWorkflowIpos({
+                        canViewAllOperatingUnits: getVisibilityScope('Subprojects') === 'All',
+                        operatingUnit: currentUser.operatingUnit
+                    })
+                ]);
+                if (!cancelled) {
+                    setActivityWorkflowIpos(activityIpos);
+                    setSubprojectWorkflowIpos(subprojectIpos);
+                }
+            } catch (error) {
+                console.error('Failed to load permission-scoped workflow IPO lookups:', error);
+                if (!cancelled) {
+                    setActivityWorkflowIpos([]);
+                    setSubprojectWorkflowIpos([]);
+                }
+            }
+        };
+        void loadWorkflowLookups();
+        return () => { cancelled = true; };
+    }, [currentUser, getVisibilityScope, isAuthReady]);
 
     // Financial Records - loaded at startup and refreshed manually
     const [allFinancialObligations, setAllFinancialObligations, financialObligationsSync] = useSupabaseTable<any>('financial_obligations', [], scopedTableOptions);
@@ -559,6 +587,8 @@ const AppContent: React.FC = () => {
     const [selectedOfficeReq, setSelectedOfficeReq] = useState<OfficeRequirement | null>(null);
     const [selectedStaffingReq, setSelectedStaffingReq] = useState<StaffingRequirement | null>(null);
     const [selectedOtherExpense, setSelectedOtherExpense] = useState<OtherProgramExpense | null>(null);
+    const [isDirectRouteLookupLoading, setIsDirectRouteLookupLoading] = useState(false);
+    const directRouteLookupKeyRef = useRef<string | null>(null);
     const [selectedMarketingPartner, setSelectedMarketingPartner] = useState<MarketingPartner | null>(null);
     const [selectedMarketingLinkageKey, setSelectedMarketingLinkageKey] = useState<string | number | null>(null);
     const [selectedLodYear, setSelectedLodYear] = useState<number | null>(null);
@@ -569,6 +599,38 @@ const AppContent: React.FC = () => {
         error: string | null;
     } | null>(null);
     const ipoLinkedDcfCacheRef = useRef<Map<string, IpoLinkedDcfRecords>>(new Map());
+
+    useEffect(() => {
+        const id = getRouteId(routeParams);
+        if (id === null || !currentUser) return;
+        const target = (() => {
+            switch (routePath) {
+                case '/subproject-detail': return { table: 'subprojects' as const, module: 'Subprojects', items: subprojects, select: setSelectedSubproject };
+                case '/activity-detail': return { table: 'activities' as const, module: 'Activities', items: activities, select: setSelectedActivity };
+                case '/program-management/office-detail': return { table: 'office_requirements' as const, module: 'Program Management', items: officeReqs, select: setSelectedOfficeReq };
+                case '/program-management/staffing-detail': return { table: 'staffing_requirements' as const, module: 'Program Management', items: staffingReqs, select: setSelectedStaffingReq };
+                case '/program-management/other-expense-detail': return { table: 'other_program_expenses' as const, module: 'Program Management', items: otherProgramExpenses, select: setSelectedOtherExpense };
+                default: return null;
+            }
+        })();
+        if (!target || !hasAccess(target.module, 'view') || target.items.some(item => item.id === id)) return;
+        const lookupKey = `${target.table}:${id}:${currentUser.id}`;
+        if (directRouteLookupKeyRef.current === lookupKey) return;
+        directRouteLookupKeyRef.current = lookupKey;
+        let cancelled = false;
+        setIsDirectRouteLookupLoading(true);
+        void fetchWorkflowEntityById<any>(target.table, id, {
+            canViewAllOperatingUnits: getVisibilityScope(target.module) === 'All',
+            operatingUnit: currentUser.operatingUnit
+        }).then(record => {
+            if (!cancelled && record) (target.select as React.Dispatch<React.SetStateAction<any>>)(record);
+        }).catch(error => {
+            console.error(`Failed to resolve ${target.table} route ${id}:`, error);
+        }).finally(() => {
+            if (!cancelled) setIsDirectRouteLookupLoading(false);
+        });
+        return () => { cancelled = true; };
+    }, [activities, currentUser, getVisibilityScope, hasAccess, officeReqs, otherProgramExpenses, routeParams, routePath, staffingReqs, subprojects]);
     
     // Activity Edit Mode State
     const [activityEditMode, setActivityEditMode] = useState<'create' | 'details' | 'expenses' | 'accomplishment'>('create');
@@ -730,6 +792,16 @@ const AppContent: React.FC = () => {
     };
 
     useEffect(() => {
+        if (!isAuthReady || !currentUser) return;
+        const canonicalRoute = getCanonicalModuleRoute(routePath, currentUser.role);
+        if (!canonicalRoute || canonicalRoute === routePath) return;
+        const stack = historyStackRef.current;
+        currentPageRef.current = canonicalRoute;
+        setCurrentPage(canonicalRoute);
+        window.history.replaceState({ page: canonicalRoute, stack }, '', `/#${canonicalRoute}`);
+    }, [currentUser, isAuthReady, routePath]);
+
+    useEffect(() => {
         const handlePopState = (event: PopStateEvent) => {
             const leavingPage = parseAppRoute(currentPageRef.current).path;
             
@@ -798,36 +870,48 @@ const AppContent: React.FC = () => {
     }, [currentUser]);
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
-    const toggleDarkMode = () => {
-        setThemeMode(prevTheme => {
-            const nextTheme = prevTheme === 'dark' ? 'light' : 'dark';
-            saveThemePreference(nextTheme);
-            return nextTheme;
-        });
+
+    useEffect(() => {
+        const mobileQuery = window.matchMedia('(max-width: 767px)');
+        const syncSidebarToViewport = (event: MediaQueryListEvent | MediaQueryList) => {
+            setIsSidebarOpen(!event.matches);
+        };
+
+        syncSidebarToViewport(mobileQuery);
+        mobileQuery.addEventListener('change', syncSidebarToViewport);
+        return () => mobileQuery.removeEventListener('change', syncSidebarToViewport);
+    }, []);
+
+    const updateThemePreference = (preference: ThemePreference) => {
+        saveThemePreference(preference);
+        setThemePreferenceState(preference);
+        setThemeMode(resolveThemeMode(preference));
     };
 
     useEffect(() => {
-        applyTheme(themeMode);
-    }, [themeMode]);
+        applyTheme(themeMode, themePreference);
+    }, [themeMode, themePreference]);
 
     useEffect(() => {
         const themeQuery = window.matchMedia?.('(prefers-color-scheme: dark)');
         if (!themeQuery) return;
 
         const handleSystemThemeChange = () => {
-            if (!getSavedThemePreference()) {
+            if (themePreference === 'system' && !getSavedThemePreference()) {
                 setThemeMode(getSystemThemePreference());
             }
         };
 
         themeQuery.addEventListener('change', handleSystemThemeChange);
         return () => themeQuery.removeEventListener('change', handleSystemThemeChange);
-    }, []);
+    }, [themePreference]);
 
     useEffect(() => {
         const handleThemeStorageChange = (event: StorageEvent) => {
             if (event.key !== THEME_STORAGE_KEY && event.key !== null) return;
-            setThemeMode(resolveInitialTheme());
+            const nextPreference = resolveThemePreference();
+            setThemePreferenceState(nextPreference);
+            setThemeMode(resolveThemeMode(nextPreference));
         };
 
         window.addEventListener('storage', handleThemeStorageChange);
@@ -955,16 +1039,11 @@ const AppContent: React.FC = () => {
 
     if (!isAuthReady) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
-                <div className="flex flex-col items-center">
-                    <div className="relative h-16 w-16">
-                        <div className="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
-                        <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                    <p className="mt-6 text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-widest text-[10px] animate-pulse text-center max-w-xs leading-relaxed">
-                        Empowering Indigenous Peoples towards Self Determination
-                    </p>
-                </div>
+            <div className="app-boot-screen" role="status" aria-live="polite">
+                <img src="/assets/4klogo.png" alt="" aria-hidden="true" />
+                <span className="app-boot-screen__spinner" aria-hidden="true" />
+                <strong>Preparing 4K Information System</strong>
+                <p>Empowering Indigenous Peoples towards self-determination.</p>
             </div>
         );
     }
@@ -984,7 +1063,7 @@ const AppContent: React.FC = () => {
         const denied = <AccessDenied onBackToHome={() => navigateTo('/')} />;
 
         // Phase 6: Guard clauses for module-level access
-        if (routePath === '/dashboards' && !checkAccess('Dashboards')) return denied;
+        if (isDashboardPagePath(routePath) && !checkAccess('Dashboards')) return denied;
         if (routePath === '/reports' && !checkAccess('Reports')) return denied;
         
         if (['/subprojects', '/subproject-edit', '/subproject-detail'].includes(routePath)) {
@@ -993,7 +1072,7 @@ const AppContent: React.FC = () => {
         if (['/trainings', '/other-activities', '/activities', '/activity-edit', '/activity-detail', '/activity-monitoring-report'].includes(routePath)) {
             if (!checkAccess('Activities')) return denied;
         }
-        if (['/program-management', '/program-management/office-detail', '/program-management/staffing-detail', '/program-management/other-expense-detail'].includes(routePath)) {
+        if (routePath === '/program-management' || routePath.startsWith('/program-management/')) {
             if (!checkAccess('Program Management')) return denied;
         }
         if (routePath === '/accomplishment/financial' && !checkAccess('Accomplishment - Financial')) return denied;
@@ -1011,17 +1090,87 @@ const AppContent: React.FC = () => {
         if (routePath === '/commodity-mapping') {
             if (!checkAccess('Commodity Mapping')) return denied;
         }
-        if (routePath === '/references' && !checkAccess('References')) return denied;
+        if (isReferencePagePath(routePath) && (currentUser?.role === 'Management' || !checkAccess('References'))) return denied;
         if (routePath === '/settings' && !checkAccess('System Management')) {
              // System Management is for the whole settings tab, but maybe we should allow profiles?
              // Usually settings has profile. Let's see.
+        }
+
+        if (isDashboardPagePath(routePath)) {
+            const dashboardPage = resolveDashboardPage(routePath, currentUser?.role);
+            return <DashboardsPage
+                activePage={dashboardPage.page}
+                subprojects={visibleSubprojects}
+                ipos={ipos}
+                trainings={visibleActivities.filter(a => a.type === 'Training')}
+                otherActivities={visibleActivities.filter(a => a.type === 'Activity')}
+                officeReqs={visibleOfficeReqs}
+                staffingReqs={visibleStaffingReqs}
+                otherProgramExpenses={visibleOtherExpenses}
+                marketingPartners={marketingPartners}
+                onSelectIpo={handleSelectIpo}
+                onSelectLodIpo={handleSelectIpoForLod}
+                onSelectSubproject={handleSelectSubproject}
+                onSelectActivity={handleSelectActivity}
+                onSelectMarketingPartner={handleSelectMarketingPartner}
+                setExternalFilters={setExternalFilters}
+                navigateTo={navigateTo}
+                onDataScopeChange={ensureDataScope}
+            />;
+        }
+
+        if (isProgramManagementPagePath(routePath)) {
+            const programPage = resolveProgramManagementPage(routePath);
+            return <ProgramManagement
+                activePage={programPage.page}
+                officeReqs={visibleOfficeReqs}
+                setOfficeReqs={setOfficeReqs}
+                staffingReqs={visibleStaffingReqs}
+                setStaffingReqs={setStaffingReqs}
+                otherProgramExpenses={visibleOtherExpenses}
+                setOtherProgramExpenses={setOtherProgramExpenses}
+                uacsCodes={derivedUacsCodes}
+                onSelectOfficeReq={handleSelectOfficeReq}
+                onSelectStaffingReq={handleSelectStaffingReq}
+                onSelectOtherExpense={handleSelectOtherExpense}
+                onDataScopeChange={ensureDataScope}
+            />;
+        }
+
+        if (isReferencePagePath(routePath)) {
+            const referencePage = resolveReferencePage(routePath);
+            return <References
+                activePage={referencePage.page}
+                uacsList={referenceUacsList}
+                setUacsList={setReferenceUacsList}
+                particularList={referenceParticularList}
+                setParticularList={setReferenceParticularList}
+                refCommodities={refCommodities}
+                setRefCommodities={setRefCommodities}
+                refLivestock={refLivestock}
+                setRefLivestock={setRefLivestock}
+                refEquipment={refEquipment}
+                setRefEquipment={setRefEquipment}
+                refInputs={refInputs}
+                setRefInputs={setRefInputs}
+                refInfrastructure={refInfrastructure}
+                setRefInfrastructure={setRefInfrastructure}
+                refTrainings={refTrainings}
+                setRefTrainings={setRefTrainings}
+                gidaList={gidaAreas}
+                setGidaList={setGidaAreas}
+                elcacList={elcacAreas}
+                setElcacList={setElcacAreas}
+                ipos={ipos}
+                setIpos={setIpos}
+            />;
         }
 
         switch (routePath) {
             case '/':
                 return <Dashboard 
                             subprojects={visibleSubprojects} 
-                            ipos={ipos} 
+                            ipos={ipos}
                             activities={visibleActivities}
                             systemSettings={systemSettings}
                             officeReqs={visibleOfficeReqs}
@@ -1029,27 +1178,9 @@ const AppContent: React.FC = () => {
                             otherProgramExpenses={visibleOtherExpenses}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
+                            navigateTo={navigateTo}
                             // @ts-ignore
                             externalFilters={externalFilters}
-                            onDataScopeChange={ensureDataScope}
-                        />;
-            case '/dashboards':
-                 return <DashboardsPage 
-                            subprojects={visibleSubprojects} 
-                            ipos={ipos} 
-                            trainings={visibleActivities.filter(a => a.type === 'Training')}
-                            otherActivities={visibleActivities.filter(a => a.type === 'Activity')}
-                            officeReqs={visibleOfficeReqs}
-                            staffingReqs={visibleStaffingReqs}
-                            otherProgramExpenses={visibleOtherExpenses}
-                            marketingPartners={marketingPartners}
-                            onSelectIpo={handleSelectIpo}
-                            onSelectLodIpo={handleSelectIpoForLod}
-                            onSelectSubproject={handleSelectSubproject}
-                            onSelectActivity={handleSelectActivity}
-                            onSelectMarketingPartner={handleSelectMarketingPartner}
-                            setExternalFilters={setExternalFilters}
-                            navigateTo={navigateTo}
                             onDataScopeChange={ensureDataScope}
                         />;
             case '/subprojects':
@@ -1137,7 +1268,7 @@ const AppContent: React.FC = () => {
                 return <ActivityEdit 
                             mode={activityEditMode}
                             activity={selectedActivity || undefined}
-                            ipos={ipos}
+                            ipos={activityWorkflowIpos}
                             onBack={handleBack}
                             onUpdateActivity={(updated) => {
                                 if (activityEditMode === 'create') {
@@ -1176,8 +1307,11 @@ const AppContent: React.FC = () => {
                 }
                 return <SubprojectEdit 
                             subproject={selectedSubproject || undefined}
-                            ipos={ipos}
-                            setIpos={setIpos}
+                            ipos={subprojectWorkflowIpos}
+                            setIpos={(action) => {
+                                setIpos(action);
+                                setSubprojectWorkflowIpos(action);
+                            }}
                             onBack={handleBack}
                             onUpdateSubproject={(updated) => {
                                 if (selectedSubproject) {
@@ -1216,23 +1350,6 @@ const AppContent: React.FC = () => {
                             commodityCategories={derivedCommodityCategories}
                             refCommodities={refCommodities}
                             refLivestock={refLivestock}
-                        />;
-            case '/program-management':
-                return <ProgramManagement
-                            officeReqs={visibleOfficeReqs}
-                            setOfficeReqs={setOfficeReqs}
-                            staffingReqs={visibleStaffingReqs}
-                            setStaffingReqs={setStaffingReqs}
-                            otherProgramExpenses={visibleOtherExpenses}
-                            setOtherProgramExpenses={setOtherProgramExpenses}
-                            budgetCeilings={budgetCeilings}
-                            uacsCodes={derivedUacsCodes}
-                            onSelectOfficeReq={handleSelectOfficeReq}
-                            onSelectStaffingReq={handleSelectStaffingReq}
-                            onSelectOtherExpense={handleSelectOtherExpense}
-                            // @ts-ignore
-                            externalFilters={externalFilters}
-                            onDataScopeChange={ensureDataScope}
                         />;
             // NEW ACCOMPLISHMENT ROUTES
             case '/accomplishment/financial':
@@ -1282,13 +1399,13 @@ const AppContent: React.FC = () => {
                     : selectedOfficeReq;
                 if (!latestOffice) {
                     if (routeId === null) return <div>Select an item</div>;
-                    if (isRouteDataLoading) return <div className="p-6 text-gray-500 dark:text-gray-400">Loading office requirement...</div>;
+                    if (isRouteDataLoading || isDirectRouteLookupLoading) return <LoadingState label="Loading office requirement..." />;
                     return (
                         <DetailRouteFallback
                             title="Office requirement not found"
                             message="This office requirement is no longer available, or it is outside your current visibility scope."
                             actionLabel="Back to Program Management"
-                            onAction={() => navigateTo('/program-management')}
+                            onAction={() => navigateTo('/program-management/office-requirements')}
                         />
                     );
                 }
@@ -1310,13 +1427,13 @@ const AppContent: React.FC = () => {
                     : selectedStaffingReq;
                 if (!latestStaff) {
                     if (routeId === null) return <div>Select an item</div>;
-                    if (isRouteDataLoading) return <div className="p-6 text-gray-500 dark:text-gray-400">Loading staffing requirement...</div>;
+                    if (isRouteDataLoading || isDirectRouteLookupLoading) return <LoadingState label="Loading staffing requirement..." />;
                     return (
                         <DetailRouteFallback
                             title="Staffing requirement not found"
                             message="This staffing requirement is no longer available, or it is outside your current visibility scope."
                             actionLabel="Back to Program Management"
-                            onAction={() => navigateTo('/program-management')}
+                            onAction={() => navigateTo('/program-management/staffing-requirements')}
                         />
                     );
                 }
@@ -1338,13 +1455,13 @@ const AppContent: React.FC = () => {
                     : selectedOtherExpense;
                 if (!latestOther) {
                     if (routeId === null) return <div>Select an item</div>;
-                    if (isRouteDataLoading) return <div className="p-6 text-gray-500 dark:text-gray-400">Loading other program expense...</div>;
+                    if (isRouteDataLoading || isDirectRouteLookupLoading) return <LoadingState label="Loading other program expense..." />;
                     return (
                         <DetailRouteFallback
                             title="Program expense not found"
                             message="This program expense is no longer available, or it is outside your current visibility scope."
                             actionLabel="Back to Program Management"
-                            onAction={() => navigateTo('/program-management')}
+                            onAction={() => navigateTo('/program-management/other-expenses')}
                         />
                     );
                 }
@@ -1360,7 +1477,7 @@ const AppContent: React.FC = () => {
             }
             case '/ipo':
                 return <IPOs 
-                            ipos={ipos} 
+                            ipos={ipos}
                             setIpos={setIpos} 
                             subprojects={subprojects} 
                             activities={activities}
@@ -1372,31 +1489,6 @@ const AppContent: React.FC = () => {
                             onClearExternalFilters={clearExternalFilters}
                             gidaAreas={gidaAreas}
                             elcacAreas={elcacAreas}
-                        />;
-            case '/references':
-                return <References 
-                            uacsList={referenceUacsList} 
-                            setUacsList={setReferenceUacsList}
-                            particularList={referenceParticularList}
-                            setParticularList={setReferenceParticularList}
-                            refCommodities={refCommodities}
-                            setRefCommodities={setRefCommodities}
-                            refLivestock={refLivestock}
-                            setRefLivestock={setRefLivestock}
-                            refEquipment={refEquipment}
-                            setRefEquipment={setRefEquipment}
-                            refInputs={refInputs}
-                            setRefInputs={setRefInputs}
-                            refInfrastructure={refInfrastructure}
-                            setRefInfrastructure={setRefInfrastructure}
-                            refTrainings={refTrainings}
-                            setRefTrainings={setRefTrainings}
-                            gidaList={gidaAreas}
-                            setGidaList={setGidaAreas}
-                            elcacList={elcacAreas}
-                            setElcacList={setElcacAreas}
-                            ipos={ipos}
-                            setIpos={setIpos}
                         />;
             case '/reports':
                 return <Reports 
@@ -1429,7 +1521,7 @@ const AppContent: React.FC = () => {
                     : selectedSubproject;
                 if (!latestSp) {
                     if (routeId === null) return <div>Select a subproject</div>;
-                    if (isRouteDataLoading) return <div className="p-6 text-gray-500 dark:text-gray-400">Loading subproject...</div>;
+                    if (isRouteDataLoading || isDirectRouteLookupLoading) return <LoadingState label="Loading subproject..." />;
                     return (
                         <DetailRouteFallback
                             title="Subproject not found"
@@ -1441,7 +1533,7 @@ const AppContent: React.FC = () => {
                 }
                 return <SubprojectDetail 
                             subproject={latestSp} 
-                            ipos={ipos}
+                            ipos={subprojectWorkflowIpos}
                             onBack={handleBack} 
                             previousPageName={getPageName(previousPage)}
                             onUpdateSubproject={(updated) => {
@@ -1513,7 +1605,7 @@ const AppContent: React.FC = () => {
                     : selectedActivity;
                 if (!latestAct) {
                     if (routeId === null) return <div>Select an activity</div>;
-                    if (isRouteDataLoading) return <div className="p-6 text-gray-500 dark:text-gray-400">Loading activity...</div>;
+                    if (isRouteDataLoading || isDirectRouteLookupLoading) return <LoadingState label="Loading activity..." />;
                     return (
                         <DetailRouteFallback
                             title="Activity not found"
@@ -1525,7 +1617,7 @@ const AppContent: React.FC = () => {
                 }
                 return <ActivityDetail
                             activity={latestAct}
-                            ipos={ipos}
+                            ipos={activityWorkflowIpos}
                             onBack={handleBack} 
                             previousPageName={getPageName(previousPage)}
                             onUpdateActivity={(updated) => {
@@ -1559,7 +1651,8 @@ const AppContent: React.FC = () => {
             case '/settings':
                 return <Settings 
                             isDarkMode={isDarkMode} 
-                            toggleDarkMode={toggleDarkMode}
+                            themePreference={themePreference}
+                            onThemePreferenceChange={updateThemePreference}
                             deadlines={deadlines}
                             setDeadlines={setDeadlines}
                             // Pass data for DCF Management
@@ -1649,7 +1742,6 @@ const AppContent: React.FC = () => {
         <div className="app-shell">
             <Sidebar 
                 isOpen={isSidebarOpen} 
-                toggleSidebar={toggleSidebar}
                 closeSidebar={() => setIsSidebarOpen(false)} 
                 currentPage={routePath} 
                 setCurrentPage={navigateTo} 
@@ -1657,8 +1749,9 @@ const AppContent: React.FC = () => {
             <div className="app-workspace">
                 <Header 
                     toggleSidebar={toggleSidebar} 
-                    toggleDarkMode={toggleDarkMode} 
                     isDarkMode={isDarkMode} 
+                    themePreference={themePreference}
+                    onThemePreferenceChange={updateThemePreference}
                     setCurrentPage={navigateTo}
                     onRefreshData={refreshAllData}
                     onClearLocalCache={clearLocalCache}

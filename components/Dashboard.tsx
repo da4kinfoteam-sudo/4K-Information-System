@@ -11,6 +11,18 @@ import { aggregateHomepageFinancials } from '../lib/financialAggregation';
 import { aggregateHomepagePhysicalStats } from '../lib/physicalAggregation';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import type { DataScope } from '../lib/scopedDataFetch';
+import { CalendarDays, ChevronLeft, ChevronRight, Ellipsis, X } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import {
+    ContentCard,
+    EmptyState,
+    FilterToolbar,
+    MapCard,
+    PageHeader,
+    SectionHeading,
+    StatusIndicator,
+} from './ui/enterprise';
+import useLocalStorageState from '../hooks/useLocalStorageState';
 
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
 declare const L: any;
@@ -100,7 +112,11 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings })
 
     useEffect(() => {
         if (mapContainerRef.current && !mapRef.current) {
-            mapRef.current = L.map(mapContainerRef.current).setView([12.8797, 121.7740], 6); 
+            mapRef.current = L.map(mapContainerRef.current, {
+                zoomAnimation: false,
+                fadeAnimation: false,
+                markerZoomAnimation: false
+            }).setView([12.8797, 121.7740], 6);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(mapRef.current);
@@ -108,6 +124,8 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings })
         
         return () => {
             if (mapRef.current) {
+                mapRef.current.stop();
+                mapRef.current.off();
                 mapRef.current.remove();
                 mapRef.current = null;
             }
@@ -198,31 +216,79 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings })
 
             if (markersRef.current.length > 0) {
                 const group = new L.featureGroup(markersRef.current);
-                mapRef.current.fitBounds(group.getBounds().pad(0.2));
+                mapRef.current.fitBounds(group.getBounds().pad(0.2), { animate: false });
             } else {
                  mapRef.current.setView([12.8797, 121.7740], 6); 
             }
         }
     }, [ipos, subprojects, trainings]);
 
-    return <div ref={mapContainerRef} className="h-96 w-full rounded-lg z-0" />;
+    return <div ref={mapContainerRef} className="dashboard-map" />;
 };
 
 
-type ActivityDateView = 'Current Date' | 'All';
+type ActivityDateView = 'Today' | 'This Week' | 'This Month' | 'This Quarter' | 'All';
 
 type ActivityItem = (
     (Subproject & { activityType: 'Subproject' }) |
     (Activity & { activityType: 'Training' | 'Activity' })
 ) & {
     activityDate: string;
+    activityEndDate: string;
     activityOu: string;
     activityStatus: Subproject['status'] | Activity['status'];
 };
 
-const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+interface PanelMenuItem {
+    label: string;
+    onSelect: () => void;
+}
+
+const PanelActionMenu: React.FC<{ label: string; items: PanelMenuItem[] }> = ({ label, items }) => {
+    const [open, setOpen] = useState(false);
+
+    const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+        const menuItems = Array.from(event.currentTarget.querySelectorAll('[role="menuitem"]')) as HTMLButtonElement[];
+        if (menuItems.length === 0) return;
+        event.preventDefault();
+        const currentIndex = menuItems.indexOf(document.activeElement as HTMLButtonElement);
+        const nextIndex = event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+                ? menuItems.length - 1
+                : event.key === 'ArrowDown'
+                    ? (currentIndex + 1) % menuItems.length
+                    : (currentIndex <= 0 ? menuItems.length - 1 : currentIndex - 1);
+        menuItems[nextIndex].focus();
+    };
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <button type="button" className="dashboard-panel-menu__trigger" aria-label={label}>
+                    <Ellipsis aria-hidden="true" />
+                </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="dashboard-panel-menu">
+                <div role="menu" aria-label={label} onKeyDown={handleMenuKeyDown}>
+                    {items.map(item => (
+                        <button
+                            type="button"
+                            role="menuitem"
+                            key={item.label}
+                            onClick={() => {
+                                item.onSelect();
+                                setOpen(false);
+                            }}
+                        >
+                            {item.label}
+                        </button>
+                    ))}
+                </div>
+            </PopoverContent>
+        </Popover>
+    );
 };
 
 const parseLocalDate = (dateString?: string) => {
@@ -232,13 +298,60 @@ const parseLocalDate = (dateString?: string) => {
     return new Date(year, month - 1, day);
 };
 
-const isTodayOrLater = (dateString?: string) => {
-    const date = parseLocalDate(dateString);
-    if (!date) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    date.setHours(0, 0, 0, 0);
-    return date >= today;
+const startOfLocalDay = (date: Date) => {
+    const value = new Date(date);
+    value.setHours(0, 0, 0, 0);
+    return value;
+};
+
+const isSameLocalDate = (left: Date | null, right: Date | null) => (
+    !!left && !!right
+    && left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate()
+);
+
+const getPeriodBounds = (view: ActivityDateView, anchor: Date) => {
+    const today = startOfLocalDay(anchor);
+    if (view === 'Today') return { start: today, end: today };
+    if (view === 'This Week') {
+        const start = new Date(today);
+        start.setDate(today.getDate() - today.getDay());
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        return { start, end };
+    }
+    if (view === 'This Month') {
+        return {
+            start: new Date(today.getFullYear(), today.getMonth(), 1),
+            end: new Date(today.getFullYear(), today.getMonth() + 1, 0),
+        };
+    }
+    const quarterStartMonth = Math.floor(today.getMonth() / 3) * 3;
+    return {
+        start: new Date(today.getFullYear(), quarterStartMonth, 1),
+        end: new Date(today.getFullYear(), quarterStartMonth + 3, 0),
+    };
+};
+
+const activityIntersectsRange = (item: ActivityItem, start: Date, end: Date) => {
+    const itemStart = parseLocalDate(item.activityDate);
+    const itemEnd = parseLocalDate(item.activityEndDate) || itemStart;
+    if (!itemStart || !itemEnd) return false;
+    return itemStart <= end && itemEnd >= start;
+};
+
+const formatFeedDate = (startDate?: string, endDate?: string) => {
+    const start = parseLocalDate(startDate);
+    const end = parseLocalDate(endDate) || start;
+    if (!start || !end) return 'Date unavailable';
+    if (isSameLocalDate(start, end)) {
+        return start.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+    }
+    const sameYear = start.getFullYear() === end.getFullYear();
+    const startLabel = start.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: sameYear ? undefined : 'numeric' });
+    const endLabel = end.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+    return `${startLabel} – ${endLabel}`;
 };
 
 const isWithinDeadlineWindow = (dateString?: string) => {
@@ -258,17 +371,6 @@ const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 }
 
-const getStatusBadge = (status: Subproject['status']) => {
-    const baseClasses = "px-3 py-1 text-xs font-semibold rounded-full";
-    switch (status) {
-        case 'Completed': return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
-        case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
-        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
-        case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
-        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
-    }
-}
-
 const calculateTotalBudget = (details: SubprojectDetail[]) => {
     return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)), 0);
 }
@@ -286,6 +388,7 @@ interface DashboardProps {
     otherProgramExpenses: OtherProgramExpense[];
     onSelectSubproject: (subproject: Subproject) => void;
     onSelectActivity: (activity: Activity) => void;
+    navigateTo: (page: string) => void;
     externalFilters?: { region?: string; year?: string; search?: string } | null;
     onDataScopeChange?: (scope: Partial<DataScope>) => void;
 }
@@ -293,18 +396,25 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ 
     subprojects, ipos, activities, systemSettings,
     officeReqs, staffingReqs, otherProgramExpenses,
-    onSelectSubproject, onSelectActivity, externalFilters, onDataScopeChange
+    onSelectSubproject, onSelectActivity, navigateTo, externalFilters, onDataScopeChange
 }) => {
-    const { currentUser, getVisibilityScope } = useAuth();
+    const { currentUser, getVisibilityScope, hasAccess } = useAuth();
     
     // Check Reports & Dashboards visibility scope
     const visibilityScope = getVisibilityScope('Dashboards');
     const isLockedToOwnOu = visibilityScope === 'Own OU';
+    const defaultYear = new Date().getFullYear().toString();
+    const defaultOu = isLockedToOwnOu ? (currentUser?.operatingUnit || 'All') : 'All';
 
-    const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
-    const [selectedOu, setSelectedOu] = useState<string>(isLockedToOwnOu ? (currentUser?.operatingUnit || 'All') : 'All');
-    const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
-    const [selectedFundType, setSelectedFundType] = useState<string>('Current');
+    const scopeStoragePrefix = `homepage_scope_${currentUser?.id || 'anonymous'}`;
+    const [selectedYear, setSelectedYear] = useLocalStorageState<string>(`${scopeStoragePrefix}_year`, defaultYear);
+    const [selectedOu, setSelectedOu] = useLocalStorageState<string>(`${scopeStoragePrefix}_ou`, defaultOu);
+    const [selectedTier, setSelectedTier] = useLocalStorageState<string>(`${scopeStoragePrefix}_tier`, 'Tier 1');
+    const [selectedFundType, setSelectedFundType] = useLocalStorageState<string>(`${scopeStoragePrefix}_fundType`, 'Current');
+    const [draftYear, setDraftYear] = useState<string>(selectedYear);
+    const [draftOu, setDraftOu] = useState<string>(selectedOu);
+    const [draftTier, setDraftTier] = useState<string>(selectedTier);
+    const [draftFundType, setDraftFundType] = useState<string>(selectedFundType);
     const [totalBudgetView, setTotalBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
 
     useEffect(() => {
@@ -321,9 +431,19 @@ const Dashboard: React.FC<DashboardProps> = ({
     const [trBudgetView, setTrBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
     
     // Modal States
-    const [modalData, setModalData] = useState<ActivityItem | null>(null);
     const [dayModalData, setDayModalData] = useState<{ date: Date, items: CalendarEvent[] } | null>(null);
     const [cardModal, setCardModal] = useState<{ title: string; metrics: { label: string; value: number | string; isCurrency?: boolean; subtext?: string }[] } | null>(null);
+
+    useEffect(() => {
+        if (!cardModal && !dayModalData) return;
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            setCardModal(null);
+            setDayModalData(null);
+        };
+        window.addEventListener('keydown', handleEscape);
+        return () => window.removeEventListener('keydown', handleEscape);
+    }, [cardModal, dayModalData]);
 
     const [mapFilters, setMapFilters] = useState({
         ipos: true,
@@ -333,24 +453,60 @@ const Dashboard: React.FC<DashboardProps> = ({
     
     // Activities Section State
     const [activitiesFilter, setActivitiesFilter] = useState<'All' | 'Subprojects' | 'Trainings'>('All');
-    const [activitiesDateView, setActivitiesDateView] = useState<ActivityDateView>('Current Date');
+    const [activitiesDateView, setActivitiesDateView] = useState<ActivityDateView>('Today');
+    const [selectedActivityDate, setSelectedActivityDate] = useState<Date | null>(null);
+    const [calendarMonth, setCalendarMonth] = useState(new Date());
     const [activitiesPage, setActivitiesPage] = useState(1);
-    const itemsPerPageActivities = 9;
+    const activitiesPanelRef = useRef<HTMLDivElement>(null);
+    const itemsPerPageActivities = 6;
 
     // React to external filters
     useEffect(() => {
         if (externalFilters?.year) {
             setSelectedYear(externalFilters.year);
+            setDraftYear(externalFilters.year);
         }
-    }, [externalFilters]);
+    }, [externalFilters?.year]);
 
     // ... (Filter Effects and Calculations remain same) ...
 
     useEffect(() => {
-        if (currentUser && currentUser.role === 'User') {
-            setSelectedOu(currentUser.operatingUnit);
-        }
-    }, [currentUser]);
+        if (!isLockedToOwnOu) return;
+        const lockedOu = currentUser?.operatingUnit || 'All';
+        setSelectedOu(lockedOu);
+        setDraftOu(lockedOu);
+    }, [currentUser?.operatingUnit, isLockedToOwnOu]);
+
+    const hasPendingFilterChanges = draftYear !== selectedYear
+        || draftOu !== selectedOu
+        || draftTier !== selectedTier
+        || draftFundType !== selectedFundType;
+    const filtersAreAtDefaults = selectedYear === defaultYear
+        && selectedOu === defaultOu
+        && selectedTier === 'Tier 1'
+        && selectedFundType === 'Current'
+        && draftYear === defaultYear
+        && draftOu === defaultOu
+        && draftTier === 'Tier 1'
+        && draftFundType === 'Current';
+
+    const applyFilters = () => {
+        setSelectedYear(draftYear);
+        setSelectedOu(isLockedToOwnOu ? defaultOu : draftOu);
+        setSelectedTier(draftTier);
+        setSelectedFundType(draftFundType);
+    };
+
+    const resetFilters = () => {
+        setDraftYear(defaultYear);
+        setDraftOu(defaultOu);
+        setDraftTier('Tier 1');
+        setDraftFundType('Current');
+        setSelectedYear(defaultYear);
+        setSelectedOu(defaultOu);
+        setSelectedTier('Tier 1');
+        setSelectedFundType('Current');
+    };
 
     const handleMapFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
@@ -358,9 +514,35 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
 
     const handleDateClick = (date: Date, events: CalendarEvent[]) => {
-        if (events.length > 0) {
-            setDayModalData({ date, items: events });
+        const selectedDate = startOfLocalDay(date);
+        setSelectedActivityDate(selectedDate);
+        setActivitiesPage(1);
+
+        const nonFeedEvents = events.filter(event => !event.originalData);
+        if (nonFeedEvents.length > 0) {
+            setDayModalData({ date: selectedDate, items: nonFeedEvents });
+        } else {
+            setDayModalData(null);
         }
+
+        if (window.matchMedia('(max-width: 1279px)').matches) {
+            window.requestAnimationFrame(() => {
+                activitiesPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        }
+    };
+
+    const handleActivityDateViewChange = (view: ActivityDateView) => {
+        setActivitiesDateView(view);
+        setSelectedActivityDate(null);
+        setActivitiesPage(1);
+    };
+
+    const handleCalendarToday = () => {
+        setCalendarMonth(new Date());
+        setSelectedActivityDate(null);
+        setActivitiesDateView('Today');
+        setActivitiesPage(1);
     };
 
     const handleCalendarEventClick = (event: CalendarEvent) => {
@@ -469,16 +651,25 @@ const Dashboard: React.FC<DashboardProps> = ({
                 ...p,
                 activityType: 'Subproject' as const,
                 activityDate: p.estimatedCompletionDate || '',
+                activityEndDate: p.estimatedCompletionDate || '',
                 activityOu: p.operatingUnit,
                 activityStatus: p.status,
             })),
-            ...filteredData.activities.map(a => ({
-                ...a,
-                activityType: a.type as 'Training' | 'Activity',
-                activityDate: a.date || '',
-                activityOu: a.operatingUnit,
-                activityStatus: a.status,
-            })),
+            ...filteredData.activities.map(a => {
+                const isCompleted = a.status === 'Completed' || !!a.actualDate;
+                const startDate = isCompleted && a.actualDate ? a.actualDate : a.date;
+                const endDate = isCompleted && a.actualDate
+                    ? (a.actualEndDate || a.actualDate)
+                    : (a.endDate || a.date);
+                return {
+                    ...a,
+                    activityType: a.type as 'Training' | 'Activity',
+                    activityDate: startDate || '',
+                    activityEndDate: endDate || startDate || '',
+                    activityOu: a.operatingUnit,
+                    activityStatus: a.status,
+                };
+            }),
         ];
         // Sort chronologically from January to December (ascending)
         return combined.sort((a, b) => {
@@ -495,15 +686,18 @@ const Dashboard: React.FC<DashboardProps> = ({
         } else if (activitiesFilter === 'Trainings') {
             items = items.filter(a => a.activityType === 'Training');
         }
-        if (activitiesDateView === 'Current Date') {
-            items = items.filter(a => isTodayOrLater(a.activityDate));
+        if (selectedActivityDate) {
+            items = items.filter(item => activityIntersectsRange(item, selectedActivityDate, selectedActivityDate));
+        } else if (activitiesDateView !== 'All') {
+            const bounds = getPeriodBounds(activitiesDateView, new Date());
+            items = items.filter(item => activityIntersectsRange(item, bounds.start, bounds.end));
         }
         return items;
-    }, [allActivities, activitiesFilter, activitiesDateView]);
+    }, [allActivities, activitiesFilter, activitiesDateView, selectedActivityDate]);
 
     useEffect(() => {
         setActivitiesPage(1);
-    }, [activitiesFilter, activitiesDateView, displayedActivities.length]);
+    }, [activitiesFilter, activitiesDateView, selectedActivityDate, displayedActivities.length]);
     
     const paginatedActivitiesList = useMemo(() => {
         const startIndex = (activitiesPage - 1) * itemsPerPageActivities;
@@ -511,6 +705,35 @@ const Dashboard: React.FC<DashboardProps> = ({
     }, [displayedActivities, activitiesPage]);
 
     const totalActivityPages = Math.ceil(displayedActivities.length / itemsPerPageActivities);
+    const activityRangeStart = displayedActivities.length === 0 ? 0 : (activitiesPage - 1) * itemsPerPageActivities + 1;
+    const activityRangeEnd = Math.min(activitiesPage * itemsPerPageActivities, displayedActivities.length);
+
+    const upcomingDeadlines = useMemo(() => {
+        const today = startOfLocalDay(new Date());
+        return (systemSettings.deadlines || [])
+            .filter(deadline => {
+                const date = parseLocalDate(deadline.date);
+                return !!date && date >= today;
+            })
+            .sort((left, right) => (parseLocalDate(left.date)?.getTime() || 0) - (parseLocalDate(right.date)?.getTime() || 0))
+            .slice(0, 5);
+    }, [systemSettings.deadlines]);
+
+    const npmoSchedules = useMemo(() => {
+        const today = startOfLocalDay(new Date());
+        return activities
+            .filter(activity => {
+                const date = parseLocalDate(activity.date);
+                return activity.operatingUnit === 'NPMO' && !!date && date >= today;
+            })
+            .sort((left, right) => (parseLocalDate(left.date)?.getTime() || 0) - (parseLocalDate(right.date)?.getTime() || 0))
+            .slice(0, 5);
+    }, [activities]);
+
+    const canManageDeadlines = currentUser?.role !== 'Guest'
+        && (hasAccess('System Management', 'view')
+            || currentUser?.role === 'Administrator'
+            || currentUser?.role === 'Super Admin');
     
     const filteredIposForMap = mapFilters.ipos ? filteredData.ipos : [];
     const filteredSubprojectsForMap = mapFilters.subprojects ? filteredData.subprojects : [];
@@ -563,37 +786,50 @@ const Dashboard: React.FC<DashboardProps> = ({
     const showIposWithSp = () => { setCardModal({ title: "IPOs with Subprojects", metrics: [ { label: "IPOs with Completed SPs", value: dashboardStats.physical.iposWithSp.actual }, { label: "Total Target IPOs", value: dashboardStats.physical.iposWithSp.target, subtext: "Linked to any SP" } ] }); };
     const showAdsAssisted = () => { setCardModal({ title: "Ancestral Domains Assisted", metrics: [ { label: "ADs with Completed SPs/Trainings", value: dashboardStats.physical.adsAssisted.actual }, { label: "Total Target ADs", value: dashboardStats.physical.adsAssisted.target, subtext: "Linked via IPOs" } ] }); };
 
+    const getBudgetValue = (bucket: { obli: number; disb: number }, view: 'Obligated' | 'Disbursed') => (
+        view === 'Obligated' ? bucket.obli : bucket.disb
+    );
+    const totalBudgetValue = getBudgetValue(dashboardStats.financials.total, totalBudgetView);
+    const subprojectsBudgetValue = getBudgetValue(dashboardStats.financials.subprojects, spBudgetView);
+    const trainingsBudgetValue = getBudgetValue(dashboardStats.financials.trainings, trBudgetView);
+    const selectedYearLabel = selectedYear === 'All' ? 'All fund years' : `FY ${selectedYear}`;
 
     return (
         <div className="dashboard-page">
             {/* Card Detail Modal */}
             {cardModal && (
-                <div 
-                    className="dashboard-modal-backdrop animate-fadeIn"
+                <div
+                    className="modal-backdrop animate-fadeIn"
                     onClick={() => setCardModal(null)}
+                    role="presentation"
                 >
-                    <div 
-                        className="dashboard-modal dashboard-modal--day"
+                    <section
+                        className="modal-card dashboard-card-modal"
                         onClick={(e) => e.stopPropagation()}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="dashboard-card-dialog-title"
                     >
-                        <div className="dashboard-modal__header">
-                            <h3>{cardModal.title}</h3>
-                            <button onClick={() => setCardModal(null)} className="dashboard-modal__close">&times;</button>
-                        </div>
-                        <div className="dashboard-modal__stack">
-                            {cardModal.metrics.map((metric, idx) => (
-                                <div key={idx} className="dashboard-modal__metric">
-                                    <div>
-                                        <p className="dashboard-modal__metric-label">{metric.label}</p>
-                                        {metric.subtext && <p className="dashboard-modal__metric-subtext">{metric.subtext}</p>}
+                        <header className="modal-card__header">
+                            <h3 id="dashboard-card-dialog-title">{cardModal.title}</h3>
+                            <button type="button" onClick={() => setCardModal(null)} className="modal-card__close" aria-label="Close details">&times;</button>
+                        </header>
+                        <div className="modal-card__body dashboard-card-modal__body custom-scrollbar">
+                            <div className="dashboard-modal__stack">
+                                {cardModal.metrics.map(metric => (
+                                    <div key={metric.label} className="dashboard-modal__metric">
+                                        <div>
+                                            <p className="dashboard-modal__metric-label">{metric.label}</p>
+                                            {metric.subtext && <p className="dashboard-modal__metric-subtext">{metric.subtext}</p>}
+                                        </div>
+                                        <p className="dashboard-modal__metric-value">
+                                            {metric.isCurrency && typeof metric.value === 'number' ? formatCurrency(metric.value) : metric.value}
+                                        </p>
                                     </div>
-                                    <p className="dashboard-modal__metric-value">
-                                        {metric.isCurrency && typeof metric.value === 'number' ? formatCurrency(metric.value) : metric.value}
-                                    </p>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    </section>
                 </div>
             )}
 
@@ -606,33 +842,35 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div 
                         className="dashboard-modal"
                         onClick={(e) => e.stopPropagation()}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="dashboard-day-dialog-title"
                     >
                         <div className="dashboard-modal__header">
-                            <h3>
+                            <h3 id="dashboard-day-dialog-title">
                                 {dayModalData.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
                             </h3>
-                            <button onClick={() => setDayModalData(null)} className="dashboard-modal__close">&times;</button>
+                            <button onClick={() => setDayModalData(null)} className="dashboard-modal__close" aria-label="Close day details">&times;</button>
                         </div>
                         
                         <div className="dashboard-modal__body dashboard-day-modal__body custom-scrollbar">
                         <div className="dashboard-modal__stack">
                             {dayModalData.items.map((event, index) => (
-                                <div 
-                                    key={`${event.id}-${index}`} 
-                                    onClick={() => handleCalendarEventClick(event)}
-                                    className={`dashboard-modal__event ${event.originalData ? 'dashboard-modal__event--clickable' : ''}`}
+                                <div
+                                    key={`${event.id}-${index}`}
+                                    className="dashboard-modal__event"
                                 >
-                                    <p className="font-semibold text-gray-800 dark:text-gray-200 text-sm">{event.title}</p>
+                                    <p className="dashboard-modal__event-title">{event.title}</p>
                                     <div className="flex items-center gap-2 mt-1">
-                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">{event.type}</p>
+                                        <p className="dashboard-modal__event-type">{event.type}</p>
                                         {event.originalData?.operatingUnit && (
-                                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
+                                            <span className="status-badge status-badge--compact status-badge--completed">
                                                 {event.originalData.operatingUnit}
                                             </span>
                                         )}
                                     </div>
                                     {event.originalData?.description && (
-                                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 line-clamp-2 italic border-t border-gray-100 dark:border-gray-700 pt-2">
+                                        <p className="dashboard-modal__event-description">
                                             {event.originalData.description}
                                         </p>
                                     )}
@@ -644,35 +882,36 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
             )}
 
-            <div className="dashboard-header">
-                <div>
-                    <h2>4K Information System Overview</h2>
-                </div>
-                <div className="dashboard-filter-bar">
+            <PageHeader
+                className="dashboard-page-header"
+                title="4K Information System Overview"
+                metadata="Program performance, schedules, mapped activities, and delivery progress."
+            />
+
+            <FilterToolbar
+                className="dashboard-filter-bar"
+                actions={(
+                    <>
+                        <button type="button" className="btn btn-secondary btn-compact" onClick={resetFilters} disabled={filtersAreAtDefaults}>
+                            Reset
+                        </button>
+                        <button type="button" className="btn btn-primary btn-compact" onClick={applyFilters} disabled={!hasPendingFilterChanges}>
+                            Apply
+                        </button>
+                    </>
+                )}
+            >
                      <div className="dashboard-filter">
-                        <label htmlFor="ou-filter">OU</label>
+                        <label htmlFor="ou-filter">Operating Unit</label>
                         <select 
                             id="ou-filter"
-                            value={selectedOu}
-                            onChange={(e) => setSelectedOu(e.target.value)}
+                            value={draftOu}
+                            onChange={(e) => setDraftOu(e.target.value)}
                             disabled={isLockedToOwnOu}
                         >
-                            <option value="All">All OUs</option>
+                            <option value="All">All Operating Units</option>
                             {operatingUnits.map(ou => (
                                 <option key={ou} value={ou}>{ou}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="dashboard-filter">
-                        <label htmlFor="tier-filter">Tier</label>
-                        <select 
-                            id="tier-filter"
-                            value={selectedTier}
-                            onChange={(e) => setSelectedTier(e.target.value)}
-                        >
-                            <option value="All">All Tiers</option>
-                            {tiers.map(tier => (
-                                <option key={tier} value={tier}>{tier}</option>
                             ))}
                         </select>
                     </div>
@@ -680,8 +919,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <label htmlFor="fund-type-filter">Fund Type</label>
                         <select 
                             id="fund-type-filter"
-                            value={selectedFundType}
-                            onChange={(e) => setSelectedFundType(e.target.value)}
+                            value={draftFundType}
+                            onChange={(e) => setDraftFundType(e.target.value)}
                         >
                             <option value="All">All Fund Types</option>
                             {fundTypes.map(f => (
@@ -690,238 +929,323 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </select>
                     </div>
                     <div className="dashboard-filter">
+                        <label htmlFor="tier-filter">Tier</label>
+                        <select
+                            id="tier-filter"
+                            value={draftTier}
+                            onChange={(e) => setDraftTier(e.target.value)}
+                        >
+                            <option value="All">All Tiers</option>
+                            {tiers.map(tier => (
+                                <option key={tier} value={tier}>{tier}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="dashboard-filter">
                         <label htmlFor="year-filter">Fund Year</label>
                         <select 
                             id="year-filter"
-                            value={selectedYear}
-                            onChange={(e) => setSelectedYear(e.target.value)}
+                            value={draftYear}
+                            onChange={(e) => setDraftYear(e.target.value)}
                         >
-                            <option value="All">All Years</option>
+                            <option value="All">All Fund Years</option>
                             {availableYears.map(year => (
                                 <option key={year} value={year}>{year}</option>
                             ))}
                         </select>
                     </div>
-                </div>
-            </div>
+            </FilterToolbar>
 
             <div className="dashboard-metric-grid">
                 <StatCard 
-                    title={`Total Budget (${totalBudgetView})`} 
-                    value={formatCurrency(totalBudgetView === 'Obligated' ? dashboardStats.financials.total.obli : dashboardStats.financials.total.disb)} 
+                    title="Total Budget"
+                    value={formatCurrency(totalBudgetValue)}
                     icon={<FinancialsIcon />} 
-                    color="text-purple-500" 
+                    supportingText={`${selectedYearLabel} · ${totalBudgetView}`}
                     onClick={showTotalBudget}
                     onToggle={() => setTotalBudgetView(prev => prev === 'Obligated' ? 'Disbursed' : 'Obligated')}
+                    toggleLabel={totalBudgetView}
+                    toggleAriaLabel={`Switch Total Budget to ${totalBudgetView === 'Obligated' ? 'Disbursed' : 'Obligated'} view`}
                 />
                 <StatCard 
-                    title={`Total Budget for Subprojects (${spBudgetView})`} 
-                    value={formatCurrency(spBudgetView === 'Obligated' ? dashboardStats.financials.subprojects.obli : dashboardStats.financials.subprojects.disb)} 
+                    title="Budget · Subprojects"
+                    value={formatCurrency(subprojectsBudgetValue)}
                     icon={<FinancialsIcon />} 
-                    color="text-blue-500" 
+                    supportingText={`${formatRate(subprojectsBudgetValue, getBudgetValue(dashboardStats.financials.total, spBudgetView))} of total`}
                     onClick={showSpBudget}
                     onToggle={() => setSpBudgetView(prev => prev === 'Obligated' ? 'Disbursed' : 'Obligated')}
+                    toggleLabel={spBudgetView}
+                    toggleAriaLabel={`Switch Subprojects Budget to ${spBudgetView === 'Obligated' ? 'Disbursed' : 'Obligated'} view`}
                 />
                 <StatCard 
-                    title={`Total Budget for Trainings (${trBudgetView})`} 
-                    value={formatCurrency(trBudgetView === 'Obligated' ? dashboardStats.financials.trainings.obli : dashboardStats.financials.trainings.disb)} 
+                    title="Budget · Trainings"
+                    value={formatCurrency(trainingsBudgetValue)}
                     icon={<FinancialsIcon />} 
-                    color="text-green-500" 
+                    supportingText={`${formatRate(trainingsBudgetValue, getBudgetValue(dashboardStats.financials.total, trBudgetView))} of total`}
                     onClick={showTrBudget}
                     onToggle={() => setTrBudgetView(prev => prev === 'Obligated' ? 'Disbursed' : 'Obligated')}
+                    toggleLabel={trBudgetView}
+                    toggleAriaLabel={`Switch Trainings Budget to ${trBudgetView === 'Obligated' ? 'Disbursed' : 'Obligated'} view`}
                 />
-                <StatCard title="Number of Subprojects (Completed)" value={dashboardStats.physical.subprojects.actual.toString()} icon={<ProjectsIcon className="h-8 w-8" />} color="text-blue-600" onClick={showSpCount} />
-                <StatCard title="Number of Trainings (Completed)" value={dashboardStats.physical.trainings.actual.toString()} icon={<TrainingIcon className="h-8 w-8" />} color="text-green-600" onClick={showTrCount} />
-                <StatCard title="Number of IPOs assisted" value={dashboardStats.physical.iposAssisted.actual.toString()} icon={<IpoIcon className="h-8 w-8" />} color="text-yellow-500" onClick={showIposAssisted} />
-                <StatCard title="Number of IPOs with subprojects" value={dashboardStats.physical.iposWithSp.actual.toString()} icon={<IpoIcon className="h-8 w-8" />} color="text-teal-500" onClick={showIposWithSp} />
-                <StatCard title="Number of Ancestral Domains assisted" value={dashboardStats.physical.adsAssisted.actual.toString()} icon={<AdIcon className="h-8 w-8" />} color="text-orange-500" onClick={showAdsAssisted} />
+                <StatCard title="Subprojects Completed" value={dashboardStats.physical.subprojects.actual.toString()} icon={<ProjectsIcon />} supportingText={`of ${dashboardStats.physical.subprojects.target} target`} onClick={showSpCount} />
+                <StatCard title="Trainings Completed" value={dashboardStats.physical.trainings.actual.toString()} icon={<TrainingIcon />} supportingText={`of ${dashboardStats.physical.trainings.target} target`} onClick={showTrCount} />
+                <StatCard title="IPOs Assisted" value={dashboardStats.physical.iposAssisted.actual.toString()} icon={<IpoIcon />} supportingText={`of ${dashboardStats.physical.iposAssisted.target} target`} onClick={showIposAssisted} />
+                <StatCard title="IPOs With Subprojects" value={dashboardStats.physical.iposWithSp.actual.toString()} icon={<IpoIcon />} supportingText={`${formatRate(dashboardStats.physical.iposWithSp.actual, dashboardStats.physical.iposWithSp.target)} coverage`} onClick={showIposWithSp} />
+                <StatCard title="Ancestral Domains Assisted" value={dashboardStats.physical.adsAssisted.actual.toString()} icon={<AdIcon />} supportingText={`of ${dashboardStats.physical.adsAssisted.target} target`} onClick={showAdsAssisted} />
             </div>
 
-            {/* System Schedule Summary Card */}
-            <div className="dashboard-panel">
-                <div className="dashboard-panel__header">
-                    <div>
-                        <h3 className="dashboard-panel__title">System Schedule</h3>
-                    </div>
-                </div>
+            <div className="dashboard-home-grid">
+            <ContentCard className="dashboard-panel dashboard-panel--schedule">
+                <SectionHeading
+                    title="System Schedule"
+                    helper="Deadlines & NPMO calendar"
+                    actions={(
+                        <PanelActionMenu
+                            label="System Schedule menu"
+                            items={[
+                                { label: 'View all activities', onSelect: () => navigateTo('/activities') },
+                                ...(canManageDeadlines
+                                    ? [{ label: 'Manage deadlines', onSelect: () => navigateTo('/settings?tab=system') }]
+                                    : []),
+                            ]}
+                        />
+                    )}
+                />
                 <div className="dashboard-schedule-grid">
                     <div>
                         <h4 className="dashboard-list__heading">Upcoming Deadlines</h4>
-                        {systemSettings.deadlines.length > 0 ? (
+                        {upcomingDeadlines.length > 0 ? (
                             <ul className="dashboard-list">
-                                {systemSettings.deadlines
-                                    .filter(d => new Date(d.date) >= new Date(new Date().setHours(0,0,0,0)))
-                                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                                    .slice(0, 5)
-                                    .map(d => (
-                                        <li
-                                            key={d.id}
-                                            className={`dashboard-list__item ${isWithinDeadlineWindow(d.date) ? 'dashboard-list__item--urgent' : ''}`}
-                                        >
-                                            <div className="dashboard-list__row">
-                                                <span className="dashboard-list__name">{d.name}</span>
-                                                <span className="dashboard-list__date">{formatDate(d.date)}</span>
-                                            </div>
-                                        </li>
-                                    ))}
+                                {upcomingDeadlines.map(deadline => (
+                                    <li
+                                        key={deadline.id}
+                                        className={`dashboard-list__item dashboard-deadline-row ${isWithinDeadlineWindow(deadline.date) ? 'dashboard-list__item--urgent' : ''}`}
+                                    >
+                                        <span className="dashboard-deadline-row__icon" aria-hidden="true">
+                                            <CalendarDays />
+                                        </span>
+                                        <span className="dashboard-deadline-row__content">
+                                            <span className="dashboard-list__name">{deadline.name}</span>
+                                        </span>
+                                        <time className="dashboard-list__date" dateTime={deadline.date}>{formatFeedDate(deadline.date, deadline.date)}</time>
+                                    </li>
+                                ))}
                             </ul>
                         ) : <p className="dashboard-empty">No upcoming deadlines.</p>}
                     </div>
                     <div>
                         <h4 className="dashboard-list__heading">NPMO Schedules</h4>
-                        {activities.filter(a => a.operatingUnit === 'NPMO').length > 0 ? (
-                            <ul className="dashboard-list">
-                                {activities
-                                    .filter(a => a.operatingUnit === 'NPMO' && new Date(a.date) >= new Date(new Date().setHours(0,0,0,0)))
-                                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                                    .slice(0, 5)
-                                    .map(s => (
-                                        <li key={s.id}>
-                                            <button
-                                                type="button"
-                                                onClick={() => onSelectActivity(s)}
-                                                className="dashboard-list__button"
-                                                aria-label={`View details for ${s.name}`}
-                                            >
-                                                <div className="dashboard-list__row">
-                                                    <span className="dashboard-list__name">{s.name}</span>
-                                                    <span className="dashboard-list__date">{formatDate(s.date)}</span>
-                                                </div>
-                                                {s.description && (
-                                                    <p className="dashboard-list__description line-clamp-2">
-                                                        {s.description}
-                                                    </p>
-                                                )}
-                                            </button>
-                                        </li>
-                                    ))}
+                        {npmoSchedules.length > 0 ? (
+                            <ul className="dashboard-list dashboard-list--npmo">
+                                {npmoSchedules.map(schedule => (
+                                    <li key={schedule.id}>
+                                        <button
+                                            type="button"
+                                            onClick={() => onSelectActivity(schedule)}
+                                            className="dashboard-list__button dashboard-npmo-row"
+                                            aria-label={`View details for ${schedule.name}`}
+                                        >
+                                            <span className="dashboard-list__name">{schedule.name}</span>
+                                            <span className="dashboard-list__description">
+                                                {[formatFeedDate(schedule.date, schedule.endDate || schedule.date), schedule.location].filter(Boolean).join(' · ')}
+                                            </span>
+                                            {schedule.description && (
+                                                <span className="dashboard-list__description dashboard-list__description--detail">
+                                                    {schedule.description}
+                                                </span>
+                                            )}
+                                        </button>
+                                    </li>
+                                ))}
                             </ul>
                         ) : <p className="dashboard-empty">No active NPMO schedules.</p>}
                     </div>
                 </div>
-            </div>
+            </ContentCard>
 
-            <div className="dashboard-panel">
-                <div className="dashboard-panel__header">
-                    <div>
-                        <h3 className="dashboard-panel__title">4K Map</h3>
-                    </div>
-                    <div className="dashboard-map-controls">
-                        <span className="dashboard-map-controls__label">Show:</span>
-                        <label className="dashboard-check dashboard-check--red">
+            <MapCard className="dashboard-panel dashboard-panel--map">
+                <SectionHeading
+                    title="4K Map"
+                    helper="Geographic view of program interventions"
+                    actions={<div className="dashboard-map-controls" aria-label="Map layers">
+                        <span className="dashboard-map-controls__label">Show</span>
+                        <label className={`dashboard-check dashboard-check--red ${mapFilters.ipos ? 'is-active' : ''}`}>
                             <input type="checkbox" name="ipos" checked={mapFilters.ipos} onChange={handleMapFilterChange} />
                             <span>IPOs</span>
                         </label>
-                         <label className="dashboard-check dashboard-check--blue">
+                         <label className={`dashboard-check dashboard-check--blue ${mapFilters.subprojects ? 'is-active' : ''}`}>
                             <input type="checkbox" name="subprojects" checked={mapFilters.subprojects} onChange={handleMapFilterChange} />
                             <span>Subprojects</span>
                         </label>
-                         <label className="dashboard-check dashboard-check--green">
+                         <label className={`dashboard-check dashboard-check--green ${mapFilters.trainings ? 'is-active' : ''}`}>
                             <input type="checkbox" name="trainings" checked={mapFilters.trainings} onChange={handleMapFilterChange} />
                             <span>Trainings</span>
                         </label>
-                    </div>
-                </div>
+                    </div>}
+                />
                 <MapDisplay ipos={filteredIposForMap} subprojects={filteredSubprojectsForMap} trainings={filteredTrainingsForMap} />
+            </MapCard>
             </div>
 
-            <div className="dashboard-panel">
-                <div className="dashboard-panel__header">
-                    <div>
-                        <h3 className="dashboard-panel__title">4K Calendar</h3>
-                    </div>
-                </div>
+            <div className="dashboard-home-grid">
+            <ContentCard className="dashboard-panel dashboard-panel--calendar">
+                <SectionHeading
+                    title="4K Calendar"
+                    helper="Activities and deadlines"
+                    actions={(
+                        <PanelActionMenu
+                            label="4K Calendar menu"
+                            items={[
+                                { label: 'Go to today', onSelect: handleCalendarToday },
+                                { label: 'View all activities', onSelect: () => navigateTo('/activities') },
+                            ]}
+                        />
+                    )}
+                />
                 <Calendar 
                     activities={filteredData.activities}
                     systemSettings={systemSettings}
                     onDateClick={handleDateClick}
                     onEventClick={handleCalendarEventClick}
+                    selectedDate={selectedActivityDate}
+                    visibleMonth={calendarMonth}
+                    onVisibleMonthChange={setCalendarMonth}
+                    onToday={handleCalendarToday}
+                    compact
                 />
-            </div>
+            </ContentCard>
 
-            {/* Activities List Section (with Cards) */}
-            <div className="dashboard-panel">
-                <div className="dashboard-panel__header">
-                    <div>
-                        <h3 className="dashboard-panel__title">4K Activities</h3>
-                    </div>
-                    <div className="dashboard-activity-controls">
-                        <div className="dashboard-filter dashboard-filter--compact">
-                            <label htmlFor="activity-date-view">Date View</label>
+            <ContentCard className="dashboard-panel dashboard-panel--activities">
+                <div ref={activitiesPanelRef} className="dashboard-activities-scroll-anchor" />
+                <SectionHeading
+                    title="4K Activities"
+                    helper="Field & operational activity feed"
+                    actions={<div className="dashboard-activity-header-actions">
+                        <div className="dashboard-activity-controls">
                             <select
                                 id="activity-date-view"
+                                className="dashboard-activity-period"
+                                aria-label="Activity period"
                                 value={activitiesDateView}
-                                onChange={(event) => setActivitiesDateView(event.target.value as ActivityDateView)}
+                                onChange={(event) => handleActivityDateViewChange(event.target.value as ActivityDateView)}
                             >
-                                <option value="Current Date">Current Date</option>
+                                <option value="Today">Today</option>
+                                <option value="This Week">This week</option>
+                                <option value="This Month">This month</option>
+                                <option value="This Quarter">This quarter</option>
                                 <option value="All">All</option>
                             </select>
-                        </div>
-                        <div className="dashboard-segmented">
+                        <div className="dashboard-segmented" role="group" aria-label="Activity type">
                             <button 
+                                type="button"
                                 onClick={() => setActivitiesFilter('All')} 
                                 className={activitiesFilter === 'All' ? 'is-active' : ''}
+                                aria-pressed={activitiesFilter === 'All'}
                             >
                                 All
                             </button>
                             <button 
+                                type="button"
                                 onClick={() => setActivitiesFilter('Subprojects')} 
                                 className={activitiesFilter === 'Subprojects' ? 'is-active' : ''}
+                                aria-pressed={activitiesFilter === 'Subprojects'}
                             >
                                 Subprojects
                             </button>
                             <button 
+                                type="button"
                                 onClick={() => setActivitiesFilter('Trainings')} 
                                 className={activitiesFilter === 'Trainings' ? 'is-active' : ''}
+                                aria-pressed={activitiesFilter === 'Trainings'}
                             >
                                 Trainings
                             </button>
                         </div>
-                    </div>
-                </div>
-                 <div className="dashboard-activity-grid">
-                    {paginatedActivitiesList.map(activity => (
-                        <div 
-                            key={`${activity.activityType}-${activity.id}`} 
-                            className="dashboard-activity-card"
-                            onClick={() => activity.activityType === 'Subproject' ? onSelectSubproject(activity as Subproject) : onSelectActivity(activity as Activity)}
-                        >
-                            <div className="dashboard-activity-card__meta">
-                                <span className="dashboard-activity-card__type">{activity.activityType}</span>
-                                <span className="dashboard-activity-card__date">{formatDate(activity.activityDate)}</span>
-                            </div>
-                            <h4>{activity.name}</h4>
-                            <div className="dashboard-activity-card__context">
-                                <span className="dashboard-activity-card__ou">{activity.activityOu || 'No OU'}</span>
-                                <span className={getStatusBadge(activity.activityStatus)}>{activity.activityStatus}</span>
-                            </div>
-                            <p className="line-clamp-2">
-                                {activity.activityType === 'Subproject' ? activity.location : activity.description}
-                            </p>
                         </div>
-                    ))}
+                        <PanelActionMenu
+                            label="4K Activities menu"
+                            items={[
+                                { label: 'View all activities', onSelect: () => navigateTo('/activities') },
+                                { label: 'View subprojects', onSelect: () => navigateTo('/subprojects') },
+                            ]}
+                        />
+                    </div>}
+                />
+                {selectedActivityDate && (
+                    <div className="dashboard-selected-date" role="status">
+                        <CalendarDays aria-hidden="true" />
+                        <span>Selected: {selectedActivityDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                        <button type="button" onClick={() => setSelectedActivityDate(null)} aria-label="Clear selected calendar date">
+                            <X aria-hidden="true" />
+                        </button>
+                    </div>
+                )}
+                 {paginatedActivitiesList.length > 0 ? (
+                 <div className="dashboard-activity-feed">
+                    {paginatedActivitiesList.map(activity => {
+                        const typeCode = activity.activityType === 'Subproject' ? 'SP' : activity.activityType === 'Training' ? 'TR' : 'AC';
+                        const activityCode = activity.uid || `${typeCode}-${activity.id}`;
+                        return (
+                            <button
+                                type="button"
+                                key={`${activity.activityType}-${activity.id}`}
+                                className="dashboard-activity-card"
+                                onClick={() => activity.activityType === 'Subproject' ? onSelectSubproject(activity as Subproject) : onSelectActivity(activity as Activity)}
+                            >
+                                <span className={`dashboard-activity-card__type-tile dashboard-activity-card__type-tile--${typeCode.toLowerCase()}`} aria-hidden="true">
+                                    {typeCode}
+                                </span>
+                                <span className="dashboard-activity-card__content">
+                                    <span className="dashboard-activity-card__meta">
+                                        <span className="dashboard-activity-card__code">{activityCode}</span>
+                                        <StatusIndicator status={activity.activityStatus} compact />
+                                    </span>
+                                    <span className="dashboard-activity-card__title">{activity.name}</span>
+                                    <span className="dashboard-activity-card__details">
+                                        {activity.activityOu || 'No OU'} · {formatFeedDate(activity.activityDate, activity.activityEndDate)}
+                                    </span>
+                                </span>
+                            </button>
+                        );
+                    })}
                  </div>
+                 ) : (
+                    <EmptyState
+                        title="No activities found"
+                        message="Try another date view or activity type."
+                    />
+                 )}
                  
                  {/* Pagination Controls */}
-                 {totalActivityPages > 1 && (
+                 {displayedActivities.length > 0 && (
                      <div className="dashboard-pagination">
-                         <button 
+                         <span className="dashboard-pagination__summary">
+                             {activityRangeStart}–{activityRangeEnd} of {displayedActivities.length} activities
+                         </span>
+                         <div className="dashboard-pagination__controls">
+                         <button
+                            type="button"
                             onClick={() => setActivitiesPage(p => Math.max(1, p - 1))}
                             disabled={activitiesPage === 1}
+                            aria-label="Previous activities page"
                          >
-                             Previous
+                             <ChevronLeft aria-hidden="true" />
                          </button>
                          <span>
-                             Page {activitiesPage} of {totalActivityPages}
+                             {activitiesPage} / {totalActivityPages}
                          </span>
-                         <button 
+                         <button
+                            type="button"
                             onClick={() => setActivitiesPage(p => Math.min(totalActivityPages, p + 1))}
                             disabled={activitiesPage === totalActivityPages}
+                            aria-label="Next activities page"
                          >
-                             Next
+                             <ChevronRight aria-hidden="true" />
                          </button>
+                         </div>
                      </div>
                  )}
+            </ContentCard>
             </div>
         </div>
     );
