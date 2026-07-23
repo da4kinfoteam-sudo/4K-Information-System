@@ -20,6 +20,10 @@ const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   "image/webp"
 ]);
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".pdf", ".png", ".webp"]);
+const ALLOWED_IMAGE_UPLOAD_MIME_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
+const ALLOWED_IMAGE_UPLOAD_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".webp"]);
+
+export type DriveUploadSection = "gallery" | "files";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -566,7 +570,23 @@ function getPreviewUrl(fileId: string) {
   return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview`;
 }
 
-function assertAllowedUploadFile(file: File) {
+export function parseDriveUploadSection(value: unknown): DriveUploadSection {
+  if (value === "gallery" || value === "files") return value;
+  if (value === null || value === undefined || value === "") return "files";
+  throw new Error("Upload destination must be Gallery or Files.");
+}
+
+function isAllowedGalleryFile(file: File) {
+  const mimeType = (file.type || "").toLowerCase();
+  if (mimeType && ALLOWED_IMAGE_UPLOAD_MIME_TYPES.has(mimeType)) return true;
+  return ALLOWED_IMAGE_UPLOAD_EXTENSIONS.has(getFileExtension(file.name));
+}
+
+function assertAllowedUploadFile(file: File, uploadSection: DriveUploadSection) {
+  if (uploadSection === "gallery") {
+    if (isAllowedGalleryFile(file)) return;
+    throw new Error("Gallery accepts PNG, JPG, JPEG, WEBP, and GIF images only.");
+  }
   if (isAllowedUploadFile(file)) return;
   throw new Error("Only PDF and image files are allowed. Please upload a PDF, PNG, JPG, WEBP, or GIF file.");
 }
@@ -611,6 +631,14 @@ async function createFolder(accessToken: string, name: string, parentFolderId?: 
 
 async function ensureFolder(accessToken: string, name: string, parentFolderId?: string | null) {
   return await findFolder(accessToken, name, parentFolderId) || await createFolder(accessToken, name, parentFolderId);
+}
+
+async function ensureUploadSectionFolder(
+  accessToken: string,
+  parentFolderId: string,
+  uploadSection: DriveUploadSection
+) {
+  return ensureFolder(accessToken, uploadSection === "gallery" ? "Gallery" : "Files", parentFolderId);
 }
 
 async function getActiveConnection(): Promise<ConnectionRow | null> {
@@ -1151,9 +1179,73 @@ export async function listIpoFiles(ipoId: number) {
   return data || [];
 }
 
-export async function uploadIpoFile(ipoId: number, file: File, user: UserRow) {
+function normalizeDriveFileMetadata(displayName: unknown, caption: unknown) {
+  const normalizedName = typeof displayName === "string" ? displayName.trim() : "";
+  const normalizedCaption = typeof caption === "string" ? caption.trim() : "";
+  if (normalizedName.length > 255) throw new Error("Image name must be 255 characters or fewer.");
+  if (normalizedCaption.length > 4000) throw new Error("Caption must be 4,000 characters or fewer.");
+  return {
+    display_name: normalizedName || null,
+    caption: normalizedCaption || null
+  };
+}
+
+async function updateDriveFileMetadata(
+  table: "ipo_drive_files" | "subproject_drive_files" | "activity_drive_files",
+  fileRowId: number,
+  displayName: unknown,
+  caption: unknown
+) {
   const supabase = adminClient();
-  assertAllowedUploadFile(file);
+  const { data: existing, error: existingError } = await supabase
+    .from(table)
+    .select("*")
+    .eq("id", fileRowId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+  if (!existing) throw new Error("Drive file was not found.");
+  if (existing.upload_section !== "gallery") {
+    throw new Error("Only Gallery image metadata can be edited.");
+  }
+
+  const { data, error } = await supabase
+    .from(table)
+    .update(normalizeDriveFileMetadata(displayName, caption))
+    .eq("id", fileRowId)
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return { data, existing };
+}
+
+export async function updateIpoFileMetadata(
+  fileRowId: number,
+  displayName: unknown,
+  caption: unknown,
+  user: UserRow
+) {
+  const { data, existing } = await updateDriveFileMetadata("ipo_drive_files", fileRowId, displayName, caption);
+  await adminClient().from("ipo_history").insert({
+    ipo_id: existing.ipo_id,
+    event: `Updated gallery image details: ${data.display_name || data.file_name}`,
+    user: displayUserName(user),
+    date: new Date().toISOString()
+  });
+  return data;
+}
+
+export async function updateSubprojectFileMetadata(fileRowId: number, displayName: unknown, caption: unknown) {
+  return (await updateDriveFileMetadata("subproject_drive_files", fileRowId, displayName, caption)).data;
+}
+
+export async function updateActivityFileMetadata(fileRowId: number, displayName: unknown, caption: unknown) {
+  return (await updateDriveFileMetadata("activity_drive_files", fileRowId, displayName, caption)).data;
+}
+
+export async function uploadIpoFile(ipoId: number, file: File, user: UserRow, uploadSection: DriveUploadSection = "files") {
+  const supabase = adminClient();
+  assertAllowedUploadFile(file, uploadSection);
   const ipo = await fetchIpo(ipoId);
   const operatingUnit = operatingUnitFromRegion(ipo.region);
   const {
@@ -1165,7 +1257,8 @@ export async function uploadIpoFile(ipoId: number, file: File, user: UserRow) {
     yearFolderId,
     operatingUnitFolderId
   } = await ensureIpoFolder(ipoId, ipo.name, operatingUnit, user);
-  const uploadedFile = await uploadMultipartFile(accessToken, file, folderId);
+  const uploadFolder = await ensureUploadSectionFolder(accessToken, folderId, uploadSection);
+  const uploadedFile = await uploadMultipartFile(accessToken, file, uploadFolder.id);
   let previewPermission: DrivePermissionResponse | null = null;
   try {
     previewPermission = await grantPreviewPermission(accessToken, uploadedFile.id);
@@ -1177,13 +1270,14 @@ export async function uploadIpoFile(ipoId: number, file: File, user: UserRow) {
   const row = {
     ipo_id: ipoId,
     connection_id: connection.id,
-    folder_id: folderId,
+    folder_id: uploadFolder.id,
     module: IPO_DRIVE_MODULE,
     folder_year: folderYear,
     operating_unit: operatingUnit,
     module_folder_id: moduleFolderId,
     year_folder_id: yearFolderId,
     operating_unit_folder_id: operatingUnitFolderId,
+    upload_section: uploadSection,
     file_id: uploadedFile.id,
     file_name: uploadedFile.name || file.name,
     mime_type: uploadedFile.mimeType || file.type || "application/octet-stream",
@@ -1206,7 +1300,7 @@ export async function uploadIpoFile(ipoId: number, file: File, user: UserRow) {
 
   await supabase.from("ipo_history").insert({
     ipo_id: ipoId,
-    event: `Uploaded file: ${row.file_name}`,
+    event: `Uploaded ${uploadSection === "gallery" ? "gallery image" : "file"}: ${row.file_name}`,
     user: displayUserName(user),
     date: new Date().toISOString()
   });
@@ -1262,9 +1356,9 @@ export async function listSubprojectFiles(subprojectId: number) {
   return data || [];
 }
 
-export async function uploadSubprojectFile(subprojectId: number, file: File, user: UserRow) {
+export async function uploadSubprojectFile(subprojectId: number, file: File, user: UserRow, uploadSection: DriveUploadSection = "files") {
   const supabase = adminClient();
-  assertAllowedUploadFile(file);
+  assertAllowedUploadFile(file, uploadSection);
 
   const {
     connection,
@@ -1281,7 +1375,8 @@ export async function uploadSubprojectFile(subprojectId: number, file: File, use
     ipoFolderId
   } = await ensureSubprojectFolder(subprojectId, user);
 
-  const uploadedFile = await uploadMultipartFile(accessToken, file, folderId);
+  const uploadFolder = await ensureUploadSectionFolder(accessToken, folderId, uploadSection);
+  const uploadedFile = await uploadMultipartFile(accessToken, file, uploadFolder.id);
   let previewPermission: DrivePermissionResponse | null = null;
   try {
     previewPermission = await grantPreviewPermission(accessToken, uploadedFile.id);
@@ -1293,7 +1388,7 @@ export async function uploadSubprojectFile(subprojectId: number, file: File, use
   const row = {
     subproject_id: subprojectId,
     connection_id: connection.id,
-    folder_id: folderId,
+    folder_id: uploadFolder.id,
     folder_name: folderName,
     module: SUBPROJECT_DRIVE_MODULE,
     folder_year: folderYear,
@@ -1304,6 +1399,7 @@ export async function uploadSubprojectFile(subprojectId: number, file: File, use
     year_folder_id: yearFolderId,
     operating_unit_folder_id: operatingUnitFolderId,
     ipo_folder_id: ipoFolderId,
+    upload_section: uploadSection,
     file_id: uploadedFile.id,
     file_name: uploadedFile.name || file.name,
     mime_type: uploadedFile.mimeType || file.type || "application/octet-stream",
@@ -1368,9 +1464,9 @@ export async function listActivityFiles(activityId: number) {
   return data || [];
 }
 
-export async function uploadActivityFile(activityId: number, file: File, user: UserRow) {
+export async function uploadActivityFile(activityId: number, file: File, user: UserRow, uploadSection: DriveUploadSection = "files") {
   const supabase = adminClient();
-  assertAllowedUploadFile(file);
+  assertAllowedUploadFile(file, uploadSection);
 
   const {
     connection,
@@ -1388,7 +1484,8 @@ export async function uploadActivityFile(activityId: number, file: File, user: U
     componentFolderId
   } = await ensureActivityFolder(activityId, user);
 
-  const uploadedFile = await uploadMultipartFile(accessToken, file, folderId);
+  const uploadFolder = await ensureUploadSectionFolder(accessToken, folderId, uploadSection);
+  const uploadedFile = await uploadMultipartFile(accessToken, file, uploadFolder.id);
   let previewPermission: DrivePermissionResponse | null = null;
   try {
     previewPermission = await grantPreviewPermission(accessToken, uploadedFile.id);
@@ -1400,7 +1497,7 @@ export async function uploadActivityFile(activityId: number, file: File, user: U
   const row = {
     activity_id: activityId,
     connection_id: connection.id,
-    folder_id: folderId,
+    folder_id: uploadFolder.id,
     folder_name: folderName,
     module: ACTIVITY_DRIVE_MODULE,
     folder_year: folderYear,
@@ -1412,6 +1509,7 @@ export async function uploadActivityFile(activityId: number, file: File, user: U
     year_folder_id: yearFolderId,
     operating_unit_folder_id: operatingUnitFolderId,
     component_folder_id: componentFolderId,
+    upload_section: uploadSection,
     file_id: uploadedFile.id,
     file_name: uploadedFile.name || file.name,
     mime_type: uploadedFile.mimeType || file.type || "application/octet-stream",
