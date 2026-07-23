@@ -25,6 +25,36 @@ const ALLOWED_IMAGE_UPLOAD_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png"
 
 export type DriveUploadSection = "gallery" | "files";
 
+type DriveFolderTable = "ipo_drive_folders" | "subproject_drive_folders" | "activity_drive_folders";
+
+type DriveFolderRow = {
+  id: number;
+  connection_id: string | null;
+  folder_id: string;
+  folder_name?: string | null;
+  folder_year?: number | null;
+  operating_unit?: string | null;
+  component?: string | null;
+  ipo_name?: string | null;
+  subproject_name?: string | null;
+  activity_name?: string | null;
+  activity_type?: string | null;
+  module_folder_id?: string | null;
+  year_folder_id?: string | null;
+  operating_unit_folder_id?: string | null;
+  ipo_folder_id?: string | null;
+  component_folder_id?: string | null;
+  gallery_folder_id?: string | null;
+  files_folder_id?: string | null;
+};
+
+const FOLDER_PREPARATION_ERROR = "The upload folder could not be prepared. Refresh the section and try again.";
+const UPLOAD_RECORD_ERROR = "The uploaded file could not be registered. The Drive copy was removed; please try again.";
+const FOLDER_LOCK_TTL_MS = 120_000;
+const FOLDER_LOCK_WAIT_MS = 250;
+const FOLDER_LOCK_ATTEMPTS = 48;
+const FOLDER_ROW_RETRY_ATTEMPTS = 8;
+
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -633,12 +663,127 @@ async function ensureFolder(accessToken: string, name: string, parentFolderId?: 
   return await findFolder(accessToken, name, parentFolderId) || await createFolder(accessToken, name, parentFolderId);
 }
 
+function wait(milliseconds: number) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+function isUniqueViolation(error: any) {
+  return error?.code === "23505" || /duplicate key|unique constraint/i.test(String(error?.message || ""));
+}
+
+async function tryAcquireFolderLock(lockKey: string, ownerToken: string) {
+  const supabase = adminClient();
+  const now = new Date();
+  await supabase
+    .from("drive_folder_initialization_locks")
+    .delete()
+    .eq("lock_key", lockKey)
+    .lt("expires_at", now.toISOString());
+
+  const { error } = await supabase.from("drive_folder_initialization_locks").insert({
+    lock_key: lockKey,
+    owner_token: ownerToken,
+    expires_at: new Date(now.getTime() + FOLDER_LOCK_TTL_MS).toISOString()
+  });
+  if (!error) return true;
+  if (isUniqueViolation(error)) return false;
+  throw new Error(FOLDER_PREPARATION_ERROR);
+}
+
+async function releaseFolderLock(lockKey: string, ownerToken: string) {
+  await adminClient()
+    .from("drive_folder_initialization_locks")
+    .delete()
+    .eq("lock_key", lockKey)
+    .eq("owner_token", ownerToken);
+}
+
+async function withDriveFolderInitializationLock<T>(
+  lockKey: string,
+  findExisting: () => Promise<T | null>,
+  initialize: () => Promise<T>
+) {
+  const existing = await findExisting();
+  if (existing) return existing;
+
+  const ownerToken = crypto.randomUUID();
+  for (let attempt = 0; attempt < FOLDER_LOCK_ATTEMPTS; attempt += 1) {
+    const acquired = await tryAcquireFolderLock(lockKey, ownerToken);
+    if (acquired) {
+      try {
+        const current = await findExisting();
+        return current || await initialize();
+      } finally {
+        await releaseFolderLock(lockKey, ownerToken);
+      }
+    }
+
+    await wait(FOLDER_LOCK_WAIT_MS);
+    const current = await findExisting();
+    if (current) return current;
+  }
+
+  throw new Error(FOLDER_PREPARATION_ERROR);
+}
+
+async function findCanonicalFolderWithRetry(findFolderRow: () => Promise<DriveFolderRow | null>) {
+  for (let attempt = 0; attempt < FOLDER_ROW_RETRY_ATTEMPTS; attempt += 1) {
+    const row = await findFolderRow();
+    if (row?.folder_id) return row;
+    await wait(FOLDER_LOCK_WAIT_MS * (attempt + 1));
+  }
+  throw new Error(FOLDER_PREPARATION_ERROR);
+}
+
+async function registerCanonicalFolder(
+  table: DriveFolderTable,
+  folderRow: Record<string, unknown>,
+  findFolderRow: () => Promise<DriveFolderRow | null>
+) {
+  const { error } = await adminClient().from(table).insert(folderRow);
+  if (error && !isUniqueViolation(error)) {
+    throw new Error(FOLDER_PREPARATION_ERROR);
+  }
+  return findCanonicalFolderWithRetry(findFolderRow);
+}
+
 async function ensureUploadSectionFolder(
   accessToken: string,
+  table: DriveFolderTable,
+  folderRowId: number,
   parentFolderId: string,
   uploadSection: DriveUploadSection
 ) {
-  return ensureFolder(accessToken, uploadSection === "gallery" ? "Gallery" : "Files", parentFolderId);
+  const column = uploadSection === "gallery" ? "gallery_folder_id" : "files_folder_id";
+  const folderName = uploadSection === "gallery" ? "Gallery" : "Files";
+
+  const findPersistedFolder = async (): Promise<DriveFileResponse | null> => {
+    const { data, error } = await adminClient()
+      .from(table)
+      .select(`id,${column}`)
+      .eq("id", folderRowId)
+      .maybeSingle();
+    if (error) throw new Error(FOLDER_PREPARATION_ERROR);
+    const folderId = data?.[column];
+    return typeof folderId === "string" && folderId
+      ? { id: folderId, name: folderName }
+      : null;
+  };
+
+  return withDriveFolderInitializationLock(
+    `section:${table}:${folderRowId}:${uploadSection}`,
+    findPersistedFolder,
+    async () => {
+      const folder = await ensureFolder(accessToken, folderName, parentFolderId);
+      const { error } = await adminClient()
+        .from(table)
+        .update({ [column]: folder.id })
+        .eq("id", folderRowId)
+        .is(column, null);
+      if (error) throw new Error(FOLDER_PREPARATION_ERROR);
+      return await findPersistedFolder() || folder;
+    }
+  );
 }
 
 async function getActiveConnection(): Promise<ConnectionRow | null> {
@@ -787,61 +932,12 @@ async function grantPreviewPermission(accessToken: string, fileId: string) {
 }
 
 async function ensureIpoFolder(ipoId: number, ipoName: string, operatingUnit: string, user: UserRow) {
-  const supabase = adminClient();
   const { connection, accessToken } = await connectedDrive();
   const folderYear = getUploadYear();
   const folderOperatingUnit = operatingUnit.trim() || "Unassigned Operating Unit";
 
-  const { data: savedFolder, error: savedError } = await supabase
-    .from("ipo_drive_folders")
-    .select("*")
-    .eq("ipo_id", ipoId)
-    .eq("connection_id", connection.id)
-    .eq("module", IPO_DRIVE_MODULE)
-    .eq("folder_year", folderYear)
-    .eq("operating_unit", folderOperatingUnit)
-    .maybeSingle();
-  if (savedError) throw new Error(savedError.message);
-  if (savedFolder?.folder_id) {
-    return {
-      connection,
-      accessToken,
-      folderId: savedFolder.folder_id as string,
-      folderYear,
-      moduleFolderId: savedFolder.module_folder_id as string | null,
-      yearFolderId: savedFolder.year_folder_id as string | null,
-      operatingUnit: folderOperatingUnit,
-      operatingUnitFolderId: savedFolder.operating_unit_folder_id as string | null
-    };
-  }
-
-  if (!connection.root_folder_id) {
-    throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
-  }
-
-  const moduleFolder = await ensureFolder(accessToken, IPO_DRIVE_MODULE, connection.root_folder_id);
-  const yearFolder = await ensureFolder(accessToken, String(folderYear), moduleFolder.id);
-  const operatingUnitFolder = await ensureFolder(accessToken, cleanDriveName(folderOperatingUnit, "Operating Unit"), yearFolder.id);
-  const folderName = cleanDriveName(ipoName, `IPO ${ipoId}`);
-  const folder = await ensureFolder(accessToken, folderName, operatingUnitFolder.id);
-
-  const folderRow = {
-    ipo_id: ipoId,
-    connection_id: connection.id,
-    folder_id: folder.id,
-    folder_name: folderName,
-    module: IPO_DRIVE_MODULE,
-    folder_year: folderYear,
-    operating_unit: folderOperatingUnit,
-    module_folder_id: moduleFolder.id,
-    year_folder_id: yearFolder.id,
-    operating_unit_folder_id: operatingUnitFolder.id,
-    created_by: user.id
-  };
-
-  const { error: insertError } = await supabase.from("ipo_drive_folders").insert(folderRow);
-  if (insertError) {
-    const { data: existingRow, error: existingError } = await supabase
+  const findFolderRow = async (): Promise<DriveFolderRow | null> => {
+    const { data, error } = await adminClient()
       .from("ipo_drive_folders")
       .select("*")
       .eq("ipo_id", ipoId)
@@ -850,31 +946,60 @@ async function ensureIpoFolder(ipoId: number, ipoName: string, operatingUnit: st
       .eq("folder_year", folderYear)
       .eq("operating_unit", folderOperatingUnit)
       .maybeSingle();
-    if (existingError || !existingRow?.folder_id) {
-      throw new Error(insertError.message);
-    }
+    if (error) throw new Error(FOLDER_PREPARATION_ERROR);
+    return data as DriveFolderRow | null;
+  };
+
+  const resultFromRow = (row: DriveFolderRow) => {
     return {
       connection,
       accessToken,
-      folderId: existingRow.folder_id as string,
+      folderRowId: Number(row.id),
+      folderId: row.folder_id,
       folderYear,
-      moduleFolderId: existingRow.module_folder_id as string | null,
-      yearFolderId: existingRow.year_folder_id as string | null,
+      moduleFolderId: row.module_folder_id ?? null,
+      yearFolderId: row.year_folder_id ?? null,
       operatingUnit: folderOperatingUnit,
-      operatingUnitFolderId: existingRow.operating_unit_folder_id as string | null
+      operatingUnitFolderId: row.operating_unit_folder_id ?? null
     };
-  }
-
-  return {
-    connection,
-    accessToken,
-    folderId: folder.id,
-    folderYear,
-    operatingUnit: folderOperatingUnit,
-    moduleFolderId: moduleFolder.id,
-    yearFolderId: yearFolder.id,
-    operatingUnitFolderId: operatingUnitFolder.id
   };
+
+  return withDriveFolderInitializationLock(
+    `entity:ipo:${connection.id}:${ipoId}:${IPO_DRIVE_MODULE}:${folderYear}:${folderOperatingUnit}`,
+    async () => {
+      const row = await findFolderRow();
+      return row?.folder_id ? resultFromRow(row) : null;
+    },
+    async () => {
+      if (!connection.root_folder_id) {
+        throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
+      }
+
+      const moduleFolder = await ensureFolder(accessToken, IPO_DRIVE_MODULE, connection.root_folder_id);
+      const yearFolder = await ensureFolder(accessToken, String(folderYear), moduleFolder.id);
+      const operatingUnitFolder = await ensureFolder(accessToken, cleanDriveName(folderOperatingUnit, "Operating Unit"), yearFolder.id);
+      const folderName = cleanDriveName(ipoName, `IPO ${ipoId}`);
+      const folder = await ensureFolder(accessToken, folderName, operatingUnitFolder.id);
+      const canonical = await registerCanonicalFolder(
+        "ipo_drive_folders",
+        {
+          ipo_id: ipoId,
+          connection_id: connection.id,
+          folder_id: folder.id,
+          folder_name: folderName,
+          module: IPO_DRIVE_MODULE,
+          folder_year: folderYear,
+          operating_unit: folderOperatingUnit,
+          module_folder_id: moduleFolder.id,
+          year_folder_id: yearFolder.id,
+          operating_unit_folder_id: operatingUnitFolder.id,
+          created_by: user.id
+        },
+        findFolderRow
+      );
+      return resultFromRow(canonical);
+    }
+  );
 }
 
 async function ensureSubprojectFolder(subprojectIdValue: number, user: UserRow) {
@@ -890,67 +1015,11 @@ async function ensureSubprojectFolder(subprojectIdValue: number, user: UserRow) 
   if (!operatingUnit) throw new Error("This subproject needs an operating unit before files can be uploaded.");
   if (!ipoName) throw new Error("This subproject needs a linked IPO before files can be uploaded.");
 
-  const supabase = adminClient();
   const { connection, accessToken } = await connectedDrive();
   const folderYear = getUploadYear();
 
-  const { data: savedFolder, error: savedError } = await supabase
-    .from("subproject_drive_folders")
-    .select("*")
-    .eq("subproject_id", subprojectId)
-    .eq("connection_id", connection.id)
-    .eq("module", SUBPROJECT_DRIVE_MODULE)
-    .eq("folder_year", folderYear)
-    .maybeSingle();
-  if (savedError) throw new Error(savedError.message);
-  if (savedFolder?.folder_id) {
-    return {
-      connection,
-      accessToken,
-      folderId: savedFolder.folder_id as string,
-      folderName: savedFolder.folder_name as string,
-      folderYear,
-      operatingUnit: (savedFolder.operating_unit as string | null) || operatingUnit,
-      ipoName: (savedFolder.ipo_name as string | null) || ipoName,
-      subprojectName: (savedFolder.subproject_name as string | null) || subprojectName,
-      moduleFolderId: savedFolder.module_folder_id as string | null,
-      yearFolderId: savedFolder.year_folder_id as string | null,
-      operatingUnitFolderId: savedFolder.operating_unit_folder_id as string | null,
-      ipoFolderId: savedFolder.ipo_folder_id as string | null
-    };
-  }
-
-  if (!connection.root_folder_id) {
-    throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
-  }
-
-  const moduleFolder = await ensureFolder(accessToken, SUBPROJECT_DRIVE_MODULE, connection.root_folder_id);
-  const yearFolder = await ensureFolder(accessToken, String(folderYear), moduleFolder.id);
-  const operatingUnitFolder = await ensureFolder(accessToken, cleanDriveName(operatingUnit, "Operating Unit"), yearFolder.id);
-  const ipoFolder = await ensureFolder(accessToken, cleanDriveName(ipoName, `IPO ${subprojectId}`), operatingUnitFolder.id);
-  const folderName = cleanDriveName(subprojectName, `Subproject ${subprojectId}`);
-  const folder = await ensureFolder(accessToken, folderName, ipoFolder.id);
-
-  const folderRow = {
-    subproject_id: subprojectId,
-    connection_id: connection.id,
-    folder_id: folder.id,
-    folder_name: folderName,
-    module: SUBPROJECT_DRIVE_MODULE,
-    folder_year: folderYear,
-    operating_unit: operatingUnit,
-    ipo_name: ipoName,
-    subproject_name: subprojectName,
-    module_folder_id: moduleFolder.id,
-    year_folder_id: yearFolder.id,
-    operating_unit_folder_id: operatingUnitFolder.id,
-    ipo_folder_id: ipoFolder.id,
-    created_by: user.id
-  };
-
-  const { error: insertError } = await supabase.from("subproject_drive_folders").insert(folderRow);
-  if (insertError) {
-    const { data: existingRow, error: existingError } = await supabase
+  const findFolderRow = async (): Promise<DriveFolderRow | null> => {
+    const { data, error } = await adminClient()
       .from("subproject_drive_folders")
       .select("*")
       .eq("subproject_id", subprojectId)
@@ -958,39 +1027,68 @@ async function ensureSubprojectFolder(subprojectIdValue: number, user: UserRow) 
       .eq("module", SUBPROJECT_DRIVE_MODULE)
       .eq("folder_year", folderYear)
       .maybeSingle();
-    if (existingError || !existingRow?.folder_id) {
-      throw new Error(insertError.message);
-    }
+    if (error) throw new Error(FOLDER_PREPARATION_ERROR);
+    return data as DriveFolderRow | null;
+  };
+
+  const resultFromRow = (row: DriveFolderRow) => {
     return {
       connection,
       accessToken,
-      folderId: existingRow.folder_id as string,
-      folderName: existingRow.folder_name as string,
+      folderRowId: Number(row.id),
+      folderId: row.folder_id,
+      folderName: row.folder_name || cleanDriveName(subprojectName, `Subproject ${subprojectId}`),
       folderYear,
-      operatingUnit: (existingRow.operating_unit as string | null) || operatingUnit,
-      ipoName: (existingRow.ipo_name as string | null) || ipoName,
-      subprojectName: (existingRow.subproject_name as string | null) || subprojectName,
-      moduleFolderId: existingRow.module_folder_id as string | null,
-      yearFolderId: existingRow.year_folder_id as string | null,
-      operatingUnitFolderId: existingRow.operating_unit_folder_id as string | null,
-      ipoFolderId: existingRow.ipo_folder_id as string | null
+      operatingUnit: row.operating_unit || operatingUnit,
+      ipoName: row.ipo_name || ipoName,
+      subprojectName: row.subproject_name || subprojectName,
+      moduleFolderId: row.module_folder_id ?? null,
+      yearFolderId: row.year_folder_id ?? null,
+      operatingUnitFolderId: row.operating_unit_folder_id ?? null,
+      ipoFolderId: row.ipo_folder_id ?? null
     };
-  }
-
-  return {
-    connection,
-    accessToken,
-    folderId: folder.id,
-    folderName,
-    folderYear,
-    operatingUnit,
-    ipoName,
-    subprojectName,
-    moduleFolderId: moduleFolder.id,
-    yearFolderId: yearFolder.id,
-    operatingUnitFolderId: operatingUnitFolder.id,
-    ipoFolderId: ipoFolder.id
   };
+
+  return withDriveFolderInitializationLock(
+    `entity:subproject:${connection.id}:${subprojectId}:${SUBPROJECT_DRIVE_MODULE}:${folderYear}`,
+    async () => {
+      const row = await findFolderRow();
+      return row?.folder_id ? resultFromRow(row) : null;
+    },
+    async () => {
+      if (!connection.root_folder_id) {
+        throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
+      }
+
+      const moduleFolder = await ensureFolder(accessToken, SUBPROJECT_DRIVE_MODULE, connection.root_folder_id);
+      const yearFolder = await ensureFolder(accessToken, String(folderYear), moduleFolder.id);
+      const operatingUnitFolder = await ensureFolder(accessToken, cleanDriveName(operatingUnit, "Operating Unit"), yearFolder.id);
+      const ipoFolder = await ensureFolder(accessToken, cleanDriveName(ipoName, `IPO ${subprojectId}`), operatingUnitFolder.id);
+      const folderName = cleanDriveName(subprojectName, `Subproject ${subprojectId}`);
+      const folder = await ensureFolder(accessToken, folderName, ipoFolder.id);
+      const canonical = await registerCanonicalFolder(
+        "subproject_drive_folders",
+        {
+          subproject_id: subprojectId,
+          connection_id: connection.id,
+          folder_id: folder.id,
+          folder_name: folderName,
+          module: SUBPROJECT_DRIVE_MODULE,
+          folder_year: folderYear,
+          operating_unit: operatingUnit,
+          ipo_name: ipoName,
+          subproject_name: subprojectName,
+          module_folder_id: moduleFolder.id,
+          year_folder_id: yearFolder.id,
+          operating_unit_folder_id: operatingUnitFolder.id,
+          ipo_folder_id: ipoFolder.id,
+          created_by: user.id
+        },
+        findFolderRow
+      );
+      return resultFromRow(canonical);
+    }
+  );
 }
 
 async function ensureActivityFolder(activityIdValue: number, user: UserRow) {
@@ -1007,69 +1105,11 @@ async function ensureActivityFolder(activityIdValue: number, user: UserRow) {
   if (!operatingUnit) throw new Error("This activity needs an operating unit before files can be uploaded.");
   if (!component) throw new Error("This activity needs a component before files can be uploaded.");
 
-  const supabase = adminClient();
   const { connection, accessToken } = await connectedDrive();
   const folderYear = getUploadYear();
 
-  const { data: savedFolder, error: savedError } = await supabase
-    .from("activity_drive_folders")
-    .select("*")
-    .eq("activity_id", activityId)
-    .eq("connection_id", connection.id)
-    .eq("module", ACTIVITY_DRIVE_MODULE)
-    .eq("folder_year", folderYear)
-    .maybeSingle();
-  if (savedError) throw new Error(savedError.message);
-  if (savedFolder?.folder_id) {
-    return {
-      connection,
-      accessToken,
-      folderId: savedFolder.folder_id as string,
-      folderName: savedFolder.folder_name as string,
-      folderYear,
-      operatingUnit: (savedFolder.operating_unit as string | null) || operatingUnit,
-      component: (savedFolder.component as string | null) || component,
-      activityName: (savedFolder.activity_name as string | null) || activityName,
-      activityType: (savedFolder.activity_type as string | null) || activityType,
-      moduleFolderId: savedFolder.module_folder_id as string | null,
-      yearFolderId: savedFolder.year_folder_id as string | null,
-      operatingUnitFolderId: savedFolder.operating_unit_folder_id as string | null,
-      componentFolderId: savedFolder.component_folder_id as string | null
-    };
-  }
-
-  if (!connection.root_folder_id) {
-    throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
-  }
-
-  const moduleFolder = await ensureFolder(accessToken, ACTIVITY_DRIVE_MODULE, connection.root_folder_id);
-  const yearFolder = await ensureFolder(accessToken, String(folderYear), moduleFolder.id);
-  const operatingUnitFolder = await ensureFolder(accessToken, cleanDriveName(operatingUnit, "Operating Unit"), yearFolder.id);
-  const componentFolder = await ensureFolder(accessToken, cleanDriveName(component, "Component"), operatingUnitFolder.id);
-  const folderName = cleanDriveName(activityName, `Activity ${activityId}`);
-  const folder = await ensureFolder(accessToken, folderName, componentFolder.id);
-
-  const folderRow = {
-    activity_id: activityId,
-    connection_id: connection.id,
-    folder_id: folder.id,
-    folder_name: folderName,
-    module: ACTIVITY_DRIVE_MODULE,
-    folder_year: folderYear,
-    operating_unit: operatingUnit,
-    component,
-    activity_name: activityName,
-    activity_type: activityType,
-    module_folder_id: moduleFolder.id,
-    year_folder_id: yearFolder.id,
-    operating_unit_folder_id: operatingUnitFolder.id,
-    component_folder_id: componentFolder.id,
-    created_by: user.id
-  };
-
-  const { error: insertError } = await supabase.from("activity_drive_folders").insert(folderRow);
-  if (insertError) {
-    const { data: existingRow, error: existingError } = await supabase
+  const findFolderRow = async (): Promise<DriveFolderRow | null> => {
+    const { data, error } = await adminClient()
       .from("activity_drive_folders")
       .select("*")
       .eq("activity_id", activityId)
@@ -1077,41 +1117,70 @@ async function ensureActivityFolder(activityIdValue: number, user: UserRow) {
       .eq("module", ACTIVITY_DRIVE_MODULE)
       .eq("folder_year", folderYear)
       .maybeSingle();
-    if (existingError || !existingRow?.folder_id) {
-      throw new Error(insertError.message);
-    }
+    if (error) throw new Error(FOLDER_PREPARATION_ERROR);
+    return data as DriveFolderRow | null;
+  };
+
+  const resultFromRow = (row: DriveFolderRow) => {
     return {
       connection,
       accessToken,
-      folderId: existingRow.folder_id as string,
-      folderName: existingRow.folder_name as string,
+      folderRowId: Number(row.id),
+      folderId: row.folder_id,
+      folderName: row.folder_name || cleanDriveName(activityName, `Activity ${activityId}`),
       folderYear,
-      operatingUnit: (existingRow.operating_unit as string | null) || operatingUnit,
-      component: (existingRow.component as string | null) || component,
-      activityName: (existingRow.activity_name as string | null) || activityName,
-      activityType: (existingRow.activity_type as string | null) || activityType,
-      moduleFolderId: existingRow.module_folder_id as string | null,
-      yearFolderId: existingRow.year_folder_id as string | null,
-      operatingUnitFolderId: existingRow.operating_unit_folder_id as string | null,
-      componentFolderId: existingRow.component_folder_id as string | null
+      operatingUnit: row.operating_unit || operatingUnit,
+      component: row.component || component,
+      activityName: row.activity_name || activityName,
+      activityType: row.activity_type || activityType,
+      moduleFolderId: row.module_folder_id ?? null,
+      yearFolderId: row.year_folder_id ?? null,
+      operatingUnitFolderId: row.operating_unit_folder_id ?? null,
+      componentFolderId: row.component_folder_id ?? null
     };
-  }
-
-  return {
-    connection,
-    accessToken,
-    folderId: folder.id,
-    folderName,
-    folderYear,
-    operatingUnit,
-    component,
-    activityName,
-    activityType,
-    moduleFolderId: moduleFolder.id,
-    yearFolderId: yearFolder.id,
-    operatingUnitFolderId: operatingUnitFolder.id,
-    componentFolderId: componentFolder.id
   };
+
+  return withDriveFolderInitializationLock(
+    `entity:activity:${connection.id}:${activityId}:${ACTIVITY_DRIVE_MODULE}:${folderYear}`,
+    async () => {
+      const row = await findFolderRow();
+      return row?.folder_id ? resultFromRow(row) : null;
+    },
+    async () => {
+      if (!connection.root_folder_id) {
+        throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
+      }
+
+      const moduleFolder = await ensureFolder(accessToken, ACTIVITY_DRIVE_MODULE, connection.root_folder_id);
+      const yearFolder = await ensureFolder(accessToken, String(folderYear), moduleFolder.id);
+      const operatingUnitFolder = await ensureFolder(accessToken, cleanDriveName(operatingUnit, "Operating Unit"), yearFolder.id);
+      const componentFolder = await ensureFolder(accessToken, cleanDriveName(component, "Component"), operatingUnitFolder.id);
+      const folderName = cleanDriveName(activityName, `Activity ${activityId}`);
+      const folder = await ensureFolder(accessToken, folderName, componentFolder.id);
+      const canonical = await registerCanonicalFolder(
+        "activity_drive_folders",
+        {
+          activity_id: activityId,
+          connection_id: connection.id,
+          folder_id: folder.id,
+          folder_name: folderName,
+          module: ACTIVITY_DRIVE_MODULE,
+          folder_year: folderYear,
+          operating_unit: operatingUnit,
+          component,
+          activity_name: activityName,
+          activity_type: activityType,
+          module_folder_id: moduleFolder.id,
+          year_folder_id: yearFolder.id,
+          operating_unit_folder_id: operatingUnitFolder.id,
+          component_folder_id: componentFolder.id,
+          created_by: user.id
+        },
+        findFolderRow
+      );
+      return resultFromRow(canonical);
+    }
+  );
 }
 
 function concatBytes(chunks: Uint8Array[]) {
@@ -1251,13 +1320,20 @@ export async function uploadIpoFile(ipoId: number, file: File, user: UserRow, up
   const {
     connection,
     accessToken,
+    folderRowId,
     folderId,
     folderYear,
     moduleFolderId,
     yearFolderId,
     operatingUnitFolderId
   } = await ensureIpoFolder(ipoId, ipo.name, operatingUnit, user);
-  const uploadFolder = await ensureUploadSectionFolder(accessToken, folderId, uploadSection);
+  const uploadFolder = await ensureUploadSectionFolder(
+    accessToken,
+    "ipo_drive_folders",
+    folderRowId,
+    folderId,
+    uploadSection
+  );
   const uploadedFile = await uploadMultipartFile(accessToken, file, uploadFolder.id);
   let previewPermission: DrivePermissionResponse | null = null;
   try {
@@ -1295,7 +1371,7 @@ export async function uploadIpoFile(ipoId: number, file: File, user: UserRow, up
   const { data, error } = await supabase.from("ipo_drive_files").insert(row).select("*").single();
   if (error) {
     await deleteDriveFile(accessToken, uploadedFile.id);
-    throw new Error(error.message);
+    throw new Error(UPLOAD_RECORD_ERROR);
   }
 
   await supabase.from("ipo_history").insert({
@@ -1363,6 +1439,7 @@ export async function uploadSubprojectFile(subprojectId: number, file: File, use
   const {
     connection,
     accessToken,
+    folderRowId,
     folderId,
     folderName,
     folderYear,
@@ -1375,7 +1452,13 @@ export async function uploadSubprojectFile(subprojectId: number, file: File, use
     ipoFolderId
   } = await ensureSubprojectFolder(subprojectId, user);
 
-  const uploadFolder = await ensureUploadSectionFolder(accessToken, folderId, uploadSection);
+  const uploadFolder = await ensureUploadSectionFolder(
+    accessToken,
+    "subproject_drive_folders",
+    folderRowId,
+    folderId,
+    uploadSection
+  );
   const uploadedFile = await uploadMultipartFile(accessToken, file, uploadFolder.id);
   let previewPermission: DrivePermissionResponse | null = null;
   try {
@@ -1417,7 +1500,7 @@ export async function uploadSubprojectFile(subprojectId: number, file: File, use
   const { data, error } = await supabase.from("subproject_drive_files").insert(row).select("*").single();
   if (error) {
     await deleteDriveFile(accessToken, uploadedFile.id);
-    throw new Error(error.message);
+    throw new Error(UPLOAD_RECORD_ERROR);
   }
 
   return data;
@@ -1471,6 +1554,7 @@ export async function uploadActivityFile(activityId: number, file: File, user: U
   const {
     connection,
     accessToken,
+    folderRowId,
     folderId,
     folderName,
     folderYear,
@@ -1484,7 +1568,13 @@ export async function uploadActivityFile(activityId: number, file: File, user: U
     componentFolderId
   } = await ensureActivityFolder(activityId, user);
 
-  const uploadFolder = await ensureUploadSectionFolder(accessToken, folderId, uploadSection);
+  const uploadFolder = await ensureUploadSectionFolder(
+    accessToken,
+    "activity_drive_folders",
+    folderRowId,
+    folderId,
+    uploadSection
+  );
   const uploadedFile = await uploadMultipartFile(accessToken, file, uploadFolder.id);
   let previewPermission: DrivePermissionResponse | null = null;
   try {
@@ -1527,7 +1617,7 @@ export async function uploadActivityFile(activityId: number, file: File, user: U
   const { data, error } = await supabase.from("activity_drive_files").insert(row).select("*").single();
   if (error) {
     await deleteDriveFile(accessToken, uploadedFile.id);
-    throw new Error(error.message);
+    throw new Error(UPLOAD_RECORD_ERROR);
   }
 
   return data;

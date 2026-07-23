@@ -49,6 +49,14 @@ interface DriveUploadDropzoneProps<TFile extends DriveMediaFile> {
 
 const fileFingerprint = (file: File) => `${file.name.toLowerCase()}::${file.size}::${file.lastModified}`;
 
+const getSafeUploadErrorMessage = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error || '');
+    if (/duplicate key|unique constraint|sqlstate|postgres|postgrest|pgrst\d*/i.test(message)) {
+        return 'The upload folder could not be prepared. Refresh the section and try again.';
+    }
+    return message || 'Upload failed.';
+};
+
 const formatUploadedAt = (value?: string | null) => {
     if (!value) return 'Unknown date';
     const date = new Date(value);
@@ -123,23 +131,43 @@ export function DriveUploadDropzone<TFile extends DriveMediaFile>({
         let completed = 0;
         let failed = invalidItems.length;
 
-        const worker = async () => {
-            while (cursor < queuedItems.length) {
-                const item = queuedItems[cursor++];
-                updateQueueItem(item.id, { status: 'uploading', error: undefined });
-                try {
-                    const uploaded = await uploadFile(item.file, section);
-                    onUploaded(uploaded);
-                    completed += 1;
-                    updateQueueItem(item.id, { status: 'completed' });
-                } catch (error: any) {
-                    failed += 1;
-                    updateQueueItem(item.id, { status: 'failed', error: error?.message || 'Upload failed.' });
-                }
+        const uploadQueueItem = async (item: UploadQueueItem) => {
+            updateQueueItem(item.id, { status: 'uploading', error: undefined });
+            try {
+                const uploaded = await uploadFile(item.file, section);
+                onUploaded(uploaded);
+                completed += 1;
+                updateQueueItem(item.id, { status: 'completed' });
+                return true;
+            } catch (error) {
+                failed += 1;
+                updateQueueItem(item.id, { status: 'failed', error: getSafeUploadErrorMessage(error) });
+                return false;
             }
         };
 
-        await Promise.all(Array.from({ length: Math.min(2, queuedItems.length) }, () => worker()));
+        // Establish the entity and Gallery/Files hierarchy with one successful
+        // request before allowing the remaining binary uploads to run together.
+        let firstSuccessfulIndex = -1;
+        for (let index = 0; index < queuedItems.length; index += 1) {
+            if (await uploadQueueItem(queuedItems[index])) {
+                firstSuccessfulIndex = index;
+                break;
+            }
+        }
+
+        const remainingItems = firstSuccessfulIndex >= 0
+            ? queuedItems.slice(firstSuccessfulIndex + 1)
+            : [];
+
+        const worker = async () => {
+            while (cursor < remainingItems.length) {
+                const item = remainingItems[cursor++];
+                await uploadQueueItem(item);
+            }
+        };
+
+        await Promise.all(Array.from({ length: Math.min(2, remainingItems.length) }, () => worker()));
         setIsUploading(false);
         const result = `${completed} file${completed === 1 ? '' : 's'} uploaded${failed ? `; ${failed} failed or skipped` : ''}.`;
         setSummary({ message: result, hasErrors: failed > 0 });
