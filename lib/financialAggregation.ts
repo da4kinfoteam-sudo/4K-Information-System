@@ -135,6 +135,7 @@ export interface FinancialLineItem {
     excludedTargetAllocation?: number;
     operatingUnit?: string;
     location?: string;
+    ipoIds?: number[];
     ipoNames?: string[];
     line: FinancialLine;
     alloc: number;
@@ -341,6 +342,7 @@ const addLineItem = (
         activityName: string;
         operatingUnit?: string;
         location?: string;
+        ipoIds?: number[];
         ipoNames?: string[];
         targetDate?: string;
     }
@@ -384,6 +386,7 @@ const addLineItem = (
         excludedTargetAllocation,
         operatingUnit: metadata.operatingUnit,
         location: metadata.location,
+        ipoIds: metadata.ipoIds,
         ipoNames: metadata.ipoNames,
         line,
         alloc,
@@ -410,6 +413,7 @@ export const collectFinancialLineItems = (
                 activityName: subproject.name,
                 operatingUnit: subproject.operatingUnit,
                 location: subproject.location,
+                ipoIds: subproject.ipo_id ? [Number(subproject.ipo_id)] : [],
                 ipoNames: Array.isArray(subproject.indigenousPeopleOrganization)
                     ? subproject.indigenousPeopleOrganization
                     : [subproject.indigenousPeopleOrganization],
@@ -427,6 +431,7 @@ export const collectFinancialLineItems = (
                 activityName: activity.name,
                 operatingUnit: activity.operatingUnit,
                 location: activity.location,
+                ipoIds: (activity.participating_ipo_ids || []).map(Number).filter(Number.isFinite),
                 ipoNames: activity.participatingIpos,
                 targetDate: expense.obligationMonth,
             });
