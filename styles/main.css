@@ -18261,6 +18261,46 @@ button.bar1-drilldown-card:focus-visible {
 .fd-segmented { align-items: center; background: var(--app-surface-muted); border: 1px solid var(--app-border); border-radius: .5rem; display: inline-flex; padding: .15rem; }
 .fd-segmented button { background: transparent; border: 0; border-radius: .35rem; color: var(--app-text-muted); cursor: pointer; font-size: .67rem; font-weight: 800; min-height: 1.85rem; padding: .3rem .65rem; }
 .fd-segmented button.active { background: var(--app-surface); box-shadow: var(--app-shadow-soft); color: var(--brand-green-700); }
+.fd-segmented--breakdown { max-width: min(100%, 48rem); overflow-x: auto; }
+.fd-segmented--breakdown button { flex: 0 0 auto; white-space: nowrap; }
+.fd-breakdown-table--geographic { min-width: 76rem; }
+.fd-breakdown-table--geographic th:nth-child(1) { width: 9rem; }
+.fd-breakdown-table--geographic th:nth-child(2) { width: 18rem; }
+.fd-breakdown-table--geographic th:nth-child(2),
+.fd-breakdown-table--geographic td:nth-child(2) { text-align: left; }
+.fd-hierarchy-label {
+  align-items: center;
+  display: flex;
+  gap: .35rem;
+  min-width: 0;
+  padding-left: calc(var(--fd-hierarchy-depth, 0) * 1.15rem);
+}
+.fd-hierarchy-label > span:last-child { display: grid; gap: .08rem; min-width: 0; }
+.fd-hierarchy-label strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fd-hierarchy-label small { color: var(--app-text-muted); font-size: .58rem; font-weight: 700; letter-spacing: .025em; text-transform: uppercase; }
+.fd-hierarchy-toggle,
+.fd-hierarchy-toggle-spacer {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 1.35rem;
+  height: 1.35rem;
+  justify-content: center;
+  width: 1.35rem;
+}
+.fd-hierarchy-toggle {
+  background: transparent;
+  border: 0;
+  border-radius: .3rem;
+  color: var(--brand-green-700);
+  cursor: pointer;
+  padding: 0;
+}
+.fd-hierarchy-toggle:hover { background: var(--brand-green-50); }
+.fd-hierarchy-toggle:focus-visible { outline: 2px solid var(--brand-green-600); outline-offset: 1px; }
+.fd-hierarchy-toggle svg { height: .9rem; width: .9rem; }
+.fd-hierarchy-row--child td { color: var(--app-text-muted); }
+.fd-hierarchy-row--child .fd-rate,
+.fd-hierarchy-row--child strong { color: inherit; }
 .fd-pager { align-items: center; border-top: 1px solid var(--app-border); color: var(--app-text-muted); display: flex; font-size: .68rem; font-weight: 700; justify-content: space-between; margin-top: .65rem; padding-top: .65rem; }
 .fd-pager > div { display: flex; gap: .35rem; }
 .fd-pager button { align-items: center; background: var(--app-surface); border: 1px solid var(--app-border); border-radius: .4rem; color: var(--app-text); cursor: pointer; display: inline-flex; height: 2rem; justify-content: center; width: 2rem; }
