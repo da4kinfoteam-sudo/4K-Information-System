@@ -1,4 +1,4 @@
-import React, { DragEvent, useEffect, useRef, useState } from 'react';
+import React, { DragEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Check,
     ChevronLeft,
@@ -28,7 +28,7 @@ import {
     isAllowedIpoDriveFile
 } from '../../lib/googleDriveStorage';
 
-type GalleryView = 'thumbnail' | 'list' | 'carousel';
+export type GalleryViewMode = 'thumbnail' | 'list' | 'carousel';
 type UploadStatus = 'queued' | 'uploading' | 'completed' | 'failed';
 
 interface UploadQueueItem {
@@ -261,6 +261,28 @@ interface EntityGalleryProps<TFile extends DriveMediaFile> {
     onRequestDelete: (file: TFile) => void;
     onRefresh: () => void;
     onMessage?: (message: string, hasErrors: boolean) => void;
+    showUploader?: boolean;
+    showToolbar?: boolean;
+    view?: GalleryViewMode;
+    onViewChange?: (view: GalleryViewMode) => void;
+    itemLimit?: number;
+    onViewAll?: () => void;
+}
+
+export function GalleryViewToggle({
+    view,
+    onChange
+}: {
+    view: GalleryViewMode;
+    onChange: (view: GalleryViewMode) => void;
+}) {
+    return (
+        <div className="drive-gallery-view-toggle" role="group" aria-label="Gallery view">
+            <button type="button" className={view === 'thumbnail' ? 'is-active' : ''} onClick={() => onChange('thumbnail')} title="Thumbnail view" aria-label="Thumbnail view"><Grid3X3 aria-hidden="true" /></button>
+            <button type="button" className={view === 'list' ? 'is-active' : ''} onClick={() => onChange('list')} title="List view" aria-label="List view"><List aria-hidden="true" /></button>
+            <button type="button" className={view === 'carousel' ? 'is-active' : ''} onClick={() => onChange('carousel')} title="Carousel view" aria-label="Carousel view"><Images aria-hidden="true" /></button>
+        </div>
+    );
 }
 
 export function EntityGallery<TFile extends DriveMediaFile>({
@@ -277,12 +299,23 @@ export function EntityGallery<TFile extends DriveMediaFile>({
     onFileUpdated,
     onRequestDelete,
     onRefresh,
-    onMessage
+    onMessage,
+    showUploader = true,
+    showToolbar = true,
+    view: controlledView,
+    onViewChange,
+    itemLimit,
+    onViewAll
 }: EntityGalleryProps<TFile>) {
-    const [view, setView] = useState<GalleryView>(() => {
+    const [internalView, setInternalView] = useState<GalleryViewMode>(() => {
         const saved = window.localStorage.getItem(`4kis-gallery-view:${storageKey}`);
         return saved === 'list' || saved === 'carousel' ? saved : 'thumbnail';
     });
+    const view = controlledView ?? internalView;
+    const setView = (nextView: GalleryViewMode) => {
+        setInternalView(nextView);
+        onViewChange?.(nextView);
+    };
     const [carouselIndex, setCarouselIndex] = useState(0);
     const [previewIndex, setPreviewIndex] = useState<number | null>(null);
     const [editingFile, setEditingFile] = useState<TFile | null>(null);
@@ -296,10 +329,17 @@ export function EntityGallery<TFile extends DriveMediaFile>({
         window.localStorage.setItem(`4kis-gallery-view:${storageKey}`, view);
     }, [storageKey, view]);
 
+    const displayedFiles = useMemo(
+        () => typeof itemLimit === 'number' ? files.slice(0, Math.max(0, itemLimit)) : files,
+        [files, itemLimit]
+    );
+
     useEffect(() => {
-        if (carouselIndex >= files.length) setCarouselIndex(Math.max(0, files.length - 1));
-        if (previewIndex !== null && previewIndex >= files.length) setPreviewIndex(files.length ? files.length - 1 : null);
-    }, [carouselIndex, files.length, previewIndex]);
+        if (carouselIndex >= displayedFiles.length) setCarouselIndex(Math.max(0, displayedFiles.length - 1));
+        if (previewIndex !== null && previewIndex >= displayedFiles.length) {
+            setPreviewIndex(displayedFiles.length ? displayedFiles.length - 1 : null);
+        }
+    }, [carouselIndex, displayedFiles.length, previewIndex]);
 
     const beginEdit = (file: TFile) => {
         setEditingFile(file);
@@ -326,10 +366,10 @@ export function EntityGallery<TFile extends DriveMediaFile>({
         }
     };
 
-    const previous = (index: number) => files.length ? (index - 1 + files.length) % files.length : 0;
-    const next = (index: number) => files.length ? (index + 1) % files.length : 0;
-    const carouselFile = files[carouselIndex];
-    const previewFile = previewIndex === null ? null : files[previewIndex];
+    const previous = (index: number) => displayedFiles.length ? (index - 1 + displayedFiles.length) % displayedFiles.length : 0;
+    const next = (index: number) => displayedFiles.length ? (index + 1) % displayedFiles.length : 0;
+    const carouselFile = displayedFiles[carouselIndex];
+    const previewFile = previewIndex === null ? null : displayedFiles[previewIndex];
 
     const actions = (file: TFile) => (
         <div className="drive-gallery-actions">
@@ -350,19 +390,17 @@ export function EntityGallery<TFile extends DriveMediaFile>({
 
     return (
         <div className="drive-media-section">
+            {showToolbar && (
             <div className="drive-media-toolbar">
-                <div className="drive-gallery-view-toggle" role="group" aria-label="Gallery view">
-                    <button type="button" className={view === 'thumbnail' ? 'is-active' : ''} onClick={() => setView('thumbnail')} title="Thumbnail view" aria-label="Thumbnail view"><Grid3X3 aria-hidden="true" /></button>
-                    <button type="button" className={view === 'list' ? 'is-active' : ''} onClick={() => setView('list')} title="List view" aria-label="List view"><List aria-hidden="true" /></button>
-                    <button type="button" className={view === 'carousel' ? 'is-active' : ''} onClick={() => setView('carousel')} title="Carousel view" aria-label="Carousel view"><Images aria-hidden="true" /></button>
-                </div>
+                <GalleryViewToggle view={view} onChange={setView} />
                 <button type="button" className="btn btn-secondary" onClick={onRefresh} disabled={isLoading}>
                     <RefreshCw className={isLoading ? 'animate-spin' : ''} aria-hidden="true" />
                     Refresh
                 </button>
             </div>
+            )}
 
-            {canEdit && (
+            {canEdit && showUploader && (
                 <DriveUploadDropzone
                     section="gallery"
                     canUpload={canEdit}
@@ -381,7 +419,7 @@ export function EntityGallery<TFile extends DriveMediaFile>({
                 <div className="drive-media-scroll custom-scrollbar">
                     {view === 'thumbnail' && (
                         <div className="drive-gallery-grid">
-                            {files.map((file, index) => (
+                            {displayedFiles.map((file, index) => (
                                 <article key={file.id} className="drive-gallery-tile">
                                     <button type="button" className="drive-gallery-tile__preview" onClick={() => setPreviewIndex(index)} title={`Preview ${getDriveFileDisplayName(file)}`}>
                                         {!imageFailures.has(file.id) && <img src={getImageUrl(file, 520)} alt={getDriveFileDisplayName(file)} loading="lazy" onError={() => setImageFailures(current => new Set(current).add(file.id))} />}
@@ -398,7 +436,7 @@ export function EntityGallery<TFile extends DriveMediaFile>({
                     )}
                     {view === 'list' && (
                         <div className="drive-gallery-list">
-                            {files.map((file, index) => (
+                            {displayedFiles.map((file, index) => (
                                 <article key={file.id} className="drive-gallery-list__item">
                                     <button type="button" className="drive-gallery-list__thumb" onClick={() => setPreviewIndex(index)} aria-label={`Preview ${getDriveFileDisplayName(file)}`}>
                                         {!imageFailures.has(file.id) && <img src={getImageUrl(file, 240)} alt="" loading="lazy" onError={() => setImageFailures(current => new Set(current).add(file.id))} />}
@@ -426,7 +464,7 @@ export function EntityGallery<TFile extends DriveMediaFile>({
                                 <button type="button" className="drive-gallery-carousel__nav" onClick={() => setCarouselIndex(next(carouselIndex))} aria-label="Next image"><ChevronRight aria-hidden="true" /></button>
                             </div>
                             <div className="drive-gallery-carousel__details">
-                                <span>{carouselIndex + 1} of {files.length}</span>
+                                <span>{carouselIndex + 1} of {displayedFiles.length}</span>
                                 <strong>{getDriveFileDisplayName(carouselFile)}</strong>
                                 {carouselFile.caption && <p>{carouselFile.caption}</p>}
                                 {actions(carouselFile)}
@@ -436,13 +474,23 @@ export function EntityGallery<TFile extends DriveMediaFile>({
                 </div>
             )}
 
+            {onViewAll && files.length > displayedFiles.length && (
+                <div className="drive-media-section__footer">
+                    <span>Showing {displayedFiles.length} of {files.length} items</span>
+                    <button type="button" className="ipo-detail-view-all" onClick={onViewAll}>
+                        View all
+                        <ChevronRight aria-hidden="true" />
+                    </button>
+                </div>
+            )}
+
             {previewFile && previewIndex !== null && (
                 <div className="dashboard-modal-backdrop" onClick={() => setPreviewIndex(null)}>
                     <div className="dashboard-modal dashboard-modal--wide drive-gallery-preview" onClick={event => event.stopPropagation()}>
                         <div className="dashboard-modal__header">
                             <div>
                                 <h3>{getDriveFileDisplayName(previewFile)}</h3>
-                                <p className="dashboard-modal__metric-subtext">{previewIndex + 1} of {files.length}</p>
+                                <p className="dashboard-modal__metric-subtext">{previewIndex + 1} of {displayedFiles.length}</p>
                             </div>
                             <button type="button" className="dashboard-modal__close" onClick={() => setPreviewIndex(null)} aria-label="Close Gallery preview"><X aria-hidden="true" /></button>
                         </div>
@@ -502,6 +550,8 @@ interface EntityFilesListProps<TFile extends DriveMediaFile> {
     onRefresh: () => void;
     getFolderPath?: (file: TFile) => string;
     onMessage?: (message: string, hasErrors: boolean) => void;
+    showUploader?: boolean;
+    showToolbar?: boolean;
 }
 
 export function EntityFilesList<TFile extends DriveMediaFile>({
@@ -515,18 +565,22 @@ export function EntityFilesList<TFile extends DriveMediaFile>({
     onRequestDelete,
     onRefresh,
     getFolderPath,
-    onMessage
+    onMessage,
+    showUploader = true,
+    showToolbar = true
 }: EntityFilesListProps<TFile>) {
     const [previewFile, setPreviewFile] = useState<TFile | null>(null);
     const previewUrl = previewFile?.preview_url || (previewFile ? `https://drive.google.com/file/d/${encodeURIComponent(previewFile.file_id)}/preview` : '');
 
     return (
         <div className="drive-media-section">
-            <div className="drive-media-toolbar drive-media-toolbar--files">
-                <p>PDF and image documentation uploaded here remains separate from the Gallery.</p>
-                <button type="button" className="btn btn-secondary" onClick={onRefresh} disabled={isLoading}><RefreshCw className={isLoading ? 'animate-spin' : ''} aria-hidden="true" />Refresh</button>
-            </div>
-            {canEdit && (
+            {showToolbar && (
+                <div className="drive-media-toolbar drive-media-toolbar--files">
+                    <p>PDF and image documentation uploaded here remains separate from the Gallery.</p>
+                    <button type="button" className="btn btn-secondary" onClick={onRefresh} disabled={isLoading}><RefreshCw className={isLoading ? 'animate-spin' : ''} aria-hidden="true" />Refresh</button>
+                </div>
+            )}
+            {canEdit && showUploader && (
                 <DriveUploadDropzone
                     section="files"
                     canUpload={canEdit}

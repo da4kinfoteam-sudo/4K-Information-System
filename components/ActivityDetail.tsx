@@ -1,6 +1,23 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, ChevronDown, Edit3, Eye, Loader2, Plus, Trash2, X } from 'lucide-react';
+import {
+    Banknote,
+    CalendarDays,
+    CheckCircle2,
+    Edit3,
+    Eye,
+    Landmark,
+    Loader2,
+    MapPin,
+    Plus,
+    RefreshCw,
+    Trash2,
+    UserCheck,
+    Users,
+    UploadCloud,
+    Wallet,
+    X
+} from 'lucide-react';
 import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, ReferenceActivity } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
@@ -20,7 +37,27 @@ import {
     updateActivityDriveFileMetadata,
     DriveUploadSection
 } from '../lib/googleDriveStorage';
-import { EntityFilesList, EntityGallery, getPersistedDriveUploadSection } from './ui/DriveMediaSections';
+import {
+    DriveUploadDropzone,
+    EntityFilesList,
+    EntityGallery,
+    GalleryViewMode,
+    GalleryViewToggle,
+    getPersistedDriveUploadSection
+} from './ui/DriveMediaSections';
+import {
+    RecordBackLink,
+    RecordDetailAside,
+    RecordDetailGrid,
+    RecordDetailMain,
+    RecordDetailPage,
+    RecordHeader,
+    RecordKpiCard,
+    RecordKpiGrid,
+    RecordPanel,
+    formatRecordMetricCurrency,
+    formatRecordMetricNumber
+} from './ui/RecordDetailLayout';
 
 interface ActivityDetailProps {
     activity: Activity;
@@ -81,28 +118,6 @@ const MonitoringPreviewLine: React.FC<{ label: string; value?: string | null }> 
     </div>
 );
 
-type ActivityDetailSectionKey = 'monitoring' | 'gallery' | 'files';
-
-const CollapsibleDetailCard: React.FC<{
-    title: string;
-    isOpen: boolean;
-    onToggle: () => void;
-    children: React.ReactNode;
-}> = ({ title, isOpen, onToggle, children }) => (
-    <section className="detail-card detail-card--collapsible">
-        <button
-            type="button"
-            className="detail-card__toggle-header"
-            onClick={onToggle}
-            aria-expanded={isOpen}
-        >
-            <span className="detail-card-title mb-0">{title}</span>
-            <ChevronDown className={`detail-card__collapse-icon ${isOpen ? 'is-open' : ''}`} aria-hidden="true" />
-        </button>
-        {isOpen && <div className="detail-card__collapsible-body">{children}</div>}
-    </section>
-);
-
 export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onSelectIpo, onEdit, uacsCodes, referenceActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], onOpenMonitoringReport }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Activities');
@@ -117,11 +132,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     const [deletingDriveFileId, setDeletingDriveFileId] = useState<number | null>(null);
     const [driveMessage, setDriveMessage] = useState<string | null>(null);
     const [driveFilePendingDelete, setDriveFilePendingDelete] = useState<ActivityDriveFile | null>(null);
-    const [expandedSections, setExpandedSections] = useState<Record<ActivityDetailSectionKey, boolean>>({
-        monitoring: true,
-        gallery: false,
-        files: false
-    });
+    const [uploadModal, setUploadModal] = useState<'gallery' | 'files' | null>(null);
+    const [galleryView, setGalleryView] = useState<GalleryViewMode>('thumbnail');
     const cachedReportsForActivity = useMemo(() =>
         cachedMonitoringReports.filter(report => Number(report.activity_id) === Number(activity.id)),
     [activity.id, cachedMonitoringReports]);
@@ -209,13 +221,19 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
         if (allowed) onEdit(mode);
     };
 
-    const toggleSection = (section: ActivityDetailSectionKey) => {
-        setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
-    };
-
     const totalBudget = useMemo(() => {
        return activity.expenses.reduce((acc, item) => acc + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)), 0);
     }, [activity.expenses]);
+    const totalObligated = useMemo(
+        () => activity.expenses.reduce((total, expense) => total + getActualObligationSummary(expense).amount, 0),
+        [activity.expenses]
+    );
+    const totalDisbursed = useMemo(
+        () => activity.expenses.reduce((total, expense) => total + getActualDisbursementSummary(expense).amount, 0),
+        [activity.expenses]
+    );
+    const targetParticipantCount = (activity.participantsMale || 0) + (activity.participantsFemale || 0);
+    const actualParticipantCount = (activity.actualParticipantsMale || 0) + (activity.actualParticipantsFemale || 0);
     const monitoringReference = useMemo(() => referenceActivities.find(ref =>
         ref.activity_name === 'Subproject Monitoring' &&
         ref.component === 'Program Management' &&
@@ -372,7 +390,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     const documentFiles = useMemo(() => driveFiles.filter(file => getPersistedDriveUploadSection(file) === 'files'), [driveFiles]);
 
     return (
-        <div className="detail-page animate-fadeIn">
+        <RecordDetailPage className="activity-record-detail-page animate-fadeIn">
             {driveFilePendingDelete && (
                 <div className="dashboard-modal-backdrop animate-fadeIn" onClick={() => !deletingDriveFileId && setDriveFilePendingDelete(null)}>
                     <div className="dashboard-modal dashboard-modal--compact" onClick={e => e.stopPropagation()}>
@@ -402,47 +420,86 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                     </div>
                 </div>
             )}
-
-            {/* Header */}
-            <header className="detail-header">
-                <div className="detail-heading">
-                    <h1 className="detail-title">{activity.name}</h1>
-                    <p className="detail-meta">
-                        {activity.location} | {formatDate(activity.date)}
-                        {activity.endDate && activity.endDate !== activity.date ? ` - ${formatDate(activity.endDate)}` : ''}
-                    </p>
+            {uploadModal && (
+                <div className="dashboard-modal-backdrop animate-fadeIn" onClick={() => setUploadModal(null)}>
+                    <section className="dashboard-modal record-detail-modal" role="dialog" aria-modal="true" aria-labelledby="activity-upload-title" onClick={event => event.stopPropagation()}>
+                        <header className="dashboard-modal__header">
+                            <div>
+                                <h3 id="activity-upload-title">{uploadModal === 'gallery' ? 'Upload Gallery Images' : 'Add Activity Files'}</h3>
+                                <p className="dashboard-modal__metric-subtext">
+                                    {uploadModal === 'gallery'
+                                        ? 'Add field photos to the Activity Gallery.'
+                                        : 'Upload supporting documents. These files do not appear in the Gallery.'}
+                                </p>
+                            </div>
+                            <button type="button" className="dashboard-modal__close" onClick={() => setUploadModal(null)} aria-label="Close upload">
+                                <X aria-hidden="true" />
+                            </button>
+                        </header>
+                        <div className="dashboard-modal__body">
+                            <DriveUploadDropzone
+                                section={uploadModal}
+                                canUpload={canEdit}
+                                isConnected={!!driveStatus?.isConnected}
+                                uploadFile={uploadDriveFile}
+                                onUploaded={file => setDriveFiles(current => [file, ...current])}
+                                onBatchComplete={(message) => setDriveMessage(message)}
+                            />
+                        </div>
+                    </section>
                 </div>
-                <div className="detail-actions">
-                    {(canEdit || canEditFinancial || canEditPhysical || canEditAccomplishment) && (
+            )}
+
+            <RecordBackLink onClick={onBack}>Back to {previousPageName}</RecordBackLink>
+
+            <RecordHeader
+                title={activity.name}
+                metadata={
+                    <>
+                        <span className="ipo-detail-record-id">{activity.uid || `ACT-${activity.id}`}</span>
+                        <span className={getStatusBadge(activity.status)}>{activity.status}</span>
+                        <span><MapPin aria-hidden="true" />{activity.location || 'Location not recorded'}</span>
+                        <span>
+                            <CalendarDays aria-hidden="true" />
+                            {formatDate(activity.date)}
+                            {activity.endDate && activity.endDate !== activity.date ? ` to ${formatDate(activity.endDate)}` : ''}
+                        </span>
+                    </>
+                }
+                actions={(canEdit || canEditFinancial || canEditPhysical || canEditAccomplishment) ? (
                         <button onClick={() => handlePolicyEdit('accomplishment')} disabled={!canEditAccomplishment} className={`btn btn-primary btn-responsive ${!canEditAccomplishment ? 'is-disabled' : ''}`} title={canEditAccomplishment ? 'Edit Accomplishment' : accomplishmentDecision.message}>
                             <CheckCircle2 className="btn-symbol" aria-hidden="true" />
                             <span className="btn-text">Edit Accomplishment</span>
                         </button>
-                    )}
-                    <button onClick={onBack} className="btn btn-secondary btn-responsive" title={`Back to ${previousPageName}`}>
-                        <ArrowLeft className="btn-symbol" aria-hidden="true" />
-                        <span className="btn-text">Back to {previousPageName}</span>
-                    </button>
-                </div>
-            </header>
+                    ) : null}
+            />
+
+            <RecordKpiGrid aria-label="Activity overview statistics">
+                <RecordKpiCard label="Target Budget" value={formatRecordMetricCurrency(totalBudget)} title={formatCurrency(totalBudget)} note="Active target budget" icon={<Wallet />} />
+                <RecordKpiCard label="Obligated" value={formatRecordMetricCurrency(totalObligated)} title={formatCurrency(totalObligated)} note={`${totalBudget > 0 ? Math.round((totalObligated / totalBudget) * 100) : 0}% of target`} icon={<Landmark />} />
+                <RecordKpiCard label="Disbursed" value={formatRecordMetricCurrency(totalDisbursed)} title={formatCurrency(totalDisbursed)} note={`${totalBudget > 0 ? Math.round((totalDisbursed / totalBudget) * 100) : 0}% of target`} icon={<Banknote />} />
+                <RecordKpiCard label="Target Participants" value={formatRecordMetricNumber(targetParticipantCount)} title={targetParticipantCount.toLocaleString()} note={`M: ${activity.participantsMale || 0} · F: ${activity.participantsFemale || 0}`} icon={<Users />} />
+                <RecordKpiCard label="Actual Participants" value={formatRecordMetricNumber(actualParticipantCount)} title={actualParticipantCount.toLocaleString()} note={`M: ${activity.actualParticipantsMale || 0} · F: ${activity.actualParticipantsFemale || 0}`} icon={<UserCheck />} />
+                <RecordKpiCard label="Participating IPOs" value={formatRecordMetricNumber(participatingIpos.length)} title={participatingIpos.length.toLocaleString()} note="Linked organizations" icon={<Users />} />
+            </RecordKpiGrid>
 
             {/* Content Grid */}
-            <div className="detail-grid">
+            <RecordDetailGrid>
                 {/* Left Column: Info & Expenses */}
-                <div className="detail-main">
+                <RecordDetailMain>
                     
                     {/* Activity Details Section */}
-                    <div className="detail-card">
-                        <div className="flex justify-between items-start mb-4">
-                            <h3 className="detail-card-title mb-0">Activity Details</h3>
-                            {(canEdit || canEditDetails) && (
+                    <RecordPanel
+                        title="Activity Details"
+                        description="Schedule, classification, and implementation details"
+                        actions={(canEdit || canEditDetails) ? (
                                 <button onClick={() => handlePolicyEdit('details')} disabled={!canEditDetails} className={`table-action table-action--primary ${!canEditDetails ? 'is-disabled' : ''}`} title={canEditDetails ? 'Edit Details' : detailsDecision.message}>
                                     <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Details
                                 </button>
-                            )}
-                        </div>
-                        <dl className="detail-dl">
+                            ) : null}
+                    >
+                        <dl className="detail-dl record-detail-dl--three">
                             <DetailItem label="Status" value={<span className={getStatusBadge(activity.status)}>{activity.status}</span>} />
                             <DetailItem label="Operating Unit" value={activity.operatingUnit} />
                             <DetailItem label="UID" value={activity.uid} />
@@ -461,65 +518,58 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                 <dt className="detail-label">Description</dt>
                                 <dd className="detail-note">{activity.description || 'No description provided.'}</dd>
                             </div>
-                            
-                            {/* Target Participants integrated here */}
-                            <div className="detail-item detail-item--wide">
-                                <h4 className="detail-section-title">Target Participants</h4>
-                                <div className="detail-metric-grid mb-0">
-                                    <div className="detail-metric detail-metric--inline">
-                                        <span className="detail-metric-label">Male</span>
-                                        <span className="detail-metric-value">{activity.participantsMale}</span>
-                                    </div>
-                                    <div className="detail-metric detail-metric--inline">
-                                        <span className="detail-metric-label">Female</span>
-                                        <span className="detail-metric-value">{activity.participantsFemale}</span>
-                                    </div>
-                                    <div className="detail-metric detail-metric--inline">
-                                        <span className="detail-metric-label">Total</span>
-                                        <span className="detail-metric-value">{activity.participantsMale + activity.participantsFemale}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="detail-item detail-item--wide">
-                                <dt className="detail-label mb-2">Participating IPOs</dt>
-                                {activity.participatingIpos.length > 0 ? (
-                                    <ul className="flex flex-wrap gap-2">
-                                        {activity.participatingIpos.map((ipoName, idx) => {
-                                            const ipo = ipos.find(i => i.name === ipoName);
-                                            return (
-                                                <li key={idx}>
-                                                    <button 
-                                                        onClick={() => ipo && onSelectIpo(ipo)}
-                                                        disabled={!ipo}
-                                                        className={`detail-pill-button ${ipo ? 'detail-pill-button--active' : 'detail-pill-button--disabled'}`}
-                                                        title={ipo ? 'View IPO Profile' : 'IPO details not found'}
-                                                    >
-                                                        <span className="detail-pill-button__dot"></span>
-                                                        <span>{ipoName}</span>
-                                                    </button>
-                                                </li>
-                                            );
-                                        })}
-                                    </ul>
-                                ) : (
-                                    <p className="detail-empty">No participating IPOs selected.</p>
-                                )}
-                            </div>
                         </dl>
-                    </div>
+                    </RecordPanel>
+
+                    <RecordPanel title="Target Participants" description="Planned attendance by demographic">
+                        <div className="detail-metric-grid">
+                            <div className="detail-metric detail-metric--inline">
+                                <span className="detail-metric-label">Male</span>
+                                <span className="detail-metric-value">{activity.participantsMale || 0}</span>
+                            </div>
+                            <div className="detail-metric detail-metric--inline">
+                                <span className="detail-metric-label">Female</span>
+                                <span className="detail-metric-value">{activity.participantsFemale || 0}</span>
+                            </div>
+                            <div className="detail-metric detail-metric--inline">
+                                <span className="detail-metric-label">Total</span>
+                                <span className="detail-metric-value">{targetParticipantCount}</span>
+                            </div>
+                        </div>
+                    </RecordPanel>
+
+                    <RecordPanel title="Participating IPOs" description="Organizations attending this activity">
+                        {participatingIpos.length > 0 ? (
+                            <ul className="detail-list">
+                                {participatingIpos.map(ipo => (
+                                    <li key={ipo.id} className="detail-list-item">
+                                        <button
+                                            type="button"
+                                            onClick={() => onSelectIpo(ipo)}
+                                            className="detail-list-title table-link text-left"
+                                        >
+                                            {ipo.name}
+                                        </button>
+                                        <p className="detail-list-copy">{ipo.region || 'Region not recorded'}</p>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="detail-empty">No participating IPOs selected.</p>
+                        )}
+                    </RecordPanel>
 
                     {/* Expenses Section */}
-                    <div className="detail-card">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="detail-card-title mb-0">Expenses & Budget</h3>
-                            {(canEdit || canEditExpenses) && (
+                    <RecordPanel
+                        title="Expenses & Budget"
+                        description="Planned expense lines and financial schedule"
+                        actions={(canEdit || canEditExpenses) ? (
                                 <button onClick={() => handlePolicyEdit('expenses')} disabled={!canEditExpenses} className={`table-action table-action--primary ${!canEditExpenses ? 'is-disabled' : ''}`} title={canEditExpenses ? 'Edit Expenses' : expensesDecision.message}>
                                     <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Expenses
                                 </button>
-                            )}
-                        </div>
+                            ) : null}
+                    >
                         <div className="data-table-scroll">
                             <table className="data-table">
                                 <thead>
@@ -571,19 +621,19 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                 </tfoot>
                             </table>
                         </div>
-                    </div>
+                    </RecordPanel>
 
                     {/* NEW: Accomplishment Report Section */}
-                    <div className="detail-card">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="detail-card-title mb-0">Accomplishment Report</h3>
-                            {(canEdit || canEditFinancial || canEditPhysical || canEditAccomplishment) && (
+                    <RecordPanel
+                        title="Accomplishment Report"
+                        description="Physical, financial, and participant accomplishment"
+                        actions={(canEdit || canEditFinancial || canEditPhysical || canEditAccomplishment) ? (
                                 <button onClick={() => handlePolicyEdit('accomplishment')} disabled={!canEditAccomplishment} className={`table-action table-action--primary ${!canEditAccomplishment ? 'is-disabled' : ''}`} title={canEditAccomplishment ? 'Edit Accomplishment' : accomplishmentDecision.message}>
                                     <CheckCircle2 className="btn-symbol" aria-hidden="true" />
                                     Edit Accomplishment
                                 </button>
-                            )}
-                        </div>
+                            ) : null}
+                    >
                         <div className="space-y-6">
                             
                             {/* Summary Cards */}
@@ -661,10 +711,10 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </RecordPanel>
 
                     {isMonitoringActivity && (
-                        <CollapsibleDetailCard title="Monitoring Reports" isOpen={expandedSections.monitoring} onToggle={() => toggleSection('monitoring')}>
+                        <RecordPanel title="Monitoring Reports" description="Latest field validation by participating IPO">
                             {monitoringMessage && <p className="drive-file-card__message" role="status">{monitoringMessage}</p>}
                             {isMonitoringLoading ? (
                                 <div className="drive-file-card__loading">
@@ -724,10 +774,28 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                             ) : (
                                 <p className="detail-empty">No participating IPOs are linked to this monitoring activity.</p>
                             )}
-                        </CollapsibleDetailCard>
+                        </RecordPanel>
                     )}
 
-                    <CollapsibleDetailCard title="Gallery" isOpen={expandedSections.gallery} onToggle={() => toggleSection('gallery')}>
+                    <RecordPanel
+                        title="Gallery"
+                        description="Field photos and activity documentation"
+                        actions={
+                            <>
+                                <GalleryViewToggle view={galleryView} onChange={setGalleryView} />
+                                <button type="button" className="btn btn-secondary btn-compact" onClick={loadDriveFiles}>
+                                    <RefreshCw aria-hidden="true" />
+                                    Refresh
+                                </button>
+                                {canEdit && (
+                                    <button type="button" className="btn btn-secondary btn-compact" onClick={() => setUploadModal('gallery')}>
+                                        <UploadCloud aria-hidden="true" />
+                                        Upload
+                                    </button>
+                                )}
+                            </>
+                        }
+                    >
                         <EntityGallery
                             storageKey="activity"
                             files={galleryFiles}
@@ -743,10 +811,23 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                             onRequestDelete={requestDriveFileDelete}
                             onRefresh={loadDriveFiles}
                             onMessage={(message) => setDriveMessage(message)}
+                            showUploader={false}
+                            showToolbar={false}
+                            view={galleryView}
+                            onViewChange={setGalleryView}
                         />
-                    </CollapsibleDetailCard>
+                    </RecordPanel>
 
-                    <CollapsibleDetailCard title="Activity Files" isOpen={expandedSections.files} onToggle={() => toggleSection('files')}>
+                    <RecordPanel
+                        title="Activity Files"
+                        description="Supporting documents, separate from the Gallery"
+                        actions={canEdit ? (
+                            <button type="button" className="btn btn-secondary btn-compact" onClick={() => setUploadModal('files')}>
+                                <UploadCloud aria-hidden="true" />
+                                Add Files
+                            </button>
+                        ) : null}
+                    >
                         {driveMessage && <p className="drive-file-card__message" role="status">{driveMessage}</p>}
                         <EntityFilesList
                             files={documentFiles}
@@ -760,14 +841,47 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                             onRefresh={loadDriveFiles}
                             getFolderPath={file => `Activities / ${file.folder_year || 'Year'} / ${file.operating_unit || 'Operating Unit'} / ${file.component || 'Component'} / ${file.activity_name || 'Activity'}`}
                             onMessage={(message) => setDriveMessage(message)}
+                            showUploader={false}
+                            showToolbar={false}
                         />
-                    </CollapsibleDetailCard>
-                </div>
+                    </RecordPanel>
+                </RecordDetailMain>
 
                 {/* Right Column: History */}
-                <div className="detail-aside">
-                    <div className="detail-card">
-                        <h3 className="detail-card-title">History</h3>
+                <RecordDetailAside>
+                    <RecordPanel title="Summary">
+                        <dl className="ipo-summary-list">
+                            <div><dt>Component</dt><dd>{activity.component || 'N/A'}</dd></div>
+                            <div><dt>Fund Year</dt><dd>{activity.fundingYear || 'N/A'}</dd></div>
+                            <div><dt>Tier</dt><dd>{activity.tier || 'N/A'}</dd></div>
+                            <div><dt>Target Budget</dt><dd>{formatCurrency(totalBudget)}</dd></div>
+                            <div><dt>Participating IPOs</dt><dd>{participatingIpos.length}</dd></div>
+                        </dl>
+                    </RecordPanel>
+
+                    <RecordPanel title="Attendance Snapshot" description="Target vs actual">
+                        <div className="ipo-membership-overview">
+                            <div className="ipo-membership-stat">
+                                <span>Target</span>
+                                <strong>{targetParticipantCount.toLocaleString()}</strong>
+                            </div>
+                            <div className="ipo-membership-stat">
+                                <span>Actual</span>
+                                <strong>{actualParticipantCount.toLocaleString()}</strong>
+                            </div>
+                        </div>
+                        <div className="ipo-membership-progress">
+                            <div>
+                                <span>Attendance rate</span>
+                                <strong>{targetParticipantCount > 0 ? Math.round((actualParticipantCount / targetParticipantCount) * 100) : 0}%</strong>
+                            </div>
+                            <span className="ipo-progress" aria-hidden="true">
+                                <span style={{ width: `${targetParticipantCount > 0 ? Math.min(100, (actualParticipantCount / targetParticipantCount) * 100) : 0}%` }} />
+                            </span>
+                        </div>
+                    </RecordPanel>
+
+                    <RecordPanel title="History" description="Recent activity">
                         {activity.history && activity.history.length > 0 ? (
                             <div className="detail-timeline">
                                 <ul className="detail-timeline__list">
@@ -784,9 +898,9 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                         ) : (
                             <p className="detail-empty">No historical data available.</p>
                         )}
-                    </div>
-                </div>
-            </div>
-        </div>
+                    </RecordPanel>
+                </RecordDetailAside>
+            </RecordDetailGrid>
+        </RecordDetailPage>
     );
 };
