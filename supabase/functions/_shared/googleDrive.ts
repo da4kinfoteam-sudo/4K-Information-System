@@ -14,12 +14,27 @@ const SUBPROJECT_DRIVE_MODULE = "Subprojects";
 const ACTIVITY_DRIVE_MODULE = "Activities";
 const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   "application/pdf",
+  "application/msword",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "image/gif",
   "image/jpeg",
   "image/png",
   "image/webp"
 ]);
-const ALLOWED_UPLOAD_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".pdf", ".png", ".webp"]);
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([
+  ".doc",
+  ".docx",
+  ".gif",
+  ".jpeg",
+  ".jpg",
+  ".pdf",
+  ".png",
+  ".ppt",
+  ".pptx",
+  ".webp"
+]);
 const ALLOWED_IMAGE_UPLOAD_MIME_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
 const ALLOWED_IMAGE_UPLOAD_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".webp"]);
 
@@ -618,7 +633,7 @@ function assertAllowedUploadFile(file: File, uploadSection: DriveUploadSection) 
     throw new Error("Gallery accepts PNG, JPG, JPEG, WEBP, and GIF images only.");
   }
   if (isAllowedUploadFile(file)) return;
-  throw new Error("Only PDF and image files are allowed. Please upload a PDF, PNG, JPG, WEBP, or GIF file.");
+  throw new Error("Files accepts images, PDF, Word, and PowerPoint documents only.");
 }
 
 async function findFolder(accessToken: string, name: string, parentFolderId?: string | null) {

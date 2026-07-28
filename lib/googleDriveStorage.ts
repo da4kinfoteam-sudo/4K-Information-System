@@ -129,18 +129,34 @@ export interface ActivityDriveFile {
 
 export const ALLOWED_IPO_DRIVE_FILE_TYPES = [
     'application/pdf',
+    'application/msword',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'image/gif',
     'image/jpeg',
     'image/png',
     'image/webp'
 ];
 
-export const IPO_DRIVE_FILE_ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/png,image/jpeg,image/webp,image/gif';
+export const IPO_DRIVE_FILE_ACCEPT = [
+    '.pdf',
+    '.doc',
+    '.docx',
+    '.ppt',
+    '.pptx',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+    '.gif',
+    ...ALLOWED_IPO_DRIVE_FILE_TYPES
+].join(',');
 export const SUBPROJECT_DRIVE_FILE_ACCEPT = IPO_DRIVE_FILE_ACCEPT;
 export const ACTIVITY_DRIVE_FILE_ACCEPT = IPO_DRIVE_FILE_ACCEPT;
 export const DRIVE_GALLERY_IMAGE_ACCEPT = '.png,.jpg,.jpeg,.webp,.gif,image/png,image/jpeg,image/webp,image/gif';
 
-const ALLOWED_IPO_DRIVE_EXTENSIONS = ['.gif', '.jpeg', '.jpg', '.pdf', '.png', '.webp'];
+const ALLOWED_IPO_DRIVE_EXTENSIONS = ['.doc', '.docx', '.gif', '.jpeg', '.jpg', '.pdf', '.png', '.ppt', '.pptx', '.webp'];
 const IMAGE_DRIVE_MIME_TYPES = ['image/gif', 'image/jpeg', 'image/png', 'image/webp'];
 const IMAGE_DRIVE_EXTENSIONS = ['.gif', '.jpeg', '.jpg', '.png', '.webp'];
 
@@ -168,6 +184,9 @@ export const getDriveFileDisplayName = (file: Pick<DriveMediaFile, 'display_name
 export const canPreviewIpoDriveFile = (file: Pick<IpoDriveFile, 'mime_type' | 'file_name' | 'preview_supported'>) => {
     if (file.preview_supported === false) return false;
     const mimeType = file.mime_type?.toLowerCase() || '';
+    const isOfficeDocument = /(?:msword|wordprocessingml|ms-powerpoint|presentationml)/.test(mimeType)
+        || /\.(?:docx?|pptx?)$/i.test(file.file_name);
+    if (isOfficeDocument) return file.preview_supported === true;
     if (ALLOWED_IPO_DRIVE_FILE_TYPES.includes(mimeType)) return true;
     const name = file.file_name.toLowerCase();
     return ALLOWED_IPO_DRIVE_EXTENSIONS.some(extension => name.endsWith(extension));

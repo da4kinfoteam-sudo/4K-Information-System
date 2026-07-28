@@ -45,7 +45,7 @@ import {
     DriveUploadSection
 } from '../lib/googleDriveStorage';
 import {
-    DriveUploadDropzone,
+    DriveUploadModal,
     EntityFilesList,
     EntityGallery,
     GalleryViewMode,
@@ -1495,38 +1495,30 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                 </IpoSectionModal>
             )}
             {sectionModal === 'galleryUpload' && (
-                <IpoSectionModal
+                <DriveUploadModal
+                    section="gallery"
                     title="Upload Gallery Images"
                     description="Add field photos to the IPO Gallery. Images remain separate from IPO Files."
-                    compact
+                    canUpload={canEdit}
+                    isConnected={!!driveStatus?.isConnected}
+                    uploadFile={uploadDriveFile}
+                    onUploaded={file => setDriveFiles(current => [file, ...current])}
+                    onBatchComplete={(message, hasErrors) => showDriveToast(hasErrors ? 'error' : 'success', message)}
                     onClose={closeSectionModal}
-                >
-                    <DriveUploadDropzone
-                        section="gallery"
-                        canUpload={canEdit}
-                        isConnected={!!driveStatus?.isConnected}
-                        uploadFile={uploadDriveFile}
-                        onUploaded={file => setDriveFiles(current => [file, ...current])}
-                        onBatchComplete={(message, hasErrors) => showDriveToast(hasErrors ? 'error' : 'success', message)}
-                    />
-                </IpoSectionModal>
+                />
             )}
             {sectionModal === 'filesUpload' && (
-                <IpoSectionModal
+                <DriveUploadModal
+                    section="files"
                     title="Add IPO Files"
                     description="Upload supporting documents and images to IPO Files. These files do not appear in the Gallery."
-                    compact
+                    canUpload={canEdit}
+                    isConnected={!!driveStatus?.isConnected}
+                    uploadFile={uploadDriveFile}
+                    onUploaded={file => setDriveFiles(current => [file, ...current])}
+                    onBatchComplete={(message, hasErrors) => showDriveToast(hasErrors ? 'error' : 'success', message)}
                     onClose={closeSectionModal}
-                >
-                    <DriveUploadDropzone
-                        section="files"
-                        canUpload={canEdit}
-                        isConnected={!!driveStatus?.isConnected}
-                        uploadFile={uploadDriveFile}
-                        onUploaded={file => setDriveFiles(current => [file, ...current])}
-                        onBatchComplete={(message, hasErrors) => showDriveToast(hasErrors ? 'error' : 'success', message)}
-                    />
-                </IpoSectionModal>
+                />
             )}
             <button type="button" onClick={onBack} className="record-detail-back-link">
                 <ArrowLeft aria-hidden="true" />
@@ -2042,7 +2034,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                     {/* IPO Files Card */}
                     <IpoDetailPanel
                         title="IPO Files"
-                        description="PDF and image documentation, separate from the Gallery"
+                        description="Supporting documents, separate from the Gallery"
                         actions={(
                             <>
                                 <button type="button" className="btn btn-secondary btn-compact" onClick={loadDriveFiles} disabled={isDriveLoading}>
@@ -2068,7 +2060,6 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                             onFileAdded={file => setDriveFiles(current => [file, ...current])}
                             onRequestDelete={requestDriveFileDelete}
                             onRefresh={loadDriveFiles}
-                            getFolderPath={file => `IPO Management / ${file.folder_year || 'Year'} / ${file.operating_unit || 'Operating Unit'} / ${ipo.name}`}
                             onMessage={(message, hasErrors) => showDriveToast(hasErrors ? 'error' : 'success', message)}
                             showUploader={false}
                             showToolbar={false}
