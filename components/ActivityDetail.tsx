@@ -38,7 +38,7 @@ import {
     DriveUploadSection
 } from '../lib/googleDriveStorage';
 import {
-    DriveUploadDropzone,
+    DriveUploadModal,
     EntityFilesList,
     EntityGallery,
     GalleryViewMode,
@@ -421,33 +421,19 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                 </div>
             )}
             {uploadModal && (
-                <div className="dashboard-modal-backdrop animate-fadeIn" onClick={() => setUploadModal(null)}>
-                    <section className="dashboard-modal record-detail-modal" role="dialog" aria-modal="true" aria-labelledby="activity-upload-title" onClick={event => event.stopPropagation()}>
-                        <header className="dashboard-modal__header">
-                            <div>
-                                <h3 id="activity-upload-title">{uploadModal === 'gallery' ? 'Upload Gallery Images' : 'Add Activity Files'}</h3>
-                                <p className="dashboard-modal__metric-subtext">
-                                    {uploadModal === 'gallery'
-                                        ? 'Add field photos to the Activity Gallery.'
-                                        : 'Upload supporting documents. These files do not appear in the Gallery.'}
-                                </p>
-                            </div>
-                            <button type="button" className="dashboard-modal__close" onClick={() => setUploadModal(null)} aria-label="Close upload">
-                                <X aria-hidden="true" />
-                            </button>
-                        </header>
-                        <div className="dashboard-modal__body">
-                            <DriveUploadDropzone
-                                section={uploadModal}
-                                canUpload={canEdit}
-                                isConnected={!!driveStatus?.isConnected}
-                                uploadFile={uploadDriveFile}
-                                onUploaded={file => setDriveFiles(current => [file, ...current])}
-                                onBatchComplete={(message) => setDriveMessage(message)}
-                            />
-                        </div>
-                    </section>
-                </div>
+                <DriveUploadModal
+                    section={uploadModal}
+                    title={uploadModal === 'gallery' ? 'Upload Gallery Images' : 'Add Activity Files'}
+                    description={uploadModal === 'gallery'
+                        ? 'Add field photos to the Activity Gallery.'
+                        : 'Upload supporting documents. These files do not appear in the Gallery.'}
+                    canUpload={canEdit}
+                    isConnected={!!driveStatus?.isConnected}
+                    uploadFile={uploadDriveFile}
+                    onUploaded={file => setDriveFiles(current => [file, ...current])}
+                    onBatchComplete={(message) => setDriveMessage(message)}
+                    onClose={() => setUploadModal(null)}
+                />
             )}
 
             <RecordBackLink onClick={onBack}>Back to {previousPageName}</RecordBackLink>
@@ -839,7 +825,6 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                             onFileAdded={file => setDriveFiles(current => [file, ...current])}
                             onRequestDelete={requestDriveFileDelete}
                             onRefresh={loadDriveFiles}
-                            getFolderPath={file => `Activities / ${file.folder_year || 'Year'} / ${file.operating_unit || 'Operating Unit'} / ${file.component || 'Component'} / ${file.activity_name || 'Activity'}`}
                             onMessage={(message) => setDriveMessage(message)}
                             showUploader={false}
                             showToolbar={false}

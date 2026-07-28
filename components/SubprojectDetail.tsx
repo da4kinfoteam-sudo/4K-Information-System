@@ -60,7 +60,7 @@ import {
     DriveUploadSection
 } from '../lib/googleDriveStorage';
 import {
-    DriveUploadDropzone,
+    DriveUploadModal,
     EntityFilesList,
     EntityGallery,
     GalleryViewMode,
@@ -2074,33 +2074,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 </div>
             )}
             {uploadModal && (
-                <div className="dashboard-modal-backdrop animate-fadeIn" onClick={() => setUploadModal(null)}>
-                    <section className="dashboard-modal record-detail-modal" role="dialog" aria-modal="true" aria-labelledby="subproject-upload-title" onClick={event => event.stopPropagation()}>
-                        <header className="dashboard-modal__header">
-                            <div>
-                                <h3 id="subproject-upload-title">{uploadModal === 'gallery' ? 'Upload Gallery Images' : 'Add Subproject Files'}</h3>
-                                <p className="dashboard-modal__metric-subtext">
-                                    {uploadModal === 'gallery'
-                                        ? 'Add field photos to the Subproject Gallery.'
-                                        : 'Upload supporting documents. These files do not appear in the Gallery.'}
-                                </p>
-                            </div>
-                            <button type="button" className="dashboard-modal__close" onClick={() => setUploadModal(null)} aria-label="Close upload">
-                                <X aria-hidden="true" />
-                            </button>
-                        </header>
-                        <div className="dashboard-modal__body">
-                            <DriveUploadDropzone
-                                section={uploadModal}
-                                canUpload={canEdit}
-                                isConnected={!!driveStatus?.isConnected}
-                                uploadFile={uploadDriveFile}
-                                onUploaded={file => setDriveFiles(current => [file, ...current])}
-                                onBatchComplete={(message) => setDriveMessage(message)}
-                            />
-                        </div>
-                    </section>
-                </div>
+                <DriveUploadModal
+                    section={uploadModal}
+                    title={uploadModal === 'gallery' ? 'Upload Gallery Images' : 'Add Subproject Files'}
+                    description={uploadModal === 'gallery'
+                        ? 'Add field photos to the Subproject Gallery.'
+                        : 'Upload supporting documents. These files do not appear in the Gallery.'}
+                    canUpload={canEdit}
+                    isConnected={!!driveStatus?.isConnected}
+                    uploadFile={uploadDriveFile}
+                    onUploaded={file => setDriveFiles(current => [file, ...current])}
+                    onBatchComplete={(message) => setDriveMessage(message)}
+                    onClose={() => setUploadModal(null)}
+                />
             )}
             <RecordBackLink onClick={onBack}>Back to {previousPageName}</RecordBackLink>
 
@@ -2498,7 +2484,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             onFileAdded={file => setDriveFiles(current => [file, ...current])}
                             onRequestDelete={requestDriveFileDelete}
                             onRefresh={loadDriveFiles}
-                            getFolderPath={file => `Subprojects / ${file.folder_year || 'Year'} / ${file.operating_unit || 'Operating Unit'} / ${file.ipo_name || 'IPO'} / ${file.subproject_name || 'Subproject'}`}
                             onMessage={(message) => setDriveMessage(message)}
                             showUploader={false}
                             showToolbar={false}
