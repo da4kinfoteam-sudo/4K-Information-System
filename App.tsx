@@ -1055,7 +1055,8 @@ const AppContent: React.FC = () => {
     const handleSelectIpoForLod = (ipo: IPO, year?: number) => {
         setSelectedIpo(ipo);
         setSelectedLodYear(year ?? null);
-        navigateTo('/lod-details');
+        const detailPath = buildDetailPath('/lod-details', ipo.id);
+        navigateTo(year ? `${detailPath}&year=${encodeURIComponent(String(year))}` : detailPath);
     };
 
     const renderPage = () => {
@@ -1729,8 +1730,19 @@ const AppContent: React.FC = () => {
             case '/level-of-development':
                 return <LODPage ipos={ipos} onSelectIpo={handleSelectIpoForLod} />;
             case '/lod-details':
-                if (!selectedIpo) return <div>Select an IPO</div>;
-                return <LODDetails ipo={selectedIpo} onBack={handleBack} initialYear={selectedLodYear} />;
+                {
+                    const routeId = getRouteId(routeParams);
+                    const routeIpo = findByRouteId(ipos, routeId);
+                    const item = routeId !== null
+                        ? (selectedIpo?.id === routeId ? selectedIpo : routeIpo)
+                        : selectedIpo;
+                    const routeYear = Number(routeParams.get('year'));
+                    const assessmentYear = Number.isFinite(routeYear) && routeYear > 0 ? routeYear : selectedLodYear;
+                    if (!item && routeId !== null && isGlobalRefreshing) return <div>Loading LOD assessment...</div>;
+                    if (!item && routeId !== null) return <div>LOD record not found or not accessible. Return to the Level of Development list.</div>;
+                    if (!item) return <div>Select an IPO</div>;
+                    return <LODDetails ipo={item} onBack={handleBack} initialYear={assessmentYear} />;
+                }
             case '/commodity-mapping':
                 return <CommodityMappingPage subprojects={subprojects} ipos={ipos} />;
             default:

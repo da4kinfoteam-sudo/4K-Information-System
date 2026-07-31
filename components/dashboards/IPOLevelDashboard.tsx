@@ -37,6 +37,8 @@ import {
 import { IPO, LodAnswer, LodAssessment, LodChoice, LodLevelConfig, LodQuestion, LodSection } from '../../constants';
 import { supabase } from '../../supabaseClient';
 import { parseLocation } from '../LocationPicker';
+import { getLodEffectiveState } from '../../lib/lodScoring';
+import { subscribeToLodDataChanges } from '../../lib/lodDataSync';
 
 interface IPOLevelDashboardProps {
     ipos: IPO[];
@@ -44,7 +46,7 @@ interface IPOLevelDashboardProps {
     onSelectLodIpo?: (ipo: IPO, year?: number) => void;
 }
 
-type ProgressionStatus = 'Improved' | 'Maintained' | 'Declined' | 'New / No Baseline' | 'Needs Assessment';
+type ProgressionStatus = 'Improved' | 'Maintained' | 'Declined' | 'New / No Baseline' | 'Needs Assessment' | 'Incomplete' | 'Dropped';
 
 interface ComponentScore {
     weighted: number | null;
@@ -89,6 +91,7 @@ interface LodDashboardRow {
     isAtRisk: boolean;
     isReadyForScaleUp: boolean;
     history: { year: number; level: number }[];
+    effectiveState: ReturnType<typeof getLodEffectiveState>;
 }
 
 interface LodDashboardData {
@@ -118,6 +121,8 @@ const LEVEL_COLORS: Record<number, string> = {
 };
 
 const FOR_ASSESSMENT_COLOR = '#94a3b8';
+const INCOMPLETE_COLOR = '#f59e0b';
+const DROPPED_COLOR = '#64748b';
 
 const STATUS_COLORS: Record<ProgressionStatus, string> = {
     Improved: '#16a34a',
@@ -125,6 +130,8 @@ const STATUS_COLORS: Record<ProgressionStatus, string> = {
     Declined: '#dc2626',
     'New / No Baseline': '#f59e0b',
     'Needs Assessment': '#94a3b8',
+    Incomplete: INCOMPLETE_COLOR,
+    Dropped: DROPPED_COLOR,
 };
 
 const STATUS_TEXT_CLASS: Record<ProgressionStatus, string> = {
@@ -133,6 +140,8 @@ const STATUS_TEXT_CLASS: Record<ProgressionStatus, string> = {
     Declined: 'lod-status-text--red',
     'New / No Baseline': 'lod-status-text--orange',
     'Needs Assessment': 'lod-status-text--gray',
+    Incomplete: 'lod-status-text--orange',
+    Dropped: 'lod-status-text--gray',
 };
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -184,17 +193,6 @@ const percent = (part: number, total: number) => {
     return `${((part / total) * 100).toFixed(1)}%`;
 };
 
-const getEffectiveLevel = (assessment: LodAssessment | null | undefined, levelConfigs: LodLevelConfig[]) => {
-    if (!assessment) return null;
-
-    const explicitLevel = Number(assessment.manual_level ?? assessment.computed_level);
-    if (explicitLevel >= 1 && explicitLevel <= 5) return Math.round(explicitLevel);
-
-    const score = Number(assessment.total_score);
-    const matchedConfig = levelConfigs.find(config => score >= Number(config.min_score) && score <= Number(config.max_score));
-    return matchedConfig ? Number(matchedConfig.level) : null;
-};
-
 const getAssessmentKey = (assessmentId: number, questionId: number) => `${assessmentId}:${questionId}`;
 
 const getComponentScores = (
@@ -221,16 +219,14 @@ const getComponentScores = (
         questions.forEach(question => {
             const choices = choicesByQuestion.get(question.id) || [];
             const maxChoicePoints = choices.reduce((max, choice) => Math.max(max, Number(choice.points) || 0), 0);
-            const questionWeight = Number(question.weight) || 1;
-
-            if (maxChoicePoints > 0) {
-                possible += maxChoicePoints * questionWeight;
-            }
-
             const answer = answersByAssessmentQuestion.get(getAssessmentKey(assessment.id, question.id));
-            if (answer) {
+            const selectedChoice = answer
+                ? choices.find(choice => Number(choice.id) === Number(answer.choice_id))
+                : null;
+            if (selectedChoice && maxChoicePoints > 0) {
                 hasAnswer = true;
-                earned += Number(answer.points_earned) || 0;
+                possible += maxChoicePoints;
+                earned += Number(selectedChoice.points) || 0;
             }
         });
 
@@ -354,6 +350,13 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
         };
 
         fetchDashboardData();
+        const unsubscribe = subscribeToLodDataChanges(() => fetchDashboardData());
+        const refreshOnFocus = () => fetchDashboardData();
+        window.addEventListener('focus', refreshOnFocus);
+        return () => {
+            unsubscribe();
+            window.removeEventListener('focus', refreshOnFocus);
+        };
     }, []);
 
     const model = useMemo(() => {
@@ -402,8 +405,10 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             const previousAssessment = currentAssessment
                 ? ipoAssessments.find(assessment => Number(assessment.year) < Number(currentAssessment.year)) || null
                 : null;
-            const currentLevel = getEffectiveLevel(currentAssessment, data.levelConfigs);
-            const previousLevel = getEffectiveLevel(previousAssessment, data.levelConfigs);
+            const effectiveState = getLodEffectiveState(currentAssessment);
+            const previousEffectiveState = getLodEffectiveState(previousAssessment);
+            const currentLevel = effectiveState.level;
+            const previousLevel = previousEffectiveState.level;
             const change = currentLevel !== null && previousLevel !== null ? currentLevel - previousLevel : null;
             const componentScores = getComponentScores(currentAssessment, data.sections, questionsBySection, choicesByQuestion, answersByAssessmentQuestion);
             const previousComponentScores = getComponentScores(previousAssessment, data.sections, questionsBySection, choicesByQuestion, answersByAssessmentQuestion);
@@ -420,11 +425,15 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             const history = ipoAssessments
                 .slice()
                 .sort((a, b) => Number(a.year) - Number(b.year))
-                .map(assessment => ({ year: Number(assessment.year), level: getEffectiveLevel(assessment, data.levelConfigs) }))
+                .map(assessment => ({ year: Number(assessment.year), level: getLodEffectiveState(assessment).level }))
                 .filter((entry): entry is { year: number; level: number } => entry.level !== null);
 
             let status: ProgressionStatus = 'Needs Assessment';
-            if (currentAssessment && previousLevel === null) {
+            if (effectiveState.kind === 'dropped') {
+                status = 'Dropped';
+            } else if (effectiveState.kind === 'incomplete') {
+                status = 'Incomplete';
+            } else if (currentLevel !== null && previousLevel === null) {
                 status = 'New / No Baseline';
             } else if (change !== null && change > 0) {
                 status = 'Improved';
@@ -455,6 +464,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                     scaleUpComponentsPass
                 ),
                 history,
+                effectiveState,
             } satisfies LodDashboardRow;
         });
 
@@ -498,7 +508,9 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     }, [levelFilter, model.rows, provinceFilter, regionFilter, statusFilter]);
 
     const assessedRows = filteredRows.filter(row => row.currentAssessment && row.currentLevel !== null);
-    const forAssessmentRows = filteredRows.filter(row => !row.currentAssessment || row.currentLevel === null);
+    const forAssessmentRows = filteredRows.filter(row => row.effectiveState.kind === 'for-assessment');
+    const incompleteRows = filteredRows.filter(row => row.effectiveState.kind === 'incomplete');
+    const droppedRows = filteredRows.filter(row => row.effectiveState.kind === 'dropped');
 
     const metrics = useMemo(() => {
         const assessedTotal = assessedRows.length;
@@ -559,8 +571,24 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 color: FOR_ASSESSMENT_COLOR,
                 percent: totalRows > 0 ? (forAssessmentRows.length / totalRows) * 100 : 0,
             },
+            {
+                level: 'incomplete' as const,
+                key: 'incomplete',
+                name: 'Incomplete',
+                count: incompleteRows.length,
+                color: INCOMPLETE_COLOR,
+                percent: totalRows > 0 ? (incompleteRows.length / totalRows) * 100 : 0,
+            },
+            {
+                level: 'dropped' as const,
+                key: 'dropped',
+                name: 'Dropped',
+                count: droppedRows.length,
+                color: DROPPED_COLOR,
+                percent: totalRows > 0 ? (droppedRows.length / totalRows) * 100 : 0,
+            },
         ];
-    }, [assessedRows, filteredRows.length, forAssessmentRows.length]);
+    }, [assessedRows, droppedRows.length, filteredRows.length, forAssessmentRows.length, incompleteRows.length]);
 
     const progressionByYear = useMemo(() => {
         const includedIpoIds = new Set(filteredRows.map(row => Number(row.ipo.id)));
@@ -568,17 +596,20 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             ...model.availableYears,
             ...(yearFilter !== 'All' && Number.isFinite(Number(yearFilter)) ? [Number(yearFilter)] : []),
         ])).sort((a, b) => a - b);
-        const yearGroups = new Map<number, { year: number; level1: number; level2: number; level3: number; level4: number; level5: number; forAssessment: number; levels: number[] }>();
+        const yearGroups = new Map<number, { year: number; level1: number; level2: number; level3: number; level4: number; level5: number; forAssessment: number; incomplete: number; dropped: number; levels: number[] }>();
 
         years.forEach(year => {
-            const group = { year, level1: 0, level2: 0, level3: 0, level4: 0, level5: 0, forAssessment: 0, levels: [] as number[] };
+            const group = { year, level1: 0, level2: 0, level3: 0, level4: 0, level5: 0, forAssessment: 0, incomplete: 0, dropped: 0, levels: [] as number[] };
 
             includedIpoIds.forEach(ipoId => {
                 const assessment = model.assessmentsByIpo.get(ipoId)?.find(item => Number(item.year) === year) || null;
-                const level = getEffectiveLevel(assessment, data.levelConfigs);
+                const state = getLodEffectiveState(assessment);
+                const level = state.level;
 
                 if (level === null) {
-                    group.forAssessment += 1;
+                    if (state.kind === 'dropped') group.dropped += 1;
+                    else if (state.kind === 'incomplete') group.incomplete += 1;
+                    else group.forAssessment += 1;
                     return;
                 }
 
@@ -599,9 +630,11 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 level4: group.level4,
                 level5: group.level5,
                 forAssessment: group.forAssessment,
+                incomplete: group.incomplete,
+                dropped: group.dropped,
                 average: Number((average(group.levels) || 0).toFixed(2)),
             }));
-    }, [data.levelConfigs, filteredRows, model.assessmentsByIpo, model.availableYears, yearFilter]);
+    }, [filteredRows, model.assessmentsByIpo, model.availableYears, yearFilter]);
 
     const componentAverages = useMemo(() => {
         return data.sections.map(section => {
@@ -649,7 +682,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             const sectionMaxScore = questions.reduce((total, question) => {
                 const choices = model.choicesByQuestion.get(question.id) || [];
                 const maxChoicePoints = choices.reduce((max, choice) => Math.max(max, Number(choice.points) || 0), 0);
-                const maxScore = maxChoicePoints * (Number(question.weight) || 1);
+                const maxScore = maxChoicePoints;
                 questionMaxScores.set(question.id, maxScore);
                 return total + maxScore;
             }, 0);
@@ -662,7 +695,10 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                         if (!row.currentAssessment || questionMaxScore <= 0 || sectionMaxScore <= 0) return null;
                         const answer = model.answersByAssessmentQuestion.get(getAssessmentKey(row.currentAssessment.id, question.id));
                         if (!answer) return null;
-                        return ((Number(answer.points_earned) || 0) / sectionMaxScore) * sectionWeight;
+                        const selectedChoice = (model.choicesByQuestion.get(question.id) || [])
+                            .find(choice => Number(choice.id) === Number(answer.choice_id));
+                        if (!selectedChoice) return null;
+                        return ((Number(selectedChoice.points) || 0) / sectionMaxScore) * sectionWeight;
                     })
                     .filter((value): value is number => value !== null);
 
@@ -731,7 +767,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     }, [assessedRows]);
 
     const statusDistribution = useMemo(() => {
-        const statuses: ProgressionStatus[] = ['Improved', 'Maintained', 'Declined', 'New / No Baseline', 'Needs Assessment'];
+        const statuses: ProgressionStatus[] = ['Improved', 'Maintained', 'Declined', 'New / No Baseline', 'Incomplete', 'Dropped', 'Needs Assessment'];
         return statuses.map(status => ({
             status,
             count: filteredRows.filter(row => row.status === status).length,
@@ -828,8 +864,8 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             'Region',
             'Province',
             'Assessment Year',
-            'Current LOD Score',
-            'Previous LOD Score',
+            'Current LOD',
+            'Previous LOD',
             'Change',
             ...data.sections.map(section => section.title),
             'Status',
@@ -839,8 +875,8 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             row.region,
             row.province,
             row.currentAssessment?.year || '',
-            row.currentLevel ?? '',
-            row.previousLevel ?? '',
+            row.effectiveState.label,
+            getLodEffectiveState(row.previousAssessment).label,
             row.change ?? '',
             ...data.sections.map(section => {
                 const score = row.componentScores[section.id];
@@ -1023,7 +1059,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                             <label htmlFor="lod-status-filter">Status</label>
                             <select id="lod-status-filter" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
                                 <option value="All">All Statuses</option>
-                                {(['Improved', 'Maintained', 'Declined', 'New / No Baseline', 'Needs Assessment'] as ProgressionStatus[]).map(status => (
+                                {(['Improved', 'Maintained', 'Declined', 'New / No Baseline', 'Incomplete', 'Dropped', 'Needs Assessment'] as ProgressionStatus[]).map(status => (
                                     <option key={status} value={status}>{status}</option>
                                 ))}
                             </select>
@@ -1116,13 +1152,15 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                                     <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={32} />
                                     <Tooltip />
                                     <Bar stackId="levels" dataKey="forAssessment" name="For Assessment" fill={FOR_ASSESSMENT_COLOR} />
+                                    <Bar stackId="levels" dataKey="incomplete" name="Incomplete" fill={INCOMPLETE_COLOR} />
+                                    <Bar stackId="levels" dataKey="dropped" name="Dropped" fill={DROPPED_COLOR} />
                                     {[1, 2, 3, 4, 5].map(level => (
                                         <Bar key={level} stackId="levels" dataKey={`level${level}`} name={LEVEL_LABELS[level]} fill={LEVEL_COLORS[level]} />
                                     ))}
                                 </BarChart>
                             </ResponsiveContainer>
                             <div className="lod-chart-legend lod-chart-legend--inline">
-                                {[...levelDistribution.filter(item => item.level !== 'for-assessment'), levelDistribution.find(item => item.level === 'for-assessment')!].map(item => (
+                                {levelDistribution.map(item => (
                                     <div key={item.key} className="lod-legend-row">
                                         <span style={{ background: item.color }}></span>
                                         <p>{item.name}</p>
@@ -1379,8 +1417,8 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                                     <td>{row.region}</td>
                                     <td>{row.province}</td>
                                     <td className="data-table__numeric">{row.currentAssessment?.year || 'No Data'}</td>
-                                    <td className="data-table__numeric">{formatScore(row.currentLevel)}</td>
-                                    <td className="data-table__numeric">{formatScore(row.previousLevel)}</td>
+                                    <td className={`data-table__numeric lod-table-state--${row.effectiveState.kind}`}>{row.effectiveState.label}</td>
+                                    <td className="data-table__numeric">{getLodEffectiveState(row.previousAssessment).label}</td>
                                     <td className={`data-table__numeric ${row.change !== null && row.change < 0 ? 'lod-negative' : row.change !== null && row.change > 0 ? 'lod-positive' : ''}`}>
                                         {row.change === null ? 'No Data' : `${row.change > 0 ? '+' : ''}${formatScore(row.change)}`}
                                     </td>

@@ -32,6 +32,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess, usePagination } from './mainfunctions/TableHooks';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
+import { getLodEffectiveState } from '../lib/lodScoring';
+import { subscribeToLodDataChanges } from '../lib/lodDataSync';
 import {
     deleteIpoDriveFile,
     formatFileSize,
@@ -429,6 +431,10 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
             }
         };
         fetchLOD();
+        const unsubscribe = subscribeToLodDataChanges(detail => {
+            if (!detail.ipoId || Number(detail.ipoId) === Number(ipo.id)) fetchLOD();
+        });
+        return unsubscribe;
     }, [ipo.id]);
 
     const showDriveToast = (type: 'success' | 'error', message: string) => {
@@ -1596,7 +1602,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                             <div className="ipo-lod-grid">
                                 {lodAssessments.map(assessment => {
                                     const isCurrentYear = assessment.year === new Date().getFullYear();
-                                    const level = assessment.manual_level || assessment.computed_level || 'N/A';
+                                    const state = getLodEffectiveState(assessment);
                                     return (
                                         <button
                                             key={assessment.id}
@@ -1606,7 +1612,10 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                             title={`Open ${assessment.year} LOD assessment`}
                                         >
                                             <span className="detail-metric-label">{assessment.year}</span>
-                                            <span className="detail-metric-value">Level {level}</span>
+                                            <span className={`detail-metric-value lod-table-state--${state.kind}`}>{state.label}</span>
+                                            <span className="detail-meta">
+                                                {assessment.answered_question_count ?? 0} / {assessment.required_question_count ?? 0} answered
+                                            </span>
                                         </button>
                                     );
                                 })}
