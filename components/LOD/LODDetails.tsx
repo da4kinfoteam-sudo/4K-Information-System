@@ -1,10 +1,14 @@
 // Author: 4K
 import React, { useState, useEffect } from 'react';
+import { Eraser, RotateCcw } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { IPO, LodSection, LodQuestion, LodChoice, LodAssessment, LodAnswer, LodLevelConfig } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { useUserAccess } from '../mainfunctions/TableHooks';
+import { calculateLodScore, getLodEffectiveState, resolveManualLevelForSave } from '../../lib/lodScoring';
+import { notifyLodDataChanged } from '../../lib/lodDataSync';
+import { ConfirmDialog } from '../ui/enterprise';
 
 interface LODDetailsProps {
     ipo: IPO;
@@ -35,11 +39,15 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [manualLevel, setManualLevel] = useState<number | ''>('');
+    const [manualOverrideReason, setManualOverrideReason] = useState('');
+    const [retainManualOverride, setRetainManualOverride] = useState(false);
     const [remarks, setRemarks] = useState('');
     const [isCarriedOver, setIsCarriedOver] = useState<boolean>(false);
     const [isDropped, setIsDropped] = useState<boolean>(false);
     const [expandedSections, setExpandedSections] = useState<Record<number, boolean>>({});
     const [showSuccessModal, setShowSuccessModal] = useState(false);
+    const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
+    const [saveError, setSaveError] = useState('');
 
     // Local Answers State (Map<QuestionId, ChoiceId>)
     const [localAnswers, setLocalAnswers] = useState<Record<number, number>>({});
@@ -90,6 +98,8 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
         if (aData) {
             setAssessment(aData);
             setManualLevel(aData.manual_level ?? '');
+            setManualOverrideReason(aData.manual_override_reason ?? '');
+            setRetainManualOverride(aData.manual_level !== null && aData.manual_level !== undefined);
             setRemarks(aData.remarks ?? '');
             setIsCarriedOver(aData.is_carried_over || false);
             setIsDropped(aData.is_dropped || false);
@@ -133,6 +143,8 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             setLocalTotalValues({});
             setLocalSpecificValues({});
             setManualLevel('');
+            setManualOverrideReason('');
+            setRetainManualOverride(false);
             setRemarks('');
             setIsCarriedOver(false);
             setIsDropped(false);
@@ -155,11 +167,11 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
         if (isLocked) return;
         const qId = Number(questionId);
         const cId = Number(choiceId);
-        console.log(`Answer changed: Q:${qId} -> C:${cId}`);
         setLocalAnswers(prev => ({
             ...prev,
             [qId]: cId
         }));
+        if (assessment?.manual_level) setRetainManualOverride(false);
     };
 
     const handleAnswerRemarkChange = (questionId: number, remark: string) => {
@@ -170,193 +182,133 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
         }));
     };
 
-    const calculateScore = () => {
-        let totalWeightedScore = 0;
-        let totalMaxWeightedScore = 0;
+    const calculateScore = () => calculateLodScore({
+        sections,
+        questions,
+        choices,
+        answers: Object.entries(localAnswers).map(([questionId, choiceId]) => ({
+            question_id: Number(questionId),
+            choice_id: Number(choiceId),
+        })),
+        levelConfigs,
+    });
 
-        // Calculate per section
-        sections.forEach(section => {
-            const sectionQuestions = questions.filter(q => q.section_id === section.id);
-            if (sectionQuestions.length === 0) return;
+    const removeLocalValue = <T,>(values: Record<number, T>, questionId: number) => {
+        const next = { ...values };
+        delete next[questionId];
+        return next;
+    };
 
-            let sectionScore = 0;
-            let sectionMaxScore = 0;
+    const handleClearAnswer = (questionId: number) => {
+        if (isLocked) return;
+        setLocalAnswers(previous => removeLocalValue(previous, questionId));
+        setLocalAnswerRemarks(previous => removeLocalValue(previous, questionId));
+        setLocalActualValues(previous => removeLocalValue(previous, questionId));
+        setLocalTotalValues(previous => removeLocalValue(previous, questionId));
+        setLocalSpecificValues(previous => removeLocalValue(previous, questionId));
+        if (assessment?.manual_level) setRetainManualOverride(false);
+    };
 
-            sectionQuestions.forEach(q => {
-                const qChoices = choices.filter(c => c.question_id === q.id);
-                if (qChoices.length === 0) return;
-
-                // Max points for this question
-                const maxPoints = Math.max(...qChoices.map(c => c.points));
-                sectionMaxScore += (maxPoints * q.weight);
-
-                // Selected points
-                const selectedChoiceId = localAnswers[q.id];
-                if (selectedChoiceId) {
-                    const selectedChoice = qChoices.find(c => c.id === selectedChoiceId);
-                    if (selectedChoice) {
-                        sectionScore += (selectedChoice.points * q.weight);
-                    }
-                }
-            });
-
-            // Apply Section Weight
-            // If section weight is 0 or undefined, treat as raw sum? Or skip?
-            // Let's assume section.weight is a percentage (e.g., 40 for 40%) or raw weight.
-            // If all section weights sum to 100, we can treat them as percentages.
-            // Formula: (SectionScore / SectionMaxScore) * SectionWeight
-
-            if (sectionMaxScore > 0) {
-                const sectionPercentage = sectionScore / sectionMaxScore;
-                totalWeightedScore += (sectionPercentage * section.weight);
-                totalMaxWeightedScore += section.weight;
-            }
-        });
-
-        // If no weights defined or total max weight is 0, fallback to raw sum?
-        // Or if totalMaxWeightedScore is e.g. 100, then totalWeightedScore is the final score (0-100).
-        // If totalMaxWeightedScore is e.g. 1 (0.4 + 0.6), then totalWeightedScore is 0-1.
-        // Let's normalize to 0-100 scale for level comparison.
-
-        let finalScore = 0;
-        if (totalMaxWeightedScore > 0) {
-            // Normalize to 100 if weights are like 40, 60 (sum=100) -> score is already 0-100
-            // If weights are 0.4, 0.6 (sum=1) -> score is 0-1 -> multiply by 100?
-            // Actually, let's just use the sum of weights as the denominator if we want a percentage.
-            // But the user sets "ranges" like 30-40. This implies the final score is an absolute number.
-            // If the user sets weights as 40 and 60, the max score is 100.
-            // If the user sets weights as 10 and 10, max score is 20.
-            // So finalScore = totalWeightedScore.
-            finalScore = totalWeightedScore;
-        } else {
-            // Fallback to raw sum if no section weights?
-            // Or just 0.
-            // Let's assume user sets weights correctly.
-            finalScore = totalWeightedScore;
-        }
-
-        // Compute Level based on Configs
-        let level = 1;
-        // Find matching range
-        // If score is 35, and Level 2 is 30-40.
-        const matchedConfig = levelConfigs.find(c => finalScore >= c.min_score && finalScore <= c.max_score);
-        if (matchedConfig) {
-            level = matchedConfig.level;
-        } else {
-            // Fallback logic if gaps?
-            // If score > max of Level 5, level 5.
-            // If score < min of Level 1, level 1.
-            if (levelConfigs.length > 0) {
-                const maxLevel = levelConfigs[levelConfigs.length - 1];
-                if (finalScore > maxLevel.max_score) level = maxLevel.level;
-                else level = 1; // Default
-            }
-        }
-
-        return { totalScore: finalScore, level, maxPossibleScore: totalMaxWeightedScore };
+    const handleClearAllAnswers = () => {
+        if (isLocked) return;
+        setLocalAnswers({});
+        setLocalAnswerRemarks({});
+        setLocalActualValues({});
+        setLocalTotalValues({});
+        setLocalSpecificValues({});
+        if (assessment?.manual_level) setRetainManualOverride(false);
+        setShowClearAllConfirm(false);
     };
 
     const handleSave = async () => {
         if (isLocked) return;
         if (!ipo || !supabase) return;
+        setSaveError('');
         setSaving(true);
 
-        const { totalScore, level } = calculateScore();
-
-        // 1. Upsert Assessment
-        const assessmentPayload = {
-            ipo_id: ipo.id,
-            year: selectedYear,
-            total_score: totalScore,
-            computed_level: level,
-            manual_level: isLodAdmin ? (manualLevel === '' ? null : Number(manualLevel)) : (assessment?.manual_level ?? null),
-            is_carried_over: isLodAdmin ? isCarriedOver : (assessment?.is_carried_over ?? false),
-            is_dropped: isLodAdmin ? isDropped : (assessment?.is_dropped ?? false),
-            remarks: remarks,
-            assessed_by: currentUser?.id,
-            assessor_name: currentUser?.fullName || currentUser?.email,
-            updated_at: new Date().toISOString()
-        };
-
-        // Check if exists to determine insert or update (though upsert handles it, we need ID for answers)
-        let assessmentId = assessment?.id;
-
-        const { data: savedAssessment, error: aError } = await supabase
-            .from('lod_assessments')
-            .upsert(assessmentPayload, { onConflict: 'ipo_id, year' })
-            .select()
-            .single();
-
-        if (aError || !savedAssessment) {
-            alert('Error saving assessment: ' + aError?.message);
-            setSaving(false);
-            return;
-        }
-
-        setAssessment(savedAssessment);
-        assessmentId = savedAssessment.id;
-
-        // 2. Upsert Answers
-        const validQuestionIds = new Set(questions.map(q => q.id));
-        const validChoiceIds = new Set(choices.map(c => c.id));
-
+        const score = calculateScore();
+        const validQuestionIds = new Set(questions.map(question => Number(question.id)));
+        const validChoiceIds = new Set(choices.map(choice => Number(choice.id)));
         const answersPayload = Object.entries(localAnswers)
             .filter(([qIdStr, cId]) => {
                 const qId = Number(qIdStr);
                 const choiceId = Number(cId);
-                // Ensure both are valid numbers and the question exists
-                return !isNaN(qId) && !isNaN(choiceId) && validQuestionIds.has(qId);
+                return Number.isFinite(qId)
+                    && Number.isFinite(choiceId)
+                    && validQuestionIds.has(qId)
+                    && validChoiceIds.has(choiceId);
             })
             .map(([qIdStr, cId]) => {
                 const qId = Number(qIdStr);
                 const choiceId = Number(cId);
-                const question = questions.find(q => q.id === qId);
-                const choice = choices.find(c => c.id === choiceId);
-
-                const points = choice ? (Number(choice.points) || 0) : 0;
-                const weight = question ? (Number(question.weight) || 1) : 1;
                 const remark = localAnswerRemarks[qId] || null;
-
                 const actual = localActualValues[qId];
                 const total = localTotalValues[qId];
-
-                const safeNum = (val: any) => {
+                const safeNum = (val: number | '' | undefined) => {
                     if (val === '' || val === undefined || val === null) return null;
                     const n = Number(val);
-                    return isNaN(n) ? null : n;
+                    return Number.isFinite(n) ? n : null;
                 };
 
-                const pointsEarned = Number((points * weight).toFixed(4));
-
                 return {
-                    assessment_id: assessmentId,
                     question_id: qId,
                     choice_id: choiceId,
-                    points_earned: isNaN(pointsEarned) ? 0 : pointsEarned,
                     remarks: remark,
                     actual_value: safeNum(actual),
                     total_value: safeNum(total),
                     specific_answer_value: localSpecificValues[qId] || null,
-                    updated_at: new Date().toISOString()
                 };
             });
 
-        console.log('Saving LOD Answers Payload:', answersPayload);
+        const existingManualLevel = assessment?.manual_level ?? null;
+        const manualLevelToSave = resolveManualLevelForSave({
+            canManageOverride: isLodAdmin,
+            retainManualOverride,
+            enteredManualLevel: manualLevel === '' ? null : Number(manualLevel),
+            existingManualLevel,
+            existingAssessmentComplete: Boolean(assessment?.is_complete),
+            nextAssessmentComplete: score.isComplete,
+        });
+        const manualReasonToSave = manualLevelToSave !== null
+            ? (manualOverrideReason || assessment?.manual_override_reason || '')
+            : null;
 
-        if (answersPayload.length > 0) {
-            const { error: ansError } = await supabase
-                .from('lod_answers')
-                .upsert(answersPayload, { onConflict: 'assessment_id,question_id' });
-
-            if (ansError) {
-                console.error('Error saving answers:', ansError);
-                alert(`Assessment saved but error saving detailed answers: ${ansError.message || JSON.stringify(ansError)}`);
-            }
+        if (manualLevelToSave !== null && !manualReasonToSave?.trim()) {
+            setSaveError('Enter a reason before retaining or applying a manual level override.');
+            setSaving(false);
+            return;
         }
 
-        logAction('Updated LOD Assessment', `IPO: ${ipo.name}, Year: ${selectedYear}, Level: ${manualLevel || level}`);
+        const { data: savedAssessment, error } = await supabase.rpc('save_lod_assessment', {
+            p_ipo_id: ipo.id,
+            p_year: selectedYear,
+            p_answers: answersPayload,
+            p_manual_level: manualLevelToSave,
+            p_manual_override_reason: manualReasonToSave,
+            p_is_carried_over: isLodAdmin ? isCarriedOver : (assessment?.is_carried_over ?? false),
+            p_is_dropped: isLodAdmin ? isDropped : (assessment?.is_dropped ?? false),
+            p_remarks: remarks || null,
+            p_assessed_by: currentUser?.id ?? null,
+            p_assessor_name: currentUser?.fullName || currentUser?.email || null,
+        });
 
-        // Refresh
+        if (error || !savedAssessment) {
+            setSaveError(error?.message || 'The assessment could not be saved.');
+            setSaving(false);
+            return;
+        }
+
+        const saved = savedAssessment as LodAssessment;
+        setAssessment(saved);
+        logAction(
+            'Updated LOD Assessment',
+            `IPO: ${ipo.name}, Year: ${selectedYear}, State: ${getLodEffectiveState(saved).label}`
+        );
+        notifyLodDataChanged({
+            ipoId: ipo.id,
+            year: selectedYear,
+            reason: isDropped ? 'drop' : manualLevelToSave !== null ? 'override' : answersPayload.length === 0 ? 'clear' : 'save',
+        });
         await fetchAssessmentData();
         setSaving(false);
         setShowSuccessModal(true);
@@ -364,8 +316,16 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
 
     if (!ipo) return <div>Loading IPO...</div>;
 
-    const { totalScore, level, maxPossibleScore } = calculateScore();
-    const currentLevel = manualLevel !== '' ? manualLevel : level;
+    const score = calculateScore();
+    const previewManualLevel = score.isComplete && !retainManualOverride
+        ? null
+        : manualLevel === '' ? null : Number(manualLevel);
+    const effectiveState = getLodEffectiveState({
+        manual_level: previewManualLevel,
+        computed_level: score.computedLevel,
+        is_complete: score.isComplete,
+        is_dropped: isDropped,
+    });
 
     const toggleSection = (sectionId: number) => {
         setExpandedSections(prev => ({
@@ -375,31 +335,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
     };
 
     const calculateSectionScore = (sectionId: number) => {
-        const sectionQuestions = questions.filter(q => q.section_id === sectionId);
-        let score = 0;
-        let maxScore = 0;
-
-        sectionQuestions.forEach(q => {
-            const qChoices = choices.filter(c => c.question_id === q.id);
-            if (qChoices.length === 0) return;
-
-            const maxPoints = Math.max(...qChoices.map(c => c.points));
-            maxScore += (maxPoints * q.weight);
-
-            const selectedChoiceId = localAnswers[q.id];
-            if (selectedChoiceId) {
-                const selectedChoice = qChoices.find(c => c.id === selectedChoiceId);
-                if (selectedChoice) {
-                    score += (selectedChoice.points * q.weight);
-                }
-            }
-        });
-
-        const sectionData = sections.find(s => s.id === sectionId);
-        if (sectionData && maxScore > 0) {
-            return (score / maxScore) * sectionData.weight;
-        }
-        return 0;
+        return score.sectionScores.find(section => section.sectionId === sectionId)?.weightedScore ?? 0;
     };
 
     return (
@@ -430,29 +366,32 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             {/* Score Card */}
             <div className="detail-metric-grid">
                 <div className="detail-metric lod-assessment-metric lod-assessment-metric--primary">
-                    <h4 className="detail-metric-label">Level of Development</h4>
+                    <h4 className="detail-metric-label">Effective LOD</h4>
                     <div className="lod-assessment-metric__value">
-                        <span>{currentLevel}</span>
-                        <small>/ 5</small>
+                        <span>{effectiveState.label}</span>
                     </div>
-                    {manualLevel !== '' && <p className="form-help form-help--warning">(Manually Overridden)</p>}
+                    <p className="form-help">
+                        Computed: {score.computedLevel ? `Level ${score.computedLevel}` : 'Not published'}
+                        {manualLevel !== '' ? ` · Manual: Level ${manualLevel}` : ''}
+                    </p>
                 </div>
                 <div className="detail-metric lod-assessment-metric lod-assessment-metric--info">
-                    <h4 className="detail-metric-label">Total Score</h4>
+                    <h4 className="detail-metric-label">{score.isComplete ? 'Total Score' : 'Score Preview'}</h4>
                     <div className="lod-assessment-metric__value">
-                        <span>{totalScore.toFixed(1)}</span>
-                        <small>/ {maxPossibleScore.toFixed(1)}</small>
+                        <span>{score.totalScore.toFixed(1)}</span>
+                        <small>/ {score.maxPossibleScore.toFixed(1)}</small>
                     </div>
+                    {!score.isComplete && <p className="form-help">Incomplete scores are not published.</p>}
                 </div>
                 <div className="detail-metric lod-assessment-metric lod-assessment-metric--status">
-                    <h4 className="detail-metric-label">Status & Assessor</h4>
+                    <h4 className="detail-metric-label">Answer Coverage</h4>
+                    <div className="lod-assessment-metric__value">
+                        <span>{score.answeredQuestionCount}</span>
+                        <small>/ {score.requiredQuestionCount}</small>
+                    </div>
                     <div className="mt-2 space-y-1">
-                        <div className="flex items-center gap-2">
-                            <span className={`status-badge status-badge--compact ${assessment ? 'status-badge--completed' : 'status-badge--pending'}`}>
-                                {assessment ? 'Completed' : 'Pending'}
-                            </span>
-                            {assessment && <span className="detail-meta">{new Date(assessment.updated_at!).toLocaleDateString()}</span>}
-                        </div>
+                        <p className="detail-meta">{score.coveragePercent.toFixed(0)}% answered</p>
+                        {assessment?.updated_at && <span className="detail-meta">Updated {new Date(assessment.updated_at).toLocaleDateString()}</span>}
                         {assessment?.assessor_name && (
                             <p className="lod-assessment-metric__assessor">
                                 <span className="detail-label">Assessed By:</span>
@@ -466,8 +405,16 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             {/* Questionnaire */}
             <div className="detail-card lod-questionnaire">
                 <div className="lod-questionnaire__header">
-                    <h3 className="detail-card-title">Assessment Questionnaire</h3>
-                    <p className="detail-meta">Complete the following sections to determine the LOD.</p>
+                    <div>
+                        <h3 className="detail-card-title">Assessment Questionnaire</h3>
+                        <p className="detail-meta">Complete all scored questions to publish the computed LOD.</p>
+                    </div>
+                    {!isLocked && Object.keys(localAnswers).length > 0 && (
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowClearAllConfirm(true)}>
+                            <RotateCcw aria-hidden="true" />
+                            Clear all answers
+                        </button>
+                    )}
                 </div>
 
                 {loading ? (
@@ -514,6 +461,11 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                         <div className="p-6 pt-2 space-y-6">
                                             {sectionQuestions.map(question => {
                                                 const qChoices = choices.filter(c => c.question_id === question.id);
+                                                const hasQuestionData = localAnswers[question.id] !== undefined
+                                                    || Boolean(localAnswerRemarks[question.id])
+                                                    || localActualValues[question.id] !== undefined
+                                                    || localTotalValues[question.id] !== undefined
+                                                    || Boolean(localSpecificValues[question.id]);
                                                 return (
                                                     <div key={question.id} className="lod-questionnaire__question-block">
                                                         <div className="flex gap-3 mb-2">
@@ -584,6 +536,17 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                                                     </div>
                                                                 )}
                                                             </div>
+                                                            {!isLocked && hasQuestionData && (
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-link lod-questionnaire__clear-answer"
+                                                                    onClick={() => handleClearAnswer(question.id)}
+                                                                    aria-label={`Clear answer for ${question.text}`}
+                                                                >
+                                                                    <Eraser aria-hidden="true" />
+                                                                    Clear answer
+                                                                </button>
+                                                            )}
                                                         </div>
 
                                                         <div className="lod-choice-grid">
@@ -650,17 +613,42 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                             <div className="space-y-4">
                                 <div>
                                     <label className="form-label">Manual Level Override (Admin Only)</label>
-                                    <div className="flex items-center gap-2">
+                                    <div className="lod-manual-override-grid">
                                         <input
                                             type="number"
                                             min="1" max="5"
                                             value={manualLevel}
-                                            onChange={(e) => setManualLevel(e.target.value === '' ? '' : Number(e.target.value))}
+                                            onChange={(e) => {
+                                                const value = e.target.value === '' ? '' : Number(e.target.value);
+                                                setManualLevel(value);
+                                                setRetainManualOverride(value !== '');
+                                            }}
                                             className="form-control lod-assessment__manual-level"
                                             placeholder="Auto"
                                         />
-                                        <span className="form-help">Leave empty to use computed level.</span>
+                                        <input
+                                            type="text"
+                                            value={manualOverrideReason}
+                                            onChange={(event) => setManualOverrideReason(event.target.value)}
+                                            className="form-control"
+                                            placeholder="Required reason for manual override"
+                                            disabled={manualLevel === '' || !retainManualOverride}
+                                        />
                                     </div>
+                                    {manualLevel !== '' && (
+                                        <label className="form-check lod-manual-override-retain">
+                                            <input
+                                                type="checkbox"
+                                                checked={retainManualOverride}
+                                                onChange={(event) => setRetainManualOverride(event.target.checked)}
+                                                className="form-checkbox"
+                                            />
+                                            <span>Publish the manual level instead of the completed computed assessment</span>
+                                        </label>
+                                    )}
+                                    <span className="form-help">
+                                        A completed questionnaire uses its computed level unless this override is explicitly retained.
+                                    </span>
                                 </div>
                                 <div className="flex flex-wrap gap-4">
                                     <label className="form-check">
@@ -686,6 +674,11 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                         )}
                     </div>
 
+                    {saveError && (
+                        <div className="notice notice--error" role="alert">
+                            <p>{saveError}</p>
+                        </div>
+                    )}
                     <div className="form-footer">
                         <button
                             onClick={onBack}
@@ -713,6 +706,16 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                     </div>
                 </div>
             </div>
+
+            {showClearAllConfirm && (
+                <ConfirmDialog
+                    title="Clear all LOD answers?"
+                    description="All selected answers and their remarks, calculation values, and specific-answer values will be removed when you save the assessment."
+                    confirmLabel="Clear all answers"
+                    onConfirm={handleClearAllAnswers}
+                    onCancel={() => setShowClearAllConfirm(false)}
+                />
+            )}
 
             {/* Success Modal */}
             {showSuccessModal && (

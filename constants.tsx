@@ -767,51 +767,6 @@ export interface ElcacArea {
     barangay: string;
 }
 
-// LOD Interfaces
-export interface LodSection {
-    id: number;
-    title: string;
-    description?: string;
-    order: number;
-}
-
-export interface LodQuestion {
-    id: number;
-    section_id: number;
-    text: string;
-    weight: number;
-    order: number;
-    choices?: LodChoice[];
-}
-
-export interface LodChoice {
-    id: number;
-    question_id: number;
-    text: string;
-    points: number;
-    order: number;
-}
-
-export interface LodAssessment {
-    id: number;
-    ipo_id: number;
-    year: number;
-    total_score: number;
-    computed_level: number;
-    manual_level?: number;
-    remarks?: string;
-    created_at?: string;
-    updated_at?: string;
-}
-
-export interface LodAnswer {
-    id: number;
-    assessment_id: number;
-    question_id: number;
-    choice_id: number;
-    points_earned: number;
-}
-
 // Data Lists
 export const operatingUnits = [
     'NPMO',
@@ -998,12 +953,16 @@ export interface LodAssessment {
     ipo_id: number;
     year: number;
     total_score: number;
-    computed_level: number;
+    computed_level: number | null;
     manual_level?: number | null;
     remarks?: string | null;
     is_carried_over?: boolean;
     is_dropped?: boolean;
-    assessed_by?: string | null;
+    is_complete?: boolean;
+    answered_question_count?: number;
+    required_question_count?: number;
+    manual_override_reason?: string | null;
+    assessed_by?: number | string | null;
     assessor_name?: string | null;
     updated_at?: string;
 }
@@ -1012,7 +971,7 @@ export interface LodAnswer {
     id: number;
     assessment_id: number;
     question_id: number;
-    choice_id: number;
+    choice_id: number | null;
     points_earned: number;
     remarks?: string;
     actual_value?: number | null;

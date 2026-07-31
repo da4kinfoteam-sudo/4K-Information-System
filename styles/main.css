@@ -6990,18 +6990,11 @@ button.bar1-drilldown-card:focus-visible {
 }
 
 .data-table-level {
-  align-items: center;
-  background: var(--app-surface-muted);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-md);
   color: var(--app-text);
-  display: inline-flex;
+  display: inline;
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-bold);
-  height: 2rem;
-  justify-content: center;
-  min-width: 2rem;
-  padding: 0 0.4rem;
+  padding: 0;
 }
 
 .visually-hidden {
@@ -21598,8 +21591,104 @@ button.bar1-drilldown-card:focus-visible {
 }
 
 .lod-questionnaire__header {
+  align-items: center;
   background: var(--app-surface-muted);
   border-bottom: 1px solid var(--app-border);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.lod-questionnaire__clear-answer {
+  align-items: center;
+  color: var(--app-text-muted);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: var(--font-size-label);
+  gap: 0.35rem;
+  padding: 0.25rem 0.35rem;
+}
+
+.lod-questionnaire__clear-answer svg {
+  height: 0.9rem;
+  width: 0.9rem;
+}
+
+.lod-manual-override-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(5rem, 7rem) minmax(12rem, 1fr);
+}
+
+.lod-manual-override-retain {
+  margin-top: 0.6rem;
+}
+
+.notice--error {
+  background: var(--status-danger-soft);
+  border: 1px solid color-mix(in srgb, var(--status-danger) 30%, transparent);
+  color: var(--status-danger);
+  margin-bottom: 1rem;
+}
+
+.lod-major-table th:not(:first-child),
+.lod-major-table td:not(:first-child) {
+  white-space: nowrap;
+}
+
+.lod-table-state {
+  background: transparent;
+  border: 0;
+  color: var(--app-text);
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  padding: 0;
+  text-align: inherit;
+  white-space: nowrap;
+}
+
+button.lod-table-state {
+  cursor: pointer;
+}
+
+button.lod-table-state:hover {
+  color: var(--brand-primary);
+  text-decoration: underline;
+}
+
+.lod-table-state--computed,
+.lod-table-state--manual {
+  color: var(--brand-primary);
+}
+
+.lod-table-state--manual::after {
+  color: var(--app-text-soft);
+  content: " (manual)";
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
+}
+
+.lod-table-state--incomplete {
+  color: var(--status-warning);
+}
+
+.lod-table-state--dropped {
+  color: var(--app-text-muted);
+}
+
+.lod-table-state--for-assessment {
+  color: var(--app-text-soft);
+}
+
+@media (max-width: 640px) {
+  .lod-questionnaire__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lod-manual-override-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .lod-questionnaire__sections {
@@ -22294,43 +22383,6 @@ button.bar1-drilldown-card:focus-visible {
 .data-table__emphasis {
   color: var(--app-text);
   font-weight: var(--font-weight-semibold);
-}
-
-.lod-level-badge {
-  align-items: center;
-  border-radius: 50%;
-  display: inline-flex;
-  font-size: var(--font-size-label);
-  font-weight: var(--font-weight-bold);
-  height: 2rem;
-  justify-content: center;
-  width: 2rem;
-}
-
-.lod-level-badge--none {
-  background: var(--app-surface-muted);
-  color: var(--app-text-soft);
-}
-
-.lod-level-badge--1 {
-  background: var(--status-danger-soft);
-  color: var(--status-danger);
-}
-
-.lod-level-badge--2 {
-  background: var(--status-warning-soft);
-  color: var(--status-warning);
-}
-
-.lod-level-badge--3 {
-  background: var(--status-info-soft);
-  color: var(--status-info);
-}
-
-.lod-level-badge--4,
-.lod-level-badge--5 {
-  background: var(--status-success-soft);
-  color: var(--status-success);
 }
 
 .bur-report__cell--emphasis {

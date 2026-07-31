@@ -5,6 +5,8 @@ import { LodSection, LodQuestion, LodChoice, LodLevelConfig } from '../../consta
 import { useLogAction } from '../../hooks/useLogAction';
 import * as XLSX from 'xlsx';
 import { ConfirmDialog, LoadingState } from '../ui/enterprise';
+import { validateLodLevelConfigs } from '../../lib/lodScoring';
+import { notifyLodDataChanged } from '../../lib/lodDataSync';
 
 // DnD Kit Imports
 import {
@@ -225,6 +227,16 @@ const LODManagementTab: React.FC = () => {
 
     const handleSaveLevels = async () => {
         if (!supabase) return;
+        const validationIssues = validateLodLevelConfigs(editingLevels);
+        if (validationIssues.length > 0) {
+            openConfirm(
+                'Invalid LOD level ranges',
+                validationIssues.map(issue => issue.message).join(' '),
+                () => {},
+                'danger'
+            );
+            return;
+        }
         const { error } = await supabase.from('lod_level_configs').upsert(editingLevels);
         if (error) {
             openConfirm('Error', 'Error saving levels: ' + error.message, () => {}, 'danger');
@@ -232,6 +244,7 @@ const LODManagementTab: React.FC = () => {
             setLevelConfigs(editingLevels);
             setIsEditingLevels(false);
             logAction('Updated LOD Level Ranges', '');
+            notifyLodDataChanged({ reason: 'settings' });
             openConfirm('Success', 'Level ranges saved successfully!', () => {}, 'success');
         }
     };
@@ -354,6 +367,7 @@ const LODManagementTab: React.FC = () => {
             await fetchData();
             setIsEditingQuestionnaire(false);
             logAction('Updated LOD Questionnaire Structure', '');
+            notifyLodDataChanged({ reason: 'settings' });
             openConfirm('Success', 'Questionnaire saved successfully!', () => {}, 'success');
         } catch (error: any) {
             console.error('Save Error:', error);

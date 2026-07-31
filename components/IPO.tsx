@@ -13,6 +13,8 @@ import { fetchAll } from '../hooks/useSupabaseTable';
 import useLocalStorageState from '../hooks/useLocalStorageState';
 import { ConfirmDialog, DataTablePagination, SortableTableHeader as CanonicalSortableTableHeader } from './ui/enterprise';
 import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from './ui/MajorDataTable';
+import { getLodEffectiveState } from '../lib/lodScoring';
+import { subscribeToLodDataChanges } from '../lib/lodDataSync';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -76,14 +78,14 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [editingIpo, setEditingIpo] = useState<IPO | null>(null); 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [latestLevels, setLatestLevels] = useState<Record<number, number>>({});
+    const [latestLevels, setLatestLevels] = useState<Record<number, LodAssessment>>({});
 
     useEffect(() => {
         const fetchLevels = async () => {
             if (!supabase) return;
             const { data, error } = await supabase
                 .from('lod_assessments')
-                .select('ipo_id, year, manual_level, computed_level')
+                .select('*')
                 .order('year', { ascending: false });
             
             if (error) {
@@ -91,15 +93,22 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 return;
             }
 
-            const levels: Record<number, number> = {};
-            data?.forEach((assessment: any) => {
+            const levels: Record<number, LodAssessment> = {};
+            data?.forEach((assessment: LodAssessment) => {
                 if (!levels[assessment.ipo_id]) {
-                    levels[assessment.ipo_id] = assessment.manual_level || assessment.computed_level || 0;
+                    levels[assessment.ipo_id] = assessment;
                 }
             });
             setLatestLevels(levels);
         };
         fetchLevels();
+        const unsubscribe = subscribeToLodDataChanges(fetchLevels);
+        const refreshOnFocus = () => fetchLevels();
+        window.addEventListener('focus', refreshOnFocus);
+        return () => {
+            unsubscribe();
+            window.removeEventListener('focus', refreshOnFocus);
+        };
     }, [ipos]);
     const [ipoToDelete, setIpoToDelete] = useState<IPO | null>(null);
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
@@ -309,7 +318,10 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         }
         const levelFilters = ipoColumnFilters.levelOfDevelopment || [];
         if (levelFilters.length > 0) {
-            filteredIpos = filteredIpos.filter(ipo => levelFilters.includes(String(latestLevels[ipo.id] || ipo.levelOfDevelopment || '')));
+            filteredIpos = filteredIpos.filter(ipo => {
+                const state = getLodEffectiveState(latestLevels[ipo.id]);
+                return levelFilters.includes(state.level ? String(state.level) : state.label);
+            });
         }
 
         if (searchTerm) {
@@ -834,7 +846,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         { key: 'region', label: 'Location', values: Array.from(new Set(ipos.map(ipo => ipo.region).filter(Boolean))).sort() },
         { key: 'flags', label: 'Flags', values: ['Women-Led', 'GIDA', 'ELCAC', 'SCAD', 'With Subprojects', 'With Trainings'] },
         { key: 'commodities', label: 'Commodities', values: Array.from(new Set(ipos.flatMap(ipo => (ipo.commodities || []).map(commodity => commodity.particular)).filter(Boolean))).sort() },
-        { key: 'levelOfDevelopment', label: 'Level of Development', values: ['1', '2', '3', '4', '5'] }
+        { key: 'levelOfDevelopment', label: 'Level of Development', values: ['1', '2', '3', '4', '5', 'Dropped', 'Incomplete', 'For Assessment'] }
     ];
     const selectedFlagNames = [
         flagFilter.womenLed && 'Women-Led',
@@ -921,7 +933,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                     <td><TruncatedTableCell value={ipo.location} /></td>
                                     <td><TruncatedTableCell className="status-badge status-badge--compact status-badge--info" value={flagPreview} fullText={flags.join(', ') || 'No flags'} /></td>
                                     <td><TruncatedTableCell value={commodityPreview} fullText={commodities.join(', ') || 'No commodities'} /></td>
-                                    <td><span className="data-table-level">{latestLevels[ipo.id] || ipo.levelOfDevelopment || '—'}</span></td>
+                                    <td>
+                                        {(() => {
+                                            const state = getLodEffectiveState(latestLevels[ipo.id]);
+                                            return <span className={`data-table-level lod-table-state--${state.kind}`}>{state.label}</span>;
+                                        })()}
+                                    </td>
                                 </tr>;
                             })}
                             {paginatedIpos.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 7 : 6}>No IPOs match the current filters.</td></tr>}
