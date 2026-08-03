@@ -76,6 +76,16 @@ assert.equal(partial.computedLevel, null);
 assert.equal(getLodEffectiveState({ computed_level: 5, is_complete: false }).label, 'Incomplete');
 assert.equal(getLodEffectiveState({ computed_level: 5 }).label, 'Level 5');
 assert.equal(getLodEffectiveState({ manual_level: 3, computed_level: 5, is_complete: false }).label, 'Level 3');
+assert.deepEqual(
+    getLodEffectiveState({ is_carried_over: true, carried_over_level: 4, is_complete: false }),
+    { kind: 'carried-over', label: 'Level 4', level: 4, source: 'carried-over' }
+);
+assert.equal(getLodEffectiveState({ is_carried_over: true, carried_over_level: 4, computed_level: 2, is_complete: true }).source, 'computed');
+assert.equal(getLodEffectiveState({ is_carried_over: true, carried_over_level: 4, manual_level: 5, is_complete: false }).source, 'manual');
+assert.equal(getLodEffectiveState({ is_carried_over: true, carried_over_level: null, is_complete: false }).label, 'Incomplete');
+assert.equal(getLodEffectiveState({ answered_question_count: 0, is_complete: false }).label, 'For Assessment');
+assert.equal(getLodEffectiveState({ answered_question_count: 0, computed_level: 4, is_complete: false }).label, 'For Assessment');
+assert.equal(getLodEffectiveState({ answered_question_count: 0, manual_level: 3, is_complete: false }).label, 'Level 3');
 assert.equal(getLodEffectiveState({ is_dropped: true, manual_level: 3, is_complete: true }).label, 'Dropped');
 assert.equal(getLodEffectiveState(null).label, 'For Assessment');
 assert.equal(resolveManualLevelForSave({

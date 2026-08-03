@@ -1,12 +1,12 @@
 // Author: 4K
-import React, { useState, useEffect } from 'react';
-import { Eraser, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Eraser, RotateCcw } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
-import { IPO, LodSection, LodQuestion, LodChoice, LodAssessment, LodAnswer, LodLevelConfig } from '../../constants';
+import { IPO, LodSection, LodQuestion, LodChoice, LodAssessment, LodAnswer, LodLevelConfig, LodQuestionnaireVersion } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { useUserAccess } from '../mainfunctions/TableHooks';
-import { calculateLodScore, getLodEffectiveState, resolveManualLevelForSave } from '../../lib/lodScoring';
+import { calculateLodScore, getLodEffectiveState, isLodPublishedState } from '../../lib/lodScoring';
 import { notifyLodDataChanged } from '../../lib/lodDataSync';
 import { ConfirmDialog } from '../ui/enterprise';
 
@@ -19,9 +19,10 @@ interface LODDetailsProps {
 const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
-    const { canEdit } = useUserAccess('Level of Development');
-    const isLodAdmin = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
+    const { canEdit, canManage } = useUserAccess('Level of Development');
+    const canManageLod = canEdit && canManage;
     const isLocked = !canEdit;
+    const loadSequence = useRef(0);
 
     const [selectedYear, setSelectedYear] = useState<number>(initialYear ?? new Date().getFullYear());
 
@@ -34,13 +35,14 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
     // Data
     const [assessment, setAssessment] = useState<LodAssessment | null>(null);
     const [answers, setAnswers] = useState<LodAnswer[]>([]);
+    const [carrySource, setCarrySource] = useState<LodAssessment | null>(null);
+    const [availableYears, setAvailableYears] = useState<number[]>([initialYear ?? new Date().getFullYear()]);
 
     // UI State
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [manualLevel, setManualLevel] = useState<number | ''>('');
     const [manualOverrideReason, setManualOverrideReason] = useState('');
-    const [retainManualOverride, setRetainManualOverride] = useState(false);
     const [remarks, setRemarks] = useState('');
     const [isCarriedOver, setIsCarriedOver] = useState<boolean>(false);
     const [isDropped, setIsDropped] = useState<boolean>(false);
@@ -48,6 +50,8 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
     const [saveError, setSaveError] = useState('');
+    const [loadError, setLoadError] = useState('');
+    const [dataReady, setDataReady] = useState(false);
 
     // Local Answers State (Map<QuestionId, ChoiceId>)
     const [localAnswers, setLocalAnswers] = useState<Record<number, number>>({});
@@ -57,110 +61,135 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
     const [localSpecificValues, setLocalSpecificValues] = useState<Record<number, string>>({});
 
     useEffect(() => {
-        fetchStructure();
-    }, []);
-
-    useEffect(() => {
         if (initialYear) setSelectedYear(initialYear);
     }, [initialYear]);
 
     useEffect(() => {
-        if (ipo) {
-            fetchAssessmentData();
-        }
+        if (!ipo) return;
+        fetchAssessmentData();
+        const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+        params.set('id', String(ipo.id));
+        params.set('year', String(selectedYear));
+        window.history.replaceState(null, '', `#/lod-details?${params.toString()}`);
     }, [ipo, selectedYear]);
 
-    const fetchStructure = async () => {
-        if (!supabase) return;
-        const { data: sData } = await supabase.from('lod_sections').select('*').order('order');
-        const { data: qData } = await supabase.from('lod_questions').select('*').order('order');
-        const { data: cData } = await supabase.from('lod_choices').select('*').order('order');
-        const { data: lData } = await supabase.from('lod_level_configs').select('*').order('level');
-
-        if (sData) setSections(sData);
-        if (qData) setQuestions(qData);
-        if (cData) setChoices(cData);
-        if (lData) setLevelConfigs(lData);
+    const resetLocalAssessment = () => {
+        setAssessment(null);
+        setAnswers([]);
+        setLocalAnswers({});
+        setLocalAnswerRemarks({});
+        setLocalActualValues({});
+        setLocalTotalValues({});
+        setLocalSpecificValues({});
+        setManualLevel('');
+        setManualOverrideReason('');
+        setRemarks('');
+        setIsCarriedOver(false);
+        setIsDropped(false);
     };
 
     const fetchAssessmentData = async () => {
+        const sequence = ++loadSequence.current;
         setLoading(true);
-        if (!supabase || !ipo) return;
-
-        // Fetch Assessment
-        const { data: aData, error } = await supabase
-            .from('lod_assessments')
-            .select('*')
-            .eq('ipo_id', ipo.id)
-            .eq('year', selectedYear)
-            .single();
-
-        if (aData) {
-            setAssessment(aData);
-            setManualLevel(aData.manual_level ?? '');
-            setManualOverrideReason(aData.manual_override_reason ?? '');
-            setRetainManualOverride(aData.manual_level !== null && aData.manual_level !== undefined);
-            setRemarks(aData.remarks ?? '');
-            setIsCarriedOver(aData.is_carried_over || false);
-            setIsDropped(aData.is_dropped || false);
-
-            // Fetch Answers
-            const { data: ansData } = await supabase
-                .from('lod_answers')
-                .select('*')
-                .eq('assessment_id', aData.id);
-
-            if (ansData) {
-                setAnswers(ansData);
-                const initialAnswers: Record<number, number> = {};
-                const initialRemarks: Record<number, string> = {};
-                const initialActuals: Record<number, number | ''> = {};
-                const initialTotals: Record<number, number | ''> = {};
-                const initialSpecifics: Record<number, string> = {};
-                ansData.forEach(a => {
-                    const qId = Number(a.question_id);
-                    const cId = a.choice_id ? Number(a.choice_id) : null;
-
-                    if (cId !== null) initialAnswers[qId] = cId;
-                    if (a.remarks) initialRemarks[qId] = a.remarks;
-                    initialActuals[qId] = a.actual_value ?? '';
-                    initialTotals[qId] = a.total_value ?? '';
-                    initialSpecifics[qId] = a.specific_answer_value ?? '';
-                });
-                setLocalAnswers(initialAnswers);
-                setLocalAnswerRemarks(initialRemarks);
-                setLocalActualValues(initialActuals);
-                setLocalTotalValues(initialTotals);
-                setLocalSpecificValues(initialSpecifics);
-            }
-        } else {
-            // Reset for new year
-            setAssessment(null);
-            setAnswers([]);
-            setLocalAnswers({});
-            setLocalAnswerRemarks({});
-            setLocalActualValues({});
-            setLocalTotalValues({});
-            setLocalSpecificValues({});
-            setManualLevel('');
-            setManualOverrideReason('');
-            setRetainManualOverride(false);
-            setRemarks('');
-            setIsCarriedOver(false);
-            setIsDropped(false);
-
-            // Check if there's any previous LOD value for this IPO to default carry_over
-            const { data: prevAssessments } = await supabase
-                .from('lod_assessments')
-                .select('id')
-                .eq('ipo_id', ipo.id)
-                .limit(1);
-
-            if (prevAssessments && prevAssessments.length > 0) {
-                setIsCarriedOver(true);
-            }
+        setDataReady(false);
+        setLoadError('');
+        setSaveError('');
+        if (!supabase || !ipo) {
+            setLoadError('Database connection is unavailable.');
+            setLoading(false);
+            return;
         }
-        setLoading(false);
+
+        try {
+            const assessmentResult = await supabase
+                .from('lod_assessments')
+                .select('*')
+                .eq('ipo_id', ipo.id)
+                .eq('year', selectedYear)
+                .maybeSingle();
+            if (assessmentResult.error) throw assessmentResult.error;
+            const currentAssessment = assessmentResult.data as LodAssessment | null;
+
+            const versionQuery = currentAssessment?.questionnaire_version_id
+                ? supabase.from('lod_questionnaire_versions').select('*').eq('id', currentAssessment.questionnaire_version_id).maybeSingle()
+                : supabase.from('lod_questionnaire_versions').select('*').lte('effective_year', selectedYear)
+                    .order('effective_year', { ascending: false }).order('version_number', { ascending: false }).limit(1).maybeSingle();
+            const answersQuery = currentAssessment
+                ? supabase.from('lod_answers').select('*').eq('assessment_id', currentAssessment.id)
+                : Promise.resolve({ data: [] as LodAnswer[], error: null });
+            const priorQuery = supabase.from('lod_assessments').select('*')
+                .eq('ipo_id', ipo.id).lt('year', selectedYear)
+                .order('year', { ascending: false }).order('id', { ascending: false });
+
+            const [versionResult, answersResult, priorResult] = await Promise.all([versionQuery, answersQuery, priorQuery]);
+            if (versionResult.error) throw versionResult.error;
+            if (answersResult.error) throw answersResult.error;
+            if (priorResult.error) throw priorResult.error;
+            if (!versionResult.data) throw new Error(`No LOD questionnaire configuration is available for ${selectedYear}.`);
+            if (sequence !== loadSequence.current) return;
+
+            const version = versionResult.data as LodQuestionnaireVersion;
+            const config = version.config;
+            if (!Array.isArray(config?.sections) || !Array.isArray(config?.questions)
+                || !Array.isArray(config?.choices) || !Array.isArray(config?.levels)) {
+                throw new Error('The selected questionnaire version is incomplete. Saving is disabled.');
+            }
+
+            const priorAssessments = (priorResult.data || []) as LodAssessment[];
+            const validPrior = priorAssessments.find(item => isLodPublishedState(getLodEffectiveState(item))) || null;
+            const persistedSource = currentAssessment?.carried_over_from_assessment_id
+                ? priorAssessments.find(item => Number(item.id) === Number(currentAssessment.carried_over_from_assessment_id)) || null
+                : null;
+            setSections(config.sections.slice().sort((left, right) => left.order - right.order));
+            setQuestions(config.questions.slice().sort((left, right) => left.order - right.order));
+            setChoices(config.choices.slice().sort((left, right) => left.order - right.order));
+            setLevelConfigs(config.levels.slice().sort((left, right) => left.level - right.level));
+            setCarrySource(persistedSource || validPrior);
+            setAvailableYears(Array.from(new Set([
+                selectedYear,
+                new Date().getFullYear(),
+                ...priorAssessments.map(item => Number(item.year)),
+            ])).sort((left, right) => right - left));
+
+            resetLocalAssessment();
+            if (currentAssessment) {
+                setAssessment(currentAssessment);
+                setManualLevel(currentAssessment.manual_level ?? '');
+                setManualOverrideReason(currentAssessment.manual_override_reason ?? '');
+                setRemarks(currentAssessment.remarks ?? '');
+                setIsCarriedOver(Boolean(currentAssessment.is_carried_over));
+                setIsDropped(Boolean(currentAssessment.is_dropped));
+            }
+
+            const loadedAnswers = (answersResult.data || []) as LodAnswer[];
+            setAnswers(loadedAnswers);
+            const initialAnswers: Record<number, number> = {};
+            const initialRemarks: Record<number, string> = {};
+            const initialActuals: Record<number, number | ''> = {};
+            const initialTotals: Record<number, number | ''> = {};
+            const initialSpecifics: Record<number, string> = {};
+            loadedAnswers.forEach(answer => {
+                const questionId = Number(answer.question_id);
+                if (answer.choice_id !== null) initialAnswers[questionId] = Number(answer.choice_id);
+                if (answer.remarks) initialRemarks[questionId] = answer.remarks;
+                initialActuals[questionId] = answer.actual_value ?? '';
+                initialTotals[questionId] = answer.total_value ?? '';
+                initialSpecifics[questionId] = answer.specific_answer_value ?? '';
+            });
+            setLocalAnswers(initialAnswers);
+            setLocalAnswerRemarks(initialRemarks);
+            setLocalActualValues(initialActuals);
+            setLocalTotalValues(initialTotals);
+            setLocalSpecificValues(initialSpecifics);
+            setExpandedSections(Object.fromEntries(config.sections.map(section => [section.id, true])));
+            setDataReady(true);
+        } catch (error: any) {
+            if (sequence !== loadSequence.current) return;
+            console.error('LOD assessment load error:', error);
+            setLoadError(error?.message || 'Unable to load the complete LOD assessment.');
+        } finally {
+            if (sequence === loadSequence.current) setLoading(false);
+        }
     };
 
     const handleAnswerChange = (questionId: number, choiceId: number) => {
@@ -171,7 +200,6 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             ...prev,
             [qId]: cId
         }));
-        if (assessment?.manual_level) setRetainManualOverride(false);
     };
 
     const handleAnswerRemarkChange = (questionId: number, remark: string) => {
@@ -206,7 +234,6 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
         setLocalActualValues(previous => removeLocalValue(previous, questionId));
         setLocalTotalValues(previous => removeLocalValue(previous, questionId));
         setLocalSpecificValues(previous => removeLocalValue(previous, questionId));
-        if (assessment?.manual_level) setRetainManualOverride(false);
     };
 
     const handleClearAllAnswers = () => {
@@ -216,12 +243,11 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
         setLocalActualValues({});
         setLocalTotalValues({});
         setLocalSpecificValues({});
-        if (assessment?.manual_level) setRetainManualOverride(false);
         setShowClearAllConfirm(false);
     };
 
     const handleSave = async () => {
-        if (isLocked) return;
+        if (isLocked || !dataReady || loadError) return;
         if (!ipo || !supabase) return;
         setSaveError('');
         setSaving(true);
@@ -260,15 +286,9 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                 };
             });
 
-        const existingManualLevel = assessment?.manual_level ?? null;
-        const manualLevelToSave = resolveManualLevelForSave({
-            canManageOverride: isLodAdmin,
-            retainManualOverride,
-            enteredManualLevel: manualLevel === '' ? null : Number(manualLevel),
-            existingManualLevel,
-            existingAssessmentComplete: Boolean(assessment?.is_complete),
-            nextAssessmentComplete: score.isComplete,
-        });
+        const manualLevelToSave = canManageLod
+            ? (manualLevel === '' ? null : Number(manualLevel))
+            : (assessment?.manual_level ?? null);
         const manualReasonToSave = manualLevelToSave !== null
             ? (manualOverrideReason || assessment?.manual_override_reason || '')
             : null;
@@ -279,52 +299,86 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             return;
         }
 
-        const { data: savedAssessment, error } = await supabase.rpc('save_lod_assessment', {
-            p_ipo_id: ipo.id,
-            p_year: selectedYear,
-            p_answers: answersPayload,
-            p_manual_level: manualLevelToSave,
-            p_manual_override_reason: manualReasonToSave,
-            p_is_carried_over: isLodAdmin ? isCarriedOver : (assessment?.is_carried_over ?? false),
-            p_is_dropped: isLodAdmin ? isDropped : (assessment?.is_dropped ?? false),
-            p_remarks: remarks || null,
-            p_assessed_by: currentUser?.id ?? null,
-            p_assessor_name: currentUser?.fullName || currentUser?.email || null,
-        });
-
-        if (error || !savedAssessment) {
-            setSaveError(error?.message || 'The assessment could not be saved.');
+        const carryEnabled = canManageLod ? isCarriedOver : Boolean(assessment?.is_carried_over);
+        const carrySourceId = carryEnabled
+            ? (canManageLod ? carrySource?.id : assessment?.carried_over_from_assessment_id)
+            : null;
+        if (carryEnabled && !carrySourceId) {
+            setSaveError('Select a valid earlier published assessment before enabling carry-over.');
             setSaving(false);
             return;
         }
 
-        const saved = savedAssessment as LodAssessment;
-        setAssessment(saved);
-        logAction(
-            'Updated LOD Assessment',
-            `IPO: ${ipo.name}, Year: ${selectedYear}, State: ${getLodEffectiveState(saved).label}`
-        );
-        notifyLodDataChanged({
-            ipoId: ipo.id,
-            year: selectedYear,
-            reason: isDropped ? 'drop' : manualLevelToSave !== null ? 'override' : answersPayload.length === 0 ? 'clear' : 'save',
-        });
-        await fetchAssessmentData();
-        setSaving(false);
-        setShowSuccessModal(true);
+        try {
+            const { error } = await supabase.rpc('save_lod_assessment', {
+                p_ipo_id: ipo.id,
+                p_year: selectedYear,
+                p_answers: answersPayload,
+                p_manual_level: manualLevelToSave,
+                p_manual_override_reason: manualReasonToSave,
+                p_is_carried_over: carryEnabled,
+                p_carried_over_from_assessment_id: carrySourceId,
+                p_is_dropped: canManageLod ? isDropped : Boolean(assessment?.is_dropped),
+                p_remarks: remarks || null,
+                p_assessed_by: currentUser?.id ?? null,
+                p_assessor_name: currentUser?.fullName || currentUser?.email || null,
+            });
+            if (error) throw error;
+
+            const verification = await supabase.from('lod_assessments').select('*')
+                .eq('ipo_id', ipo.id).eq('year', selectedYear).single();
+            if (verification.error || !verification.data) {
+                throw verification.error || new Error('The saved assessment could not be verified.');
+            }
+            const persisted = verification.data as LodAssessment;
+            const persistedState = getLodEffectiveState(persisted);
+            const expectedKind = (canManageLod ? isDropped : assessment?.is_dropped)
+                ? 'dropped'
+                : manualLevelToSave !== null
+                    ? 'manual'
+                    : score.isComplete
+                        ? 'computed'
+                        : carryEnabled
+                            ? 'carried-over'
+                            : answersPayload.length > 0
+                                ? 'incomplete'
+                                : 'for-assessment';
+            const expectedLevel = manualLevelToSave
+                ?? (score.isComplete ? score.computedLevel : carryEnabled ? getLodEffectiveState(carrySource).level : null);
+            if (persistedState.kind !== expectedKind
+                || (expectedLevel !== null && Number(persistedState.level) !== Number(expectedLevel))) {
+                throw new Error(`Saved LOD verification failed. Expected ${expectedLevel ? `Level ${expectedLevel}` : expectedKind}, but received ${persistedState.label}.`);
+            }
+
+            setAssessment(persisted);
+            logAction('Updated LOD Assessment', `IPO: ${ipo.name}, Year: ${selectedYear}, State: ${persistedState.label}`);
+            notifyLodDataChanged({
+                ipoId: ipo.id,
+                year: selectedYear,
+                reason: isDropped ? 'drop' : manualLevelToSave !== null ? 'override' : answersPayload.length === 0 ? 'clear' : 'save',
+            });
+            await fetchAssessmentData();
+            setShowSuccessModal(true);
+        } catch (error: any) {
+            console.error('LOD save error:', error);
+            setSaveError(error?.message || 'The assessment could not be saved.');
+        } finally {
+            setSaving(false);
+        }
     };
 
     if (!ipo) return <div>Loading IPO...</div>;
 
     const score = calculateScore();
-    const previewManualLevel = score.isComplete && !retainManualOverride
-        ? null
-        : manualLevel === '' ? null : Number(manualLevel);
+    const previewManualLevel = manualLevel === '' ? null : Number(manualLevel);
     const effectiveState = getLodEffectiveState({
         manual_level: previewManualLevel,
         computed_level: score.computedLevel,
         is_complete: score.isComplete,
         is_dropped: isDropped,
+        is_carried_over: isCarriedOver,
+        carried_over_level: getLodEffectiveState(carrySource).level,
+        answered_question_count: score.answeredQuestionCount,
     });
 
     const toggleSection = (sectionId: number) => {
@@ -343,7 +397,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             {/* Header */}
             <div className="detail-header">
                 <div className="detail-heading">
-                    <button onClick={onBack} className="btn btn-link">← Back to List</button>
+                    <button onClick={onBack} className="btn btn-link lod-assessment__back"><ArrowLeft aria-hidden="true" /> Back to Level of Development</button>
                     <h2 className="detail-title">{ipo.name}</h2>
                     <p className="detail-meta">{ipo.location}</p>
                 </div>
@@ -354,9 +408,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                         onChange={(e) => setSelectedYear(Number(e.target.value))}
                         className="form-control lod-assessment__year"
                     >
-                        {Array.from(new Set([selectedYear, ...Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i + 1)]))
-                            .sort((a, b) => b - a)
-                            .map(y => (
+                        {availableYears.map(y => (
                             <option key={y} value={y}>{y}</option>
                         ))}
                     </select>
@@ -365,17 +417,20 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
 
             {/* Score Card */}
             <div className="detail-metric-grid">
-                <div className="detail-metric lod-assessment-metric lod-assessment-metric--primary">
+                <div className="detail-metric lod-assessment-metric">
                     <h4 className="detail-metric-label">Effective LOD</h4>
                     <div className="lod-assessment-metric__value">
                         <span>{effectiveState.label}</span>
                     </div>
                     <p className="form-help">
                         Computed: {score.computedLevel ? `Level ${score.computedLevel}` : 'Not published'}
-                        {manualLevel !== '' ? ` · Manual: Level ${manualLevel}` : ''}
+                        {manualLevel !== '' ? ` / Manual: Level ${manualLevel}` : ''}
+                        {isCarriedOver && (assessment?.carried_over_from_year || carrySource?.year)
+                            ? ` / Carried from ${assessment?.carried_over_from_year || carrySource?.year}`
+                            : ''}
                     </p>
                 </div>
-                <div className="detail-metric lod-assessment-metric lod-assessment-metric--info">
+                <div className="detail-metric lod-assessment-metric">
                     <h4 className="detail-metric-label">{score.isComplete ? 'Total Score' : 'Score Preview'}</h4>
                     <div className="lod-assessment-metric__value">
                         <span>{score.totalScore.toFixed(1)}</span>
@@ -383,7 +438,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                     </div>
                     {!score.isComplete && <p className="form-help">Incomplete scores are not published.</p>}
                 </div>
-                <div className="detail-metric lod-assessment-metric lod-assessment-metric--status">
+                <div className="detail-metric lod-assessment-metric">
                     <h4 className="detail-metric-label">Answer Coverage</h4>
                     <div className="lod-assessment-metric__value">
                         <span>{score.answeredQuestionCount}</span>
@@ -405,10 +460,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             {/* Questionnaire */}
             <div className="detail-card lod-questionnaire">
                 <div className="lod-questionnaire__header">
-                    <div>
-                        <h3 className="detail-card-title">Assessment Questionnaire</h3>
-                        <p className="detail-meta">Complete all scored questions to publish the computed LOD.</p>
-                    </div>
+                    <h3 className="detail-card-title">Assessment Questionnaire</h3>
                     {!isLocked && Object.keys(localAnswers).length > 0 && (
                         <button type="button" className="btn btn-secondary" onClick={() => setShowClearAllConfirm(true)}>
                             <RotateCcw aria-hidden="true" />
@@ -417,9 +469,10 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                     )}
                 </div>
 
+                {loadError && <div className="notice notice--error" role="alert"><p>{loadError}</p></div>}
                 {loading ? (
                     <div className="detail-empty">Loading assessment data...</div>
-                ) : (
+                ) : loadError ? null : (
                     <div className="lod-questionnaire__sections">
                         {sections.map(section => {
                             const sectionQuestions = questions.filter(q => q.section_id === section.id);
@@ -562,7 +615,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                                                         disabled={isLocked}
                                                                     />
                                                                     <span className="lod-choice__text">{choice.text}</span>
-                                                                    <span className="status-badge status-badge--neutral status-badge--compact">{Number(choice.points.toFixed(1))} pts</span>
+                                                                    <span className="lod-choice__points">{Number(choice.points.toFixed(1))} pts</span>
                                                                 </label>
                                                             ))}
                                                         </div>
@@ -609,45 +662,35 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                 disabled={isLocked}
                             />
                         </div>
-                        {isLodAdmin && (
-                            <div className="space-y-4">
+                        {canManageLod && (
+                            <div className="space-y-4 lod-admin-controls">
+                                <h3 className="detail-card-title">Administrator Controls</h3>
                                 <div>
-                                    <label className="form-label">Manual Level Override (Admin Only)</label>
+                                    <label className="form-label">Manual Level Override</label>
                                     <div className="lod-manual-override-grid">
-                                        <input
-                                            type="number"
-                                            min="1" max="5"
+                                        <select
                                             value={manualLevel}
                                             onChange={(e) => {
                                                 const value = e.target.value === '' ? '' : Number(e.target.value);
+                                                if (value !== manualLevel) setManualOverrideReason('');
                                                 setManualLevel(value);
-                                                setRetainManualOverride(value !== '');
                                             }}
                                             className="form-control lod-assessment__manual-level"
-                                            placeholder="Auto"
-                                        />
+                                        >
+                                            <option value="">Auto</option>
+                                            {[1, 2, 3, 4, 5].map(level => <option key={level} value={level}>Level {level}</option>)}
+                                        </select>
                                         <input
                                             type="text"
                                             value={manualOverrideReason}
                                             onChange={(event) => setManualOverrideReason(event.target.value)}
                                             className="form-control"
                                             placeholder="Required reason for manual override"
-                                            disabled={manualLevel === '' || !retainManualOverride}
+                                            disabled={manualLevel === ''}
                                         />
                                     </div>
-                                    {manualLevel !== '' && (
-                                        <label className="form-check lod-manual-override-retain">
-                                            <input
-                                                type="checkbox"
-                                                checked={retainManualOverride}
-                                                onChange={(event) => setRetainManualOverride(event.target.checked)}
-                                                className="form-checkbox"
-                                            />
-                                            <span>Publish the manual level instead of the completed computed assessment</span>
-                                        </label>
-                                    )}
                                     <span className="form-help">
-                                        A completed questionnaire uses its computed level unless this override is explicitly retained.
+                                        A manual level takes precedence until it is returned to Auto.
                                     </span>
                                 </div>
                                 <div className="flex flex-wrap gap-4">
@@ -657,8 +700,16 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                             checked={isCarriedOver}
                                             onChange={(e) => setIsCarriedOver(e.target.checked)}
                                             className="form-checkbox"
+                                            disabled={!carrySource && !assessment?.carried_over_from_assessment_id}
                                         />
-                                        <span>Carried over from previous year</span>
+                                        <span>
+                                            Carry over from previous year
+                                            {(assessment?.carried_over_from_year || carrySource?.year) && (
+                                                <small className="form-help">
+                                                    Source: {assessment?.carried_over_from_year || carrySource?.year} / {assessment?.carried_over_level ? `Level ${assessment.carried_over_level}` : getLodEffectiveState(carrySource).label}
+                                                </small>
+                                            )}
+                                        </span>
                                     </label>
                                     <label className="form-check">
                                         <input
@@ -670,6 +721,9 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                         <span>IPO is Dropped</span>
                                     </label>
                                 </div>
+                                {!carrySource && !assessment?.carried_over_from_assessment_id && (
+                                    <p className="form-help">No earlier published LOD is available to carry into {selectedYear}.</p>
+                                )}
                             </div>
                         )}
                     </div>
@@ -680,6 +734,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                         </div>
                     )}
                     <div className="form-footer">
+                        <span className="lod-assessment__active-year">Assessment year <strong>{selectedYear}</strong></span>
                         <button
                             onClick={onBack}
                             className="btn btn-secondary"
@@ -689,7 +744,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                         {!isLocked && (
                             <button
                                 onClick={handleSave}
-                                disabled={saving}
+                                disabled={saving || !dataReady || Boolean(loadError)}
                                 className="btn btn-primary"
                             >
                                 {saving ? (
