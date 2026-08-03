@@ -10,6 +10,7 @@
     "lint": "tsc --noEmit",
     "test:lod-scoring": "node --experimental-strip-types scripts/run-lod-scoring-check.mjs",
     "test:financial-breakdown": "node scripts/run-financial-breakdown-hierarchy-check.mjs",
+    "test:signed-obligations": "node --experimental-strip-types scripts/run-signed-obligation-check.mjs",
     "audit:ui": "node scripts/ui-consistency-audit.mjs",
     "audit:legacy-ui": "node scripts/legacy-ui-inventory.mjs"
   },

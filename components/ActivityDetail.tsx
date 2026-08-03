@@ -667,8 +667,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                             <td className="data-table__primary">{exp.expenseParticular}</td>
                                                             <td>{formatMonthYear(obligationSummary.date)}</td>
                                                             <td>{formatMonthYear(disbursementSummary.date)}</td>
-                                                            <td className="data-table__numeric data-table__positive">
-                                                                {obligationSummary.amount > 0 ? formatCurrency(obligationSummary.amount) : '-'}
+                                                            <td className={`data-table__numeric ${obligationSummary.amount < 0 ? 'data-table__adjustment' : 'data-table__positive'}`}>
+                                                                {(exp.obligations?.length || 0) > 0 || obligationSummary.amount !== 0 ? formatCurrency(obligationSummary.amount) : '-'}
                                                             </td>
                                                             <td className="data-table__numeric data-table__positive">
                                                                 {disbursementSummary.amount > 0 ? formatCurrency(disbursementSummary.amount) : '-'}

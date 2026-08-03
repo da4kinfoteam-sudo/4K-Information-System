@@ -25,6 +25,8 @@ import {
     writeBudgetItemAdjustmentHistory
 } from '../../lib/budgetLineAdjustments';
 import { createStaffingExpenseId, normalizeStaffingExpenses } from '../../lib/staffingExpenseIdentity';
+import { getActualObligationValidationError, hasActualObligationRecords } from '../../lib/financialObligationUtils';
+import { replaceFinancialObligationRecords } from '../../lib/financialObligationSync';
 
 interface StaffingRequirementDetailProps {
     item: StaffingRequirement;
@@ -202,7 +204,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                     actualDisbursementDate: disbursementSummary.latestDate || exp.actualDisbursementDate,
                 } : {}),
                 obligations: (exp.obligations && exp.obligations.length > 0) ? exp.obligations : (
-                    (exp.actualObligationAmount > 0) ? [{
+                    (Number(exp.actualObligationAmount) !== 0) ? [{
                         id: Date.now(),
                         date: exp.actualObligationDate || '',
                         amount: exp.actualObligationAmount || 0,
@@ -511,7 +513,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const handleRemoveExpense = (id: number) => {
         const expense = expensesList.find(e => e.id === id);
         const isSavedLine = !!(expense && (item.expenses || []).some(existing => existing.id === id));
-        const hasActuals = !!expense && (((expense.obligations?.length || 0) > 0) || ((expense.disbursements?.length || 0) > 0) || Number(expense.actualObligationAmount) > 0 || Number(expense.actualDisbursementAmount) > 0);
+        const hasActuals = !!expense && (hasActualObligationRecords(expense) || ((expense.disbursements?.length || 0) > 0) || Number(expense.actualDisbursementAmount) > 0);
         if (expense && (isSavedLine || hasActuals)) {
             handleExpenseTagChange(id, 'Cancelled');
             return;
@@ -573,6 +575,16 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (editMode === 'accomplishment') {
+            const obligationError = expensesList
+                .map(expense => getActualObligationValidationError(expense.obligations || []))
+                .find(Boolean);
+            if (obligationError) {
+                alert(obligationError);
+                return;
+            }
+        }
 
         const action = editMode === 'details' ? 'editDetails' : 'editPhysicalAccomplishment';
         const decision = editMode === 'details' ? detailsDecision : accomplishmentDecision;
@@ -704,39 +716,13 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 const entityType = 'staffing_expense';
                 const parentId = item.id;
                 
-                // Delete old
-                const { error: deleteError } = await supabase.from('financial_obligations')
-                    .delete()
-                    .eq('entity_type', entityType)
-                    .eq('parent_id', parentId);
-                
-                if (deleteError) {
-                    console.error("Error deleting old obligations:", deleteError);
-                }
-                
-                // Insert new
-                const syncPayload: any[] = [];
-                normalizedExpensesList.forEach(exp => {
-                    if (exp.obligations && exp.obligations.length > 0) {
-                        exp.obligations.forEach(o => {
-                            syncPayload.push({
-                                entity_type: entityType,
-                                parent_id: parentId,
-                                item_id: exp.id?.toString() || null,
-                                obligation_date: o.date,
-                                amount: Number(o.amount) || 0,
-                                remarks: o.remarks || ''
-                            });
-                        });
-                    }
-                });
-
-                if (syncPayload.length > 0) {
-                    const { error: insertError } = await supabase.from('financial_obligations').insert(syncPayload);
-                    if (insertError) {
-                        console.error("Critical RLS Error or Insert Error in financial_obligations:", insertError);
-                        throw new Error(`Failed to sync obligations: ${insertError.message}. This might be a database permission (RLS) issue.`);
-                    }
+                for (const expense of normalizedExpensesList) {
+                    await replaceFinancialObligationRecords({
+                        entityType,
+                        parentId,
+                        itemId: expense.id ?? null,
+                        records: expense.obligations || [],
+                    });
                 }
 
                 const disbursementSyncPayload: any[] = [];
