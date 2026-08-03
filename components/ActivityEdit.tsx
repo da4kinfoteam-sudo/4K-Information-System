@@ -25,7 +25,7 @@ import {
     writeBudgetItemAdjustmentHistory
 } from '../lib/budgetLineAdjustments';
 import { getActualObligationValidationError, hasActualObligationRecords } from '../lib/financialObligationUtils';
-import { replaceFinancialObligationRecords } from '../lib/financialObligationSync';
+import { fetchFinancialObligationsForParent, replaceFinancialObligationRecords } from '../lib/financialObligationSync';
 
 interface ActivityEditProps {
     mode: 'create' | 'details' | 'expenses' | 'accomplishment';
@@ -158,11 +158,14 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     };
 
     useEffect(() => {
+        let cancelled = false;
         if (activity) {
-            let processedActivity = { ...activity };
-            // Virtualize legacy obligations for each expense on load if missing
-            if (processedActivity.expenses) {
-                processedActivity.expenses = processedActivity.expenses.map(exp => {
+            const applyObligationRows = (centralRows: Awaited<ReturnType<typeof fetchFinancialObligationsForParent>> | null) => {
+                const processedActivity: Activity = {
+                    ...activity,
+                    expenses: (activity.expenses || []).map(exp => {
+                    const centralObligations = centralRows?.filter(row => row.itemId === String(exp.id)) || [];
+                    if (centralObligations.length > 0) return { ...exp, obligations: centralObligations };
                     const hasAmount = Number(exp.actualObligationAmount) !== 0;
                     const hasNoObligations = !exp.obligations || exp.obligations.length === 0;
                     if (hasAmount && hasNoObligations) {
@@ -177,11 +180,26 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                         };
                     }
                     return exp;
-                });
+                    }),
+                };
+                if (cancelled) return;
+                setFormData(processedActivity);
+                setInitialActivity(processedActivity);
+            };
+
+            setFormData({ ...activity, expenses: activity.expenses || [] });
+            setInitialActivity({ ...activity, expenses: activity.expenses || [] });
+            if (supabase && activity.id > 0) {
+                void fetchFinancialObligationsForParent({ entityType: 'activity_expense', parentId: activity.id })
+                    .then(rows => applyObligationRows(rows))
+                    .catch(error => {
+                        console.error('Failed to load authoritative activity obligations:', error);
+                        applyObligationRows(null);
+                    });
+            } else {
+                applyObligationRows(null);
             }
-            setFormData(processedActivity);
-            setInitialActivity(processedActivity);
-            if (processedActivity.endDate && processedActivity.endDate !== processedActivity.date) {
+            if (activity.endDate && activity.endDate !== activity.date) {
                 setConductType('Multi-day');
             } else {
                 setConductType('Single');
@@ -212,6 +230,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         }
         
         if (mode === 'expenses') setActiveTab('expenses');
+        return () => { cancelled = true; };
     }, [activity, mode, forcedType, currentUser]);
 
     // Derived States

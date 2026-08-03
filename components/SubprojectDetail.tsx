@@ -17,7 +17,7 @@ import { isMonthTargetOverdue } from '../lib/dateStatus';
 import { ConfirmDialog } from './ui/enterprise';
 import { getActualDisbursementSummary, getActualObligationSummary, hasFinancialActuals } from '../lib/financialActualSummary';
 import { getActualObligationValidationError, hasActualObligationRecords } from '../lib/financialObligationUtils';
-import { replaceFinancialObligationRecords } from '../lib/financialObligationSync';
+import { fetchFinancialObligationsForParent, replaceFinancialObligationRecords } from '../lib/financialObligationSync';
 import {
     BudgetItemAdjustmentHistory,
     ensureOriginalBudgetSnapshot,
@@ -353,19 +353,41 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     }, []);
 
     useEffect(() => {
+        let cancelled = false;
         setEditedSubproject(subproject);
-        // Map details and preserve ID for tracking, plus virtualize logic
-        setDetailItems((subproject.details || []).map(d => ensureOriginalBudgetSnapshot({
-            ...d,
-            obligations: (d.obligations && d.obligations.length > 0) ? d.obligations : (
-                (Number(d.actualObligationAmount) !== 0) ? [{
-                    id: Date.now() + Math.random(),
-                    date: d.actualObligationDate || '',
-                    amount: d.actualObligationAmount || 0,
-                    remarks: 'Legacy Record'
-                }] : []
-            )
-        })));
+        const applyObligationRows = (centralRows: Awaited<ReturnType<typeof fetchFinancialObligationsForParent>> | null) => {
+            const hydratedDetails = (subproject.details || []).map(d => {
+                const centralObligations = centralRows?.filter(row => row.itemId === String(d.id)) || [];
+                return ensureOriginalBudgetSnapshot({
+                    ...d,
+                    obligations: centralObligations.length > 0
+                        ? centralObligations
+                        : (d.obligations && d.obligations.length > 0)
+                            ? d.obligations
+                            : (Number(d.actualObligationAmount) !== 0)
+                                ? [{
+                                    id: Date.now() + Math.random(),
+                                    date: d.actualObligationDate || '',
+                                    amount: d.actualObligationAmount || 0,
+                                    remarks: 'Legacy Record'
+                                }]
+                                : [],
+                });
+            });
+            if (!cancelled) setDetailItems(hydratedDetails);
+        };
+
+        setDetailItems((subproject.details || []).map(d => ensureOriginalBudgetSnapshot(d)));
+        if (supabase && subproject.id > 0) {
+            void fetchFinancialObligationsForParent({ entityType: 'subproject_detail', parentId: subproject.id })
+                .then(rows => applyObligationRows(rows))
+                .catch(error => {
+                    console.error('Failed to load authoritative subproject obligations:', error);
+                    applyObligationRows(null);
+                });
+        } else {
+            applyObligationRows(null);
+        }
 
         if (editMode === 'details') setActiveTab('details');
         if (editMode === 'commodity') setActiveTab('commodity');
@@ -374,6 +396,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         // Reset local editing states
         setEditingDetailIndex(null);
         resetCurrentDetail();
+        return () => { cancelled = true; };
     }, [subproject, editMode]);
 
     useEffect(() => {

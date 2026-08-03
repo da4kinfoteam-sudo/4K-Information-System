@@ -12,6 +12,7 @@ import { normalizePolicyMonth, useDcfPolicyGuard } from '../../hooks/useDcfPolic
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 import { createDisbursementsFromMonthlyFields, summarizeDisbursements } from '../../lib/disbursementUtils';
+import { replaceFinancialObligationRecords } from '../../lib/financialObligationSync';
 
 interface OtherExpenseDetailProps {
     item: OtherProgramExpense;
@@ -366,39 +367,14 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                 const { error: updateError } = await supabase.from('other_program_expenses').update(payload).eq('id', item.id);
                 if (updateError) throw updateError;
 
-                // Sync obligations to centralized table
                 const entityType = 'other_program_expense';
                 const parentId = item.id;
-
-                console.log("Syncing obligations to centralized table...", { entityType, parentId, count: obligations?.length });
-
-                // Delete old
-                const { error: deleteError } = await supabase.from('financial_obligations')
-                    .delete()
-                    .eq('entity_type', entityType)
-                    .eq('parent_id', parentId);
-
-                if (deleteError) {
-                    console.error("Error deleting old obligations:", deleteError);
-                    // Continue as it might still succeed
-                }
-
-                // Insert new
-                if (obligations && obligations.length > 0) {
-                    const syncPayload = obligations.map((o: any) => ({
-                        entity_type: entityType,
-                        parent_id: parentId,
-                        obligation_date: o.date,
-                        amount: Number(o.amount) || 0,
-                        remarks: o.remarks || ''
-                    }));
-
-                    const { error: insertError } = await supabase.from('financial_obligations').insert(syncPayload);
-                    if (insertError) {
-                        console.error("Critical RLS Error or Insert Error in financial_obligations:", insertError);
-                        throw new Error(`Failed to sync obligations: ${insertError.message}. This might be a database permission (RLS) issue.`);
-                    }
-                }
+                await replaceFinancialObligationRecords({
+                    entityType,
+                    parentId,
+                    itemId: null,
+                    records: obligations || [],
+                });
 
                 const { error: disbursementDeleteError } = await supabase.from('financial_disbursements')
                     .delete()
