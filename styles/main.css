@@ -7870,13 +7870,16 @@ button.bar1-drilldown-card:focus-visible {
   text-transform: uppercase;
 }
 
-.financial-actuals-dialog__table th:first-child,
-.financial-actuals-dialog__table td:first-child {
-  width: 45%;
+.financial-actuals-dialog__table .financial-actuals-dialog__amount-cell,
+.financial-actuals-dialog__table .financial-actuals-dialog__month-cell {
+  width: 30%;
 }
 
-.financial-actuals-dialog__table th:last-child,
-.financial-actuals-dialog__table td:last-child {
+.financial-actuals-dialog__table .financial-actuals-dialog__remarks-cell {
+  width: 40%;
+}
+
+.financial-actuals-dialog__table .financial-actuals-dialog__action-cell {
   text-align: right;
   width: 3.25rem;
 }
@@ -8000,7 +8003,7 @@ button.bar1-drilldown-card:focus-visible {
   }
 
   .financial-actuals-dialog__table {
-    min-width: 100%;
+    min-width: 34rem;
   }
 
   .financial-actuals-dialog__table th,
@@ -8008,13 +8011,12 @@ button.bar1-drilldown-card:focus-visible {
     padding: 0.5rem;
   }
 
-  .financial-actuals-dialog__table th:first-child,
-  .financial-actuals-dialog__table td:first-child {
-    width: 38%;
+  .financial-actuals-dialog__table .financial-actuals-dialog__amount-cell,
+  .financial-actuals-dialog__table .financial-actuals-dialog__month-cell {
+    width: 30%;
   }
 
-  .financial-actuals-dialog__table th:last-child,
-  .financial-actuals-dialog__table td:last-child {
+  .financial-actuals-dialog__table .financial-actuals-dialog__action-cell {
     width: 2.75rem;
   }
 }
@@ -12771,6 +12773,14 @@ button.bar1-drilldown-card:focus-visible {
   display: grid;
   gap: 0.35rem;
   grid-template-columns: minmax(8rem, 1fr) minmax(6.5rem, 1fr) auto;
+  min-width: 0;
+}
+
+.budget-record-editor--obligation .budget-record-row__fields {
+  grid-template-columns: minmax(8rem, 1fr) minmax(6.5rem, 1fr) minmax(10rem, 1.4fr) auto;
+}
+
+.budget-record-row__remarks {
   min-width: 0;
 }
 
@@ -17735,6 +17745,10 @@ button.bar1-drilldown-card:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .budget-record-editor--obligation .budget-record-row__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .budget-record-row__remove {
     justify-self: end;
   }
@@ -21196,6 +21210,11 @@ button.bar1-drilldown-card:focus-visible {
 
 .data-table__positive {
   color: var(--status-success);
+  font-weight: var(--font-weight-semibold);
+}
+
+.data-table__adjustment {
+  color: var(--status-warning);
   font-weight: var(--font-weight-semibold);
 }
 

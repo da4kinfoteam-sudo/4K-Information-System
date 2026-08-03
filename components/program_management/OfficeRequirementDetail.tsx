@@ -12,6 +12,7 @@ import { normalizePolicyMonth, useDcfPolicyGuard } from '../../hooks/useDcfPolic
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
+import { getActualObligationValidationError } from '../../lib/financialObligationUtils';
 
 interface OfficeRequirementDetailProps {
     item: OfficeRequirement;
@@ -146,7 +147,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                     obligations: mappedObligations,
                     actualObligationAmount: totalAmount
                 }));
-            } else if (item && (!item.obligations || item.obligations.length === 0) && (item.actualObligationAmount || 0) > 0) {
+            } else if (item && (!item.obligations || item.obligations.length === 0) && Number(item.actualObligationAmount) !== 0) {
                 const virtualObligations = [{
                     id: Date.now(),
                     date: item.actualObligationDate || '',
@@ -296,6 +297,14 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setValidationErrors([]);
+
+        if (editMode === 'accomplishment') {
+            const obligationError = getActualObligationValidationError(formData.obligations || []);
+            if (obligationError) {
+                alert(obligationError);
+                return;
+            }
+        }
 
         const action = editMode === 'details' ? 'editDetails' : 'editPhysicalAccomplishment';
         const decision = editMode === 'details' ? detailsDecision : accomplishmentDecision;

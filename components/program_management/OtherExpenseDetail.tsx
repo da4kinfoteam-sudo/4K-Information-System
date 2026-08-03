@@ -1,6 +1,7 @@
 // Author: 4K
 import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
+import { getActualObligationValidationError } from '../../lib/financialObligationUtils';
 import { OtherProgramExpense, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
@@ -152,7 +153,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                     obligations: mappedObligations,
                     actualObligationAmount: totalAmount
                 }));
-            } else if (item && (!item.obligations || item.obligations.length === 0) && (item.actualObligationAmount || 0) > 0) {
+            } else if (item && (!item.obligations || item.obligations.length === 0) && Number(item.actualObligationAmount) !== 0) {
                 const virtualObligations = [{
                     id: Date.now(),
                     date: item.actualObligationDate || '',
@@ -285,6 +286,14 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (editMode === 'accomplishment') {
+            const obligationError = getActualObligationValidationError(formData.obligations || []);
+            if (obligationError) {
+                alert(obligationError);
+                return;
+            }
+        }
 
         const action = editMode === 'details' ? 'editDetails' : 'editFinancialAccomplishment';
         const decision = editMode === 'details' ? detailsDecision : accomplishmentDecision;

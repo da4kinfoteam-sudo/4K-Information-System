@@ -16,6 +16,7 @@ import { ConfirmDialog, LoadingState } from '../ui/enterprise';
 import { DcfScopeFilterPanel, type DcfScopeFilterValue, useDcfScopeFilters } from '../ui/DcfScopeFilters';
 import { FinancialAmountCell, FinancialMonthCell, formatFinancialMonth, normalizeFinancialMonthValue } from './FinancialInlineEditors';
 import { FinancialActualsDialog } from './FinancialActualsDialog';
+import { getActualObligationValidationError, hasActualObligationRecords } from '../../lib/financialObligationUtils';
 
 interface Props {
  subprojects: Subproject[];
@@ -129,7 +130,7 @@ const getInitialObligations = (existingArr: ObligationRecord[] | undefined, date
  if (existingArr && existingArr.length > 0) return existingArr;
 
  // Fallback for truly legacy single-entry fields
- if (amount > 0) {
+ if (amount !== 0) {
  return [{
  id: Date.now() + Math.floor(Math.random() * 1000),
  date: date || '',
@@ -1569,9 +1570,14 @@ const FinancialAccomplishment: React.FC<Props> = ({
  amount: toFiniteNumber(record.amount),
  date: normalizeFinancialMonthValue(record.date, item.fundYear),
  }));
- const invalidRecord = normalizedRecords.find(record => record.amount <= 0 || !record.date);
- if (invalidRecord) {
- setActualsDialogError('Each entry requires an amount greater than zero and a month/year.');
+ const obligationError = actualsDialog.kind === 'obligation'
+ ? getActualObligationValidationError(normalizedRecords)
+ : '';
+ const invalidDisbursement = actualsDialog.kind === 'disbursement'
+ ? normalizedRecords.find(record => record.amount <= 0 || !record.date)
+ : undefined;
+ if (obligationError || invalidDisbursement) {
+ setActualsDialogError(obligationError || 'Each disbursement entry requires an amount greater than zero and a month/year.');
  return;
  }
  if (!(await ensureFinancialItemAllowed(item))) {
@@ -1929,11 +1935,11 @@ const FinancialAccomplishment: React.FC<Props> = ({
  <td className="fac-col-actual-obligation">
  <button
  type="button"
- className={`fac-actuals-trigger ${item.actualObligationAmount > 0 ? 'has-value' : ''}`}
+ className={`fac-actuals-trigger ${hasActualObligationRecords(item) ? 'has-value' : ''}`}
  onClick={() => openActualsDialog(item, 'obligation')}
- aria-label={`${item.actualObligationAmount > 0 ? 'Manage' : 'Add'} actual obligations for ${item.sourceName}`}
+ aria-label={`${hasActualObligationRecords(item) ? 'Manage' : 'Add'} actual obligations for ${item.sourceName}`}
  >
- {item.actualObligationAmount > 0 ? formatCurrency(item.actualObligationAmount) : '+ Add obligation'}
+ {hasActualObligationRecords(item) ? formatCurrency(item.actualObligationAmount) : '+ Add obligation'}
  </button>
  </td>
 
