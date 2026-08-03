@@ -31,6 +31,9 @@ export interface LodAssessmentLike {
     computed_level?: number | null;
     is_complete?: boolean | null;
     is_dropped?: boolean | null;
+    is_carried_over?: boolean | null;
+    carried_over_level?: number | null;
+    answered_question_count?: number | null;
 }
 
 export interface LodSectionScore {
@@ -54,13 +57,13 @@ export interface LodScoreResult {
     sectionScores: LodSectionScore[];
 }
 
-export type LodEffectiveStateKind = 'dropped' | 'manual' | 'computed' | 'incomplete' | 'for-assessment';
+export type LodEffectiveStateKind = 'dropped' | 'manual' | 'computed' | 'carried-over' | 'incomplete' | 'for-assessment';
 
 export interface LodEffectiveState {
     kind: LodEffectiveStateKind;
     label: string;
     level: number | null;
-    source: 'dropped' | 'manual' | 'computed' | 'incomplete' | 'none';
+    source: 'dropped' | 'manual' | 'computed' | 'carried-over' | 'incomplete' | 'none';
 }
 
 export interface LodLevelValidationIssue {
@@ -279,11 +282,20 @@ export const getLodEffectiveState = (
         const level = Number(assessment.computed_level);
         return { kind: 'computed', label: `Level ${level}`, level, source: 'computed' };
     }
+    if (assessment.is_carried_over && isPublishedLevel(assessment.carried_over_level)) {
+        const level = Number(assessment.carried_over_level);
+        return { kind: 'carried-over', label: `Level ${level}`, level, source: 'carried-over' };
+    }
+    if (assessment.answered_question_count !== undefined
+        && assessment.answered_question_count !== null
+        && Number(assessment.answered_question_count) === 0) {
+        return { kind: 'for-assessment', label: 'For Assessment', level: null, source: 'none' };
+    }
     return { kind: 'incomplete', label: 'Incomplete', level: null, source: 'incomplete' };
 };
 
 export const isLodPublishedState = (state: LodEffectiveState) =>
-    state.kind === 'manual' || state.kind === 'computed';
+    state.kind === 'manual' || state.kind === 'computed' || state.kind === 'carried-over';
 
 export const resolveManualLevelForSave = ({
     canManageOverride,

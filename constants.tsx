@@ -82,6 +82,7 @@ export interface RoleConfig {
     can_view: boolean;
     can_edit: boolean;
     can_delete: boolean;
+    can_manage?: boolean;
     visibility_scope?: VisibilityScope;
 }
 
@@ -921,6 +922,7 @@ export interface LodSection {
     order: number;
     weight: number;
     created_at?: string;
+    is_active?: boolean;
 }
 
 export interface LodQuestion {
@@ -937,6 +939,7 @@ export interface LodQuestion {
     is_specific_answer_mode?: boolean;
     specific_answer_label?: string;
     created_at?: string;
+    is_active?: boolean;
 }
 
 export interface LodChoice {
@@ -946,6 +949,7 @@ export interface LodChoice {
     points: number;
     order: number;
     created_at?: string;
+    is_active?: boolean;
 }
 
 export interface LodAssessment {
@@ -962,9 +966,30 @@ export interface LodAssessment {
     answered_question_count?: number;
     required_question_count?: number;
     manual_override_reason?: string | null;
+    questionnaire_version_id?: number | null;
+    carried_over_from_assessment_id?: number | null;
+    carried_over_from_year?: number | null;
+    carried_over_level?: number | null;
+    carried_over_total_score?: number | null;
     assessed_by?: number | string | null;
     assessor_name?: string | null;
     updated_at?: string;
+}
+
+export interface LodQuestionnaireVersion {
+    id: number;
+    version_number: number;
+    effective_year: number;
+    label: string;
+    config: {
+        sections: LodSection[];
+        questions: LodQuestion[];
+        choices: LodChoice[];
+        levels: LodLevelConfig[];
+    };
+    created_by?: number | string | null;
+    created_by_name?: string | null;
+    created_at?: string;
 }
 
 export interface LodAnswer {

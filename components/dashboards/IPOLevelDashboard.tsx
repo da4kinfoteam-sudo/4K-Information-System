@@ -34,7 +34,7 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
-import { IPO, LodAnswer, LodAssessment, LodChoice, LodLevelConfig, LodQuestion, LodSection } from '../../constants';
+import { IPO, LodAnswer, LodAssessment, LodChoice, LodLevelConfig, LodQuestion, LodQuestionnaireVersion, LodSection } from '../../constants';
 import { supabase } from '../../supabaseClient';
 import { parseLocation } from '../LocationPicker';
 import { getLodEffectiveState } from '../../lib/lodScoring';
@@ -92,6 +92,7 @@ interface LodDashboardRow {
     isReadyForScaleUp: boolean;
     history: { year: number; level: number }[];
     effectiveState: ReturnType<typeof getLodEffectiveState>;
+    questionnaireConfig: LodQuestionnaireVersion['config'];
 }
 
 interface LodDashboardData {
@@ -101,6 +102,7 @@ interface LodDashboardData {
     choices: LodChoice[];
     sections: LodSection[];
     levelConfigs: LodLevelConfig[];
+    versions: LodQuestionnaireVersion[];
 }
 
 const EMPTY_DATA: LodDashboardData = {
@@ -110,6 +112,7 @@ const EMPTY_DATA: LodDashboardData = {
     choices: [],
     sections: [],
     levelConfigs: [],
+    versions: [],
 };
 
 const LEVEL_COLORS: Record<number, string> = {
@@ -194,6 +197,37 @@ const percent = (part: number, total: number) => {
 };
 
 const getAssessmentKey = (assessmentId: number, questionId: number) => `${assessmentId}:${questionId}`;
+
+const buildQuestionnaireMaps = (config: LodQuestionnaireVersion['config']) => {
+    const questionsBySection = new Map<number, LodQuestion[]>();
+    const choicesByQuestion = new Map<number, LodChoice[]>();
+    config.questions.filter(question => question.is_active !== false).forEach(question => {
+        const list = questionsBySection.get(question.section_id) || [];
+        list.push(question);
+        questionsBySection.set(question.section_id, list);
+    });
+    questionsBySection.forEach(list => list.sort((a, b) => (a.order || 0) - (b.order || 0)));
+    config.choices.filter(choice => choice.is_active !== false).forEach(choice => {
+        const list = choicesByQuestion.get(choice.question_id) || [];
+        list.push(choice);
+        choicesByQuestion.set(choice.question_id, list);
+    });
+    choicesByQuestion.forEach(list => list.sort((a, b) => (a.order || 0) - (b.order || 0)));
+    return { questionsBySection, choicesByQuestion };
+};
+
+const getAssessmentConfig = (
+    assessment: LodAssessment | null,
+    versions: LodQuestionnaireVersion[],
+    fallback: LodQuestionnaireVersion['config']
+) => {
+    if (!assessment) return fallback;
+    const bound = versions.find(version => Number(version.id) === Number(assessment.questionnaire_version_id));
+    if (bound?.config) return bound.config;
+    return versions
+        .filter(version => Number(version.effective_year) <= Number(assessment.year))
+        .sort((a, b) => Number(b.effective_year) - Number(a.effective_year) || Number(b.version_number) - Number(a.version_number))[0]?.config || fallback;
+};
 
 const getComponentScores = (
     assessment: LodAssessment | null,
@@ -321,6 +355,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 choicesResult,
                 sectionsResult,
                 levelConfigsResult,
+                versionsResult,
             ] = await Promise.all([
                 supabase.from('lod_assessments').select('*'),
                 supabase.from('lod_answers').select('*'),
@@ -328,9 +363,10 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 supabase.from('lod_choices').select('*'),
                 supabase.from('lod_sections').select('*').order('order', { ascending: true }),
                 supabase.from('lod_level_configs').select('*').order('level', { ascending: true }),
+                supabase.from('lod_questionnaire_versions').select('*').order('version_number', { ascending: false }),
             ]);
 
-            const firstError = assessmentsResult.error || answersResult.error || questionsResult.error || choicesResult.error || sectionsResult.error || levelConfigsResult.error;
+            const firstError = assessmentsResult.error || answersResult.error || questionsResult.error || choicesResult.error || sectionsResult.error || levelConfigsResult.error || versionsResult.error;
             if (firstError) {
                 console.error('Error fetching LOD dashboard data:', firstError);
                 setFetchError(firstError.message || 'Unable to load LOD dashboard data.');
@@ -339,10 +375,11 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 setData({
                     assessments: assessmentsResult.data || [],
                     answers: answersResult.data || [],
-                    questions: questionsResult.data || [],
-                    choices: choicesResult.data || [],
-                    sections: (sectionsResult.data || []).sort((a, b) => (a.order || 0) - (b.order || 0)),
+                    questions: (questionsResult.data || []).filter(question => question.is_active !== false),
+                    choices: (choicesResult.data || []).filter(choice => choice.is_active !== false),
+                    sections: (sectionsResult.data || []).filter(section => section.is_active !== false).sort((a, b) => (a.order || 0) - (b.order || 0)),
                     levelConfigs: levelConfigsResult.data || [],
+                    versions: versionsResult.data || [],
                 });
             }
 
@@ -366,23 +403,23 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             new Set(visibleAssessments.map(assessment => Number(assessment.year)).filter(year => Number.isFinite(year)))
         ).sort((a: number, b: number) => b - a);
         const assessmentYearsByIpo = new Map<number, LodAssessment[]>();
-        const questionsBySection = new Map<number, LodQuestion[]>();
-        const choicesByQuestion = new Map<number, LodChoice[]>();
         const answersByAssessmentQuestion = new Map<string, LodAnswer>();
-
-        data.questions.forEach(question => {
-            const list = questionsBySection.get(question.section_id) || [];
-            list.push(question);
-            questionsBySection.set(question.section_id, list);
-        });
-        questionsBySection.forEach(list => list.sort((a, b) => (a.order || 0) - (b.order || 0)));
-
-        data.choices.forEach(choice => {
-            const list = choicesByQuestion.get(choice.question_id) || [];
-            list.push(choice);
-            choicesByQuestion.set(choice.question_id, list);
-        });
-        choicesByQuestion.forEach(list => list.sort((a, b) => (a.order || 0) - (b.order || 0)));
+        const targetYear = yearFilter === 'All' ? null : Number(yearFilter);
+        const fallbackConfig: LodQuestionnaireVersion['config'] = {
+            sections: data.sections,
+            questions: data.questions,
+            choices: data.choices,
+            levels: data.levelConfigs,
+        };
+        const sortedVersions = data.versions.slice().sort((a, b) =>
+            Number(b.effective_year) - Number(a.effective_year) || Number(b.version_number) - Number(a.version_number)
+        );
+        const displayVersion = sortedVersions.find(version => targetYear === null || Number(version.effective_year) <= targetYear);
+        const displayConfig = displayVersion?.config || fallbackConfig;
+        const sections = displayConfig.sections
+            .filter(section => section.is_active !== false)
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
+        const { questionsBySection, choicesByQuestion } = buildQuestionnaireMaps(displayConfig);
 
         data.answers.forEach(answer => {
             answersByAssessmentQuestion.set(getAssessmentKey(answer.assessment_id, answer.question_id), answer);
@@ -396,7 +433,6 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
         });
         assessmentYearsByIpo.forEach(list => list.sort((a, b) => Number(b.year) - Number(a.year)));
 
-        const targetYear = yearFilter === 'All' ? null : Number(yearFilter);
         const rows = (ipos || []).map(ipo => {
             const ipoAssessments = assessmentYearsByIpo.get(Number(ipo.id)) || [];
             const currentAssessment = targetYear
@@ -410,11 +446,17 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             const currentLevel = effectiveState.level;
             const previousLevel = previousEffectiveState.level;
             const change = currentLevel !== null && previousLevel !== null ? currentLevel - previousLevel : null;
-            const componentScores = getComponentScores(currentAssessment, data.sections, questionsBySection, choicesByQuestion, answersByAssessmentQuestion);
-            const previousComponentScores = getComponentScores(previousAssessment, data.sections, questionsBySection, choicesByQuestion, answersByAssessmentQuestion);
-            const requiredScaleUpSections = data.sections.filter(section => {
+            const questionnaireConfig = getAssessmentConfig(currentAssessment, sortedVersions, displayConfig);
+            const previousQuestionnaireConfig = getAssessmentConfig(previousAssessment, sortedVersions, displayConfig);
+            const currentMaps = buildQuestionnaireMaps(questionnaireConfig);
+            const previousMaps = buildQuestionnaireMaps(previousQuestionnaireConfig);
+            const currentSections = questionnaireConfig.sections.filter(section => section.is_active !== false);
+            const previousSections = previousQuestionnaireConfig.sections.filter(section => section.is_active !== false);
+            const componentScores = getComponentScores(currentAssessment, currentSections, currentMaps.questionsBySection, currentMaps.choicesByQuestion, answersByAssessmentQuestion);
+            const previousComponentScores = getComponentScores(previousAssessment, previousSections, previousMaps.questionsBySection, previousMaps.choicesByQuestion, answersByAssessmentQuestion);
+            const requiredScaleUpSections = currentSections.filter(section => {
                 const sectionWeight = Number(section.weight) || 0;
-                const questionCount = questionsBySection.get(section.id)?.length || 0;
+                const questionCount = currentMaps.questionsBySection.get(section.id)?.length || 0;
                 return sectionWeight > 0 && questionCount > 0;
             });
             const scaleUpComponentsPass = requiredScaleUpSections.length > 0 && requiredScaleUpSections.every(section => {
@@ -465,6 +507,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 ),
                 history,
                 effectiveState,
+                questionnaireConfig,
             } satisfies LodDashboardRow;
         });
 
@@ -476,6 +519,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             questionsBySection,
             choicesByQuestion,
             answersByAssessmentQuestion,
+            sections,
         };
     }, [data, ipos, yearFilter]);
 
@@ -637,7 +681,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     }, [filteredRows, model.assessmentsByIpo, model.availableYears, yearFilter]);
 
     const componentAverages = useMemo(() => {
-        return data.sections.map(section => {
+        return model.sections.map(section => {
             const weightedValues = assessedRows
                 .map(row => row.componentScores[section.id]?.weighted)
                 .filter((value): value is number => value !== null && value !== undefined);
@@ -653,7 +697,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 count: weightedValues.length,
             };
         });
-    }, [assessedRows, data.sections]);
+    }, [assessedRows, model.sections]);
 
     const componentGapAnalysis = useMemo(() => {
         const componentsWithUtilization = componentAverages.map(component => ({
@@ -675,7 +719,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             componentById.set(component.id, component);
         });
 
-        return data.sections.map(section => {
+        return model.sections.map(section => {
             const sectionWeight = Number(section.weight) || 0;
             const questions = model.questionsBySection.get(section.id) || [];
             const questionMaxScores = new Map<number, number>();
@@ -689,26 +733,47 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
 
             const questionScores = questions.map(question => {
                 const questionMaxScore = questionMaxScores.get(question.id) || 0;
-                const maxWeightedContribution = sectionMaxScore > 0 ? (questionMaxScore / sectionMaxScore) * sectionWeight : 0;
-                const values = assessedRows
+                const fallbackMaxContribution = sectionMaxScore > 0 ? (questionMaxScore / sectionMaxScore) * sectionWeight : 0;
+                const contributions = assessedRows
                     .map(row => {
-                        if (!row.currentAssessment || questionMaxScore <= 0 || sectionMaxScore <= 0) return null;
+                        if (!row.currentAssessment) return null;
+                        const rowSection = row.questionnaireConfig.sections.find(candidate => Number(candidate.id) === Number(section.id));
+                        const rowQuestion = row.questionnaireConfig.questions.find(candidate => Number(candidate.id) === Number(question.id));
+                        if (!rowSection || !rowQuestion || rowQuestion.is_active === false) return null;
+                        const rowQuestions = row.questionnaireConfig.questions.filter(candidate =>
+                            Number(candidate.section_id) === Number(rowSection.id) && candidate.is_active !== false
+                        );
+                        const rowChoices = row.questionnaireConfig.choices.filter(choice => choice.is_active !== false);
+                        const rowQuestionMax = rowChoices
+                            .filter(choice => Number(choice.question_id) === Number(rowQuestion.id))
+                            .reduce((max, choice) => Math.max(max, Number(choice.points) || 0), 0);
+                        const rowSectionMax = rowQuestions.reduce((total, candidate) => {
+                            const maxPoints = rowChoices
+                                .filter(choice => Number(choice.question_id) === Number(candidate.id))
+                                .reduce((max, choice) => Math.max(max, Number(choice.points) || 0), 0);
+                            return total + maxPoints;
+                        }, 0);
+                        if (rowQuestionMax <= 0 || rowSectionMax <= 0) return null;
                         const answer = model.answersByAssessmentQuestion.get(getAssessmentKey(row.currentAssessment.id, question.id));
                         if (!answer) return null;
-                        const selectedChoice = (model.choicesByQuestion.get(question.id) || [])
+                        const selectedChoice = rowChoices
                             .find(choice => Number(choice.id) === Number(answer.choice_id));
                         if (!selectedChoice) return null;
-                        return ((Number(selectedChoice.points) || 0) / sectionMaxScore) * sectionWeight;
+                        const rowSectionWeight = Number(rowSection.weight) || 0;
+                        return {
+                            score: ((Number(selectedChoice.points) || 0) / rowSectionMax) * rowSectionWeight,
+                            max: (rowQuestionMax / rowSectionMax) * rowSectionWeight,
+                        };
                     })
-                    .filter((value): value is number => value !== null);
+                    .filter((value): value is { score: number; max: number } => value !== null);
 
                 return {
                     id: question.id,
                     question: question.text,
-                    averageScore: average(values),
-                    maxScore: maxWeightedContribution,
+                    averageScore: average(contributions.map(value => value.score)),
+                    maxScore: average(contributions.map(value => value.max)) ?? fallbackMaxContribution,
                     gap: null,
-                    answeredCount: values.length,
+                    answeredCount: contributions.length,
                     isBelowHalfWeight: false,
                 } satisfies QuestionGapScore;
             });
@@ -735,7 +800,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 questions: questionsWithGaps,
             };
         }).sort((a, b) => (b.gap || 0) - (a.gap || 0));
-    }, [assessedRows, componentGapAnalysis, data.sections, model.answersByAssessmentQuestion, model.choicesByQuestion, model.questionsBySection]);
+    }, [assessedRows, componentGapAnalysis, model.answersByAssessmentQuestion, model.choicesByQuestion, model.questionsBySection, model.sections]);
 
     const regionalAverages = useMemo(() => {
         const regionGroups = new Map<string, number[]>();
@@ -783,7 +848,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             .sort((a, b) => ((a.score || 0) / a.weight) - ((b.score || 0) / b.weight))[0] || null;
         const topRegion = regionalAverages[0] || null;
 
-        const componentDeltas = data.sections.map(section => {
+        const componentDeltas = model.sections.map(section => {
             const deltas = filteredRows
                 .map(row => {
                     const current = row.componentScores[section.id]?.weighted;
@@ -824,7 +889,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 text: `${metrics.atRisk} IPOs are currently tagged as at-risk.`,
             },
         ].filter((item): item is { tone: 'green' | 'blue' | 'orange' | 'red' | 'gray'; text: string } => Boolean(item));
-    }, [componentAverages, data.sections, filteredRows, metrics.assessedTotal, metrics.atRisk, metrics.declined, metrics.improved, regionalAverages]);
+    }, [componentAverages, filteredRows, metrics.assessedTotal, metrics.atRisk, metrics.declined, metrics.improved, model.sections, regionalAverages]);
 
     const searchedRows = useMemo(() => {
         const query = searchTerm.trim().toLowerCase();
@@ -867,7 +932,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             'Current LOD',
             'Previous LOD',
             'Change',
-            ...data.sections.map(section => section.title),
+            ...model.sections.map(section => section.title),
             'Status',
         ];
         const rows = searchedRows.map(row => [
@@ -878,7 +943,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             row.effectiveState.label,
             getLodEffectiveState(row.previousAssessment).label,
             row.change ?? '',
-            ...data.sections.map(section => {
+            ...model.sections.map(section => {
                 const score = row.componentScores[section.id];
                 return score?.weighted !== null && score?.weighted !== undefined ? formatComponentScore(score.weighted, score.weight) : '';
             }),
@@ -1395,7 +1460,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                                 <th className="data-table__numeric">Current LOD</th>
                                 <th className="data-table__numeric">Previous LOD</th>
                                 <th className="data-table__numeric">Change</th>
-                                {data.sections.map(section => (
+                                {model.sections.map(section => (
                                     <th key={section.id} className="data-table__numeric" title={section.title}>{section.title}</th>
                                 ))}
                                 <th>Status</th>
@@ -1422,7 +1487,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                                     <td className={`data-table__numeric ${row.change !== null && row.change < 0 ? 'lod-negative' : row.change !== null && row.change > 0 ? 'lod-positive' : ''}`}>
                                         {row.change === null ? 'No Data' : `${row.change > 0 ? '+' : ''}${formatScore(row.change)}`}
                                     </td>
-                                    {data.sections.map(section => (
+                                    {model.sections.map(section => (
                                         <td key={section.id} className="data-table__numeric">{formatComponentScore(row.componentScores[section.id]?.weighted, row.componentScores[section.id]?.weight)}</td>
                                     ))}
                                     <td>
@@ -1440,7 +1505,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                                 </tr>
                             )) : (
                                 <tr>
-                                    <td colSpan={10 + data.sections.length}>
+                                    <td colSpan={10 + model.sections.length}>
                                         <p className="dashboard-empty dashboard-empty--center">No Data</p>
                                     </td>
                                 </tr>

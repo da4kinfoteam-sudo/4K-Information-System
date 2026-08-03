@@ -32,7 +32,7 @@ import MarketLinkageEdit from './components/resources/MarketLinkageEdit';
 import MarketLinkageDetail from './components/resources/MarketLinkageDetail';
 import CommodityMappingPage from './components/resources/CommodityMappingPage';
 import LODPage from './components/LOD/LODPage';
-import LODDetails from './components/LOD/LODDetails';
+import LODDetailsRoute from './components/LOD/LODDetailsRoute';
 import AIChatbot from './components/AIChatbot'; // Import Chatbot
 import { EmptyState, ErrorState, LoadingState } from './components/ui/enterprise';
 
@@ -1728,20 +1728,18 @@ const AppContent: React.FC = () => {
                             }}
                         />;
             case '/level-of-development':
-                return <LODPage ipos={ipos} onSelectIpo={handleSelectIpoForLod} />;
+                return <LODPage onSelectIpo={handleSelectIpoForLod} />;
             case '/lod-details':
                 {
                     const routeId = getRouteId(routeParams);
-                    const routeIpo = findByRouteId(ipos, routeId);
-                    const item = routeId !== null
-                        ? (selectedIpo?.id === routeId ? selectedIpo : routeIpo)
-                        : selectedIpo;
                     const routeYear = Number(routeParams.get('year'));
                     const assessmentYear = Number.isFinite(routeYear) && routeYear > 0 ? routeYear : selectedLodYear;
-                    if (!item && routeId !== null && isGlobalRefreshing) return <div>Loading LOD assessment...</div>;
-                    if (!item && routeId !== null) return <div>LOD record not found or not accessible. Return to the Level of Development list.</div>;
-                    if (!item) return <div>Select an IPO</div>;
-                    return <LODDetails ipo={item} onBack={handleBack} initialYear={assessmentYear} />;
+                    return <LODDetailsRoute
+                        ipoId={routeId ?? selectedIpo?.id ?? null}
+                        selectedIpo={selectedIpo}
+                        onBack={handleBack}
+                        initialYear={assessmentYear}
+                    />;
                 }
             case '/commodity-mapping':
                 return <CommodityMappingPage subprojects={subprojects} ipos={ipos} />;

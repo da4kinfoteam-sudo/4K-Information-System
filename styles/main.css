@@ -21898,6 +21898,250 @@ button.lod-table-state:hover {
   width: 2.5rem;
 }
 
+/* LOD list and assessment surfaces */
+.lod-list-page {
+  gap: 1rem;
+  min-width: 0;
+}
+
+.lod-list-header {
+  min-height: 2.5rem;
+}
+
+.lod-list-header .data-list-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.lod-list-kpis {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.lod-list-kpis .kpi-card {
+  min-height: 7rem;
+  padding: 0.9rem 1rem;
+}
+
+.lod-list-kpis .kpi-card__value {
+  color: var(--app-text);
+  font-size: clamp(1.5rem, 2.2vw, 2rem);
+}
+
+.lod-list-table-card .data-table {
+  min-width: max(100%, 48rem);
+}
+
+.lod-list-table-card .data-table th,
+.lod-list-table-card .data-table td {
+  text-align: left;
+}
+
+.lod-list-table-card .data-table__numeric,
+.lod-list-table-card th.data-table__numeric {
+  text-align: center;
+}
+
+.lod-assessment-link {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--app-text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  padding: 0.2rem;
+  white-space: nowrap;
+}
+
+.lod-assessment-link:hover,
+.lod-assessment-link:focus-visible {
+  color: var(--brand-primary);
+  text-decoration: underline;
+}
+
+.lod-assessment {
+  display: grid;
+  gap: 1rem;
+  max-width: 86rem;
+  padding-bottom: 2rem;
+}
+
+.lod-assessment .detail-header {
+  align-items: end;
+  border-bottom: 1px solid var(--app-border);
+  padding-bottom: 1rem;
+}
+
+.lod-assessment__back {
+  margin: 0 0 0.55rem;
+  padding-left: 0;
+}
+
+.lod-assessment .detail-metric-grid {
+  background: transparent;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+}
+
+.lod-assessment .lod-assessment-metric {
+  border-left: 1px solid var(--app-border);
+  box-shadow: none;
+  min-height: 7.75rem;
+  padding: 1rem;
+}
+
+.lod-assessment-metric__value {
+  color: var(--app-text);
+  margin-top: 0.35rem;
+}
+
+.lod-assessment-metric__value > span {
+  font-size: clamp(1.65rem, 3vw, 2.35rem);
+}
+
+.lod-questionnaire__header,
+.lod-questionnaire__footer {
+  padding: 0.9rem 1rem;
+}
+
+.lod-questionnaire__header {
+  background: var(--app-surface);
+}
+
+.lod-questionnaire__header .detail-card-title {
+  margin: 0;
+}
+
+.lod-questionnaire__toggle {
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+}
+
+.lod-questionnaire__section-number {
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  color: var(--app-text);
+  flex-basis: 1.75rem;
+  height: 1.75rem;
+}
+
+.lod-questionnaire__section-title {
+  font-size: var(--font-size-body);
+}
+
+.lod-questionnaire__section > .p-6 {
+  padding: 0.75rem 1rem 1rem;
+}
+
+.lod-questionnaire__question-block {
+  padding: 0.8rem 0;
+}
+
+.lod-choice-grid {
+  gap: 0.4rem;
+  margin: 0.65rem 0 0.65rem 1.75rem;
+}
+
+.lod-choice {
+  border-radius: var(--app-radius-sm);
+  padding: 0.55rem 0.65rem;
+}
+
+.lod-choice__points {
+  color: var(--app-text-muted);
+  flex: 0 0 auto;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
+}
+
+.lod-choice.is-selected .lod-choice__points {
+  color: var(--brand-primary);
+}
+
+.lod-admin-controls {
+  border-left: 1px solid var(--app-border);
+  padding-left: 1rem;
+}
+
+.lod-assessment__active-year {
+  color: var(--app-text-muted);
+  font-size: var(--font-size-body);
+  margin-right: auto;
+}
+
+.lod-import-report {
+  max-height: min(42rem, calc(100dvh - 2rem));
+  max-width: min(52rem, calc(100vw - 2rem));
+}
+
+@media (max-width: 900px) {
+  .lod-list-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lod-assessment .detail-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lod-assessment .form-check-group {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .lod-list-header,
+  .lod-list-header .data-list-header__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lod-list-header .btn {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .lod-list-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .lod-list-kpis .kpi-card {
+    min-height: 6rem;
+  }
+
+  .lod-questionnaire__toggle,
+  .lod-questionnaire__toggle > div {
+    align-items: flex-start;
+  }
+
+  .lod-questionnaire__toggle {
+    flex-direction: column;
+  }
+
+  .lod-choice-grid {
+    grid-template-columns: 1fr;
+    margin-left: 0;
+  }
+
+  .lod-questionnaire__remarks {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .lod-admin-controls {
+    border-left: 0;
+    border-top: 1px solid var(--app-border);
+    padding-left: 0;
+    padding-top: 1rem;
+  }
+}
+
 .lod-management-card {
   display: grid;
   gap: 1.25rem;
