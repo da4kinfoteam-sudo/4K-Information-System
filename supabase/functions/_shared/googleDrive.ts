@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import {
+  buildDriveEntityFolderName,
+  buildIsolatedDriveFolderMappingUpdate,
+  getDriveFolderMappingAction
+} from "./driveFolderIdentity.ts";
 
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const USERINFO_EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
@@ -93,6 +98,7 @@ type IpoRow = {
 type SubprojectRow = {
   id: number;
   name: string;
+  ipo_id?: number | null;
   operatingUnit?: string | null;
   indigenousPeopleOrganization?: string | null;
 };
@@ -303,7 +309,7 @@ async function fetchIpo(ipoId: number): Promise<IpoRow> {
 async function fetchSubproject(subprojectId: number): Promise<SubprojectRow> {
   const { data, error } = await adminClient()
     .from("subprojects")
-    .select("id,name,operatingUnit,indigenousPeopleOrganization")
+    .select("id,name,ipo_id,operatingUnit,indigenousPeopleOrganization")
     .eq("id", subprojectId)
     .maybeSingle();
 
@@ -762,6 +768,59 @@ async function registerCanonicalFolder(
   return findCanonicalFolderWithRetry(findFolderRow);
 }
 
+async function isFolderMappedToDifferentEntity({
+  table,
+  entityIdColumn,
+  entityId,
+  connectionId,
+  folderId
+}: {
+  table: DriveFolderTable;
+  entityIdColumn: "ipo_id" | "subproject_id" | "activity_id";
+  entityId: number;
+  connectionId: string;
+  folderId: string;
+}) {
+  const { data, error } = await adminClient()
+    .from(table)
+    .select("id")
+    .eq("connection_id", connectionId)
+    .eq("folder_id", folderId)
+    .neq(entityIdColumn, entityId)
+    .limit(1);
+  if (error) throw new Error(FOLDER_PREPARATION_ERROR);
+  return (data || []).length > 0;
+}
+
+async function replaceCollidedFolderMapping({
+  table,
+  existingRow,
+  folder,
+  folderName,
+  hierarchy
+}: {
+  table: DriveFolderTable;
+  existingRow: DriveFolderRow;
+  folder: DriveFileResponse;
+  folderName: string;
+  hierarchy: Record<string, string | null>;
+}) {
+  const { data, error } = await adminClient()
+    .from(table)
+    .update(buildIsolatedDriveFolderMappingUpdate({
+      folderId: folder.id,
+      folderName,
+      hierarchy
+    }))
+    .eq("id", existingRow.id)
+    .eq("folder_id", existingRow.folder_id)
+    .select("*")
+    .maybeSingle();
+
+  if (error || !data) throw new Error(FOLDER_PREPARATION_ERROR);
+  return data as DriveFolderRow;
+}
+
 async function ensureUploadSectionFolder(
   accessToken: string,
   table: DriveFolderTable,
@@ -950,6 +1009,10 @@ async function ensureIpoFolder(ipoId: number, ipoName: string, operatingUnit: st
   const { connection, accessToken } = await connectedDrive();
   const folderYear = getUploadYear();
   const folderOperatingUnit = operatingUnit.trim() || "Unassigned Operating Unit";
+  const canonicalFolderName = cleanDriveName(
+    buildDriveEntityFolderName("ipo", ipoId, ipoName),
+    `IPO-${ipoId}`
+  );
 
   const findFolderRow = async (): Promise<DriveFolderRow | null> => {
     const { data, error } = await adminClient()
@@ -979,12 +1042,24 @@ async function ensureIpoFolder(ipoId: number, ipoName: string, operatingUnit: st
     };
   };
 
+  const findReusableFolder = async () => {
+    const row = await findFolderRow();
+    if (!row?.folder_id) return null;
+    const isShared = await isFolderMappedToDifferentEntity({
+      table: "ipo_drive_folders",
+      entityIdColumn: "ipo_id",
+      entityId: ipoId,
+      connectionId: connection.id,
+      folderId: row.folder_id
+    });
+    return getDriveFolderMappingAction({ hasMapping: true, isSharedWithDifferentEntity: isShared }) === "reuse"
+      ? resultFromRow(row)
+      : null;
+  };
+
   return withDriveFolderInitializationLock(
     `entity:ipo:${connection.id}:${ipoId}:${IPO_DRIVE_MODULE}:${folderYear}:${folderOperatingUnit}`,
-    async () => {
-      const row = await findFolderRow();
-      return row?.folder_id ? resultFromRow(row) : null;
-    },
+    findReusableFolder,
     async () => {
       if (!connection.root_folder_id) {
         throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
@@ -993,8 +1068,23 @@ async function ensureIpoFolder(ipoId: number, ipoName: string, operatingUnit: st
       const moduleFolder = await ensureFolder(accessToken, IPO_DRIVE_MODULE, connection.root_folder_id);
       const yearFolder = await ensureFolder(accessToken, String(folderYear), moduleFolder.id);
       const operatingUnitFolder = await ensureFolder(accessToken, cleanDriveName(folderOperatingUnit, "Operating Unit"), yearFolder.id);
-      const folderName = cleanDriveName(ipoName, `IPO ${ipoId}`);
+      const folderName = canonicalFolderName;
       const folder = await ensureFolder(accessToken, folderName, operatingUnitFolder.id);
+      const existingRow = await findFolderRow();
+      if (existingRow?.folder_id) {
+        const transitioned = await replaceCollidedFolderMapping({
+          table: "ipo_drive_folders",
+          existingRow,
+          folder,
+          folderName,
+          hierarchy: {
+            module_folder_id: moduleFolder.id,
+            year_folder_id: yearFolder.id,
+            operating_unit_folder_id: operatingUnitFolder.id
+          }
+        });
+        return resultFromRow(transitioned);
+      }
       const canonical = await registerCanonicalFolder(
         "ipo_drive_folders",
         {
@@ -1025,6 +1115,7 @@ async function ensureSubprojectFolder(subprojectIdValue: number, user: UserRow) 
   const subprojectName = (subproject.name || "").trim();
   const operatingUnit = (subproject.operatingUnit || "").trim();
   const ipoName = (subproject.indigenousPeopleOrganization || "").trim();
+  const linkedIpoId = Number(subproject.ipo_id);
 
   if (!subprojectName) throw new Error("Subproject name is required.");
   if (!operatingUnit) throw new Error("This subproject needs an operating unit before files can be uploaded.");
@@ -1032,6 +1123,10 @@ async function ensureSubprojectFolder(subprojectIdValue: number, user: UserRow) 
 
   const { connection, accessToken } = await connectedDrive();
   const folderYear = getUploadYear();
+  const canonicalFolderName = cleanDriveName(
+    buildDriveEntityFolderName("subproject", subprojectId, subprojectName),
+    `SP-${subprojectId}`
+  );
 
   const findFolderRow = async (): Promise<DriveFolderRow | null> => {
     const { data, error } = await adminClient()
@@ -1052,7 +1147,7 @@ async function ensureSubprojectFolder(subprojectIdValue: number, user: UserRow) 
       accessToken,
       folderRowId: Number(row.id),
       folderId: row.folder_id,
-      folderName: row.folder_name || cleanDriveName(subprojectName, `Subproject ${subprojectId}`),
+      folderName: row.folder_name || canonicalFolderName,
       folderYear,
       operatingUnit: row.operating_unit || operatingUnit,
       ipoName: row.ipo_name || ipoName,
@@ -1064,12 +1159,24 @@ async function ensureSubprojectFolder(subprojectIdValue: number, user: UserRow) 
     };
   };
 
+  const findReusableFolder = async () => {
+    const row = await findFolderRow();
+    if (!row?.folder_id) return null;
+    const isShared = await isFolderMappedToDifferentEntity({
+      table: "subproject_drive_folders",
+      entityIdColumn: "subproject_id",
+      entityId: subprojectId,
+      connectionId: connection.id,
+      folderId: row.folder_id
+    });
+    return getDriveFolderMappingAction({ hasMapping: true, isSharedWithDifferentEntity: isShared }) === "reuse"
+      ? resultFromRow(row)
+      : null;
+  };
+
   return withDriveFolderInitializationLock(
     `entity:subproject:${connection.id}:${subprojectId}:${SUBPROJECT_DRIVE_MODULE}:${folderYear}`,
-    async () => {
-      const row = await findFolderRow();
-      return row?.folder_id ? resultFromRow(row) : null;
-    },
+    findReusableFolder,
     async () => {
       if (!connection.root_folder_id) {
         throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
@@ -1078,9 +1185,28 @@ async function ensureSubprojectFolder(subprojectIdValue: number, user: UserRow) 
       const moduleFolder = await ensureFolder(accessToken, SUBPROJECT_DRIVE_MODULE, connection.root_folder_id);
       const yearFolder = await ensureFolder(accessToken, String(folderYear), moduleFolder.id);
       const operatingUnitFolder = await ensureFolder(accessToken, cleanDriveName(operatingUnit, "Operating Unit"), yearFolder.id);
-      const ipoFolder = await ensureFolder(accessToken, cleanDriveName(ipoName, `IPO ${subprojectId}`), operatingUnitFolder.id);
-      const folderName = cleanDriveName(subprojectName, `Subproject ${subprojectId}`);
+      const ipoFolderName = Number.isInteger(linkedIpoId) && linkedIpoId > 0
+        ? cleanDriveName(buildDriveEntityFolderName("ipo", linkedIpoId, ipoName), `IPO-${linkedIpoId}`)
+        : cleanDriveName(ipoName, `IPO for SP-${subprojectId}`);
+      const ipoFolder = await ensureFolder(accessToken, ipoFolderName, operatingUnitFolder.id);
+      const folderName = canonicalFolderName;
       const folder = await ensureFolder(accessToken, folderName, ipoFolder.id);
+      const existingRow = await findFolderRow();
+      if (existingRow?.folder_id) {
+        const transitioned = await replaceCollidedFolderMapping({
+          table: "subproject_drive_folders",
+          existingRow,
+          folder,
+          folderName,
+          hierarchy: {
+            module_folder_id: moduleFolder.id,
+            year_folder_id: yearFolder.id,
+            operating_unit_folder_id: operatingUnitFolder.id,
+            ipo_folder_id: ipoFolder.id
+          }
+        });
+        return resultFromRow(transitioned);
+      }
       const canonical = await registerCanonicalFolder(
         "subproject_drive_folders",
         {
@@ -1122,6 +1248,10 @@ async function ensureActivityFolder(activityIdValue: number, user: UserRow) {
 
   const { connection, accessToken } = await connectedDrive();
   const folderYear = getUploadYear();
+  const canonicalFolderName = cleanDriveName(
+    buildDriveEntityFolderName("activity", activityId, activityName),
+    `ACT-${activityId}`
+  );
 
   const findFolderRow = async (): Promise<DriveFolderRow | null> => {
     const { data, error } = await adminClient()
@@ -1142,7 +1272,7 @@ async function ensureActivityFolder(activityIdValue: number, user: UserRow) {
       accessToken,
       folderRowId: Number(row.id),
       folderId: row.folder_id,
-      folderName: row.folder_name || cleanDriveName(activityName, `Activity ${activityId}`),
+      folderName: row.folder_name || canonicalFolderName,
       folderYear,
       operatingUnit: row.operating_unit || operatingUnit,
       component: row.component || component,
@@ -1155,12 +1285,24 @@ async function ensureActivityFolder(activityIdValue: number, user: UserRow) {
     };
   };
 
+  const findReusableFolder = async () => {
+    const row = await findFolderRow();
+    if (!row?.folder_id) return null;
+    const isShared = await isFolderMappedToDifferentEntity({
+      table: "activity_drive_folders",
+      entityIdColumn: "activity_id",
+      entityId: activityId,
+      connectionId: connection.id,
+      folderId: row.folder_id
+    });
+    return getDriveFolderMappingAction({ hasMapping: true, isSharedWithDifferentEntity: isShared }) === "reuse"
+      ? resultFromRow(row)
+      : null;
+  };
+
   return withDriveFolderInitializationLock(
     `entity:activity:${connection.id}:${activityId}:${ACTIVITY_DRIVE_MODULE}:${folderYear}`,
-    async () => {
-      const row = await findFolderRow();
-      return row?.folder_id ? resultFromRow(row) : null;
-    },
+    findReusableFolder,
     async () => {
       if (!connection.root_folder_id) {
         throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
@@ -1170,8 +1312,24 @@ async function ensureActivityFolder(activityIdValue: number, user: UserRow) {
       const yearFolder = await ensureFolder(accessToken, String(folderYear), moduleFolder.id);
       const operatingUnitFolder = await ensureFolder(accessToken, cleanDriveName(operatingUnit, "Operating Unit"), yearFolder.id);
       const componentFolder = await ensureFolder(accessToken, cleanDriveName(component, "Component"), operatingUnitFolder.id);
-      const folderName = cleanDriveName(activityName, `Activity ${activityId}`);
+      const folderName = canonicalFolderName;
       const folder = await ensureFolder(accessToken, folderName, componentFolder.id);
+      const existingRow = await findFolderRow();
+      if (existingRow?.folder_id) {
+        const transitioned = await replaceCollidedFolderMapping({
+          table: "activity_drive_folders",
+          existingRow,
+          folder,
+          folderName,
+          hierarchy: {
+            module_folder_id: moduleFolder.id,
+            year_folder_id: yearFolder.id,
+            operating_unit_folder_id: operatingUnitFolder.id,
+            component_folder_id: componentFolder.id
+          }
+        });
+        return resultFromRow(transitioned);
+      }
       const canonical = await registerCanonicalFolder(
         "activity_drive_folders",
         {
