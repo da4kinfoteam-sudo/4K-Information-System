@@ -45,6 +45,10 @@ import { useDcfPolicyGuard } from './hooks/useDcfPolicyGuard';
 import { DataScope, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
 import { clearUserCache, getScopeCacheMeta, readScopedCache, writeScopedCache } from './lib/localScopedCache';
 import { normalizeStaffingExpenses } from './lib/staffingExpenseIdentity';
+import {
+    FINANCIAL_OBLIGATIONS_CHANGED_EVENT,
+    type FinancialObligationChange,
+} from './lib/financialObligationSync';
 import { emptyIpoLinkedDcfRecords, fetchIpoLinkedDcfRecords, IpoLinkedDcfRecords } from './lib/ipoLinkedDcfRecords';
 import { fetchWorkflowEntityById, fetchWorkflowIpos } from './lib/workflowLookups';
 import {
@@ -256,6 +260,30 @@ const AppContent: React.FC = () => {
     // Financial Records - loaded at startup and refreshed manually
     const [allFinancialObligations, setAllFinancialObligations, financialObligationsSync] = useSupabaseTable<any>('financial_obligations', [], scopedTableOptions);
     const [allFinancialDisbursements, setAllFinancialDisbursements, financialDisbursementsSync] = useSupabaseTable<any>('financial_disbursements', [], scopedTableOptions);
+
+    useEffect(() => {
+        const handleFinancialObligationChange = (event: Event) => {
+            const { entityType, parentId, itemId, records } = (event as CustomEvent<FinancialObligationChange>).detail;
+            setAllFinancialObligations(previous => [
+                ...previous.filter(row => !(
+                    row.entity_type === entityType
+                    && Number(row.parent_id) === parentId
+                    && (row.item_id === null || row.item_id === undefined || row.item_id === '' ? null : String(row.item_id)) === itemId
+                )),
+                ...records.map(record => ({
+                    id: record.id,
+                    entity_type: entityType,
+                    parent_id: parentId,
+                    item_id: itemId,
+                    obligation_date: record.date,
+                    amount: record.amount,
+                    remarks: record.remarks,
+                })),
+            ]);
+        };
+        window.addEventListener(FINANCIAL_OBLIGATIONS_CHANGED_EVENT, handleFinancialObligationChange);
+        return () => window.removeEventListener(FINANCIAL_OBLIGATIONS_CHANGED_EVENT, handleFinancialObligationChange);
+    }, [setAllFinancialObligations]);
 
     // Hydration Logic
     const obligationsMap = useMemo(() => {
