@@ -1,6 +1,6 @@
 // Author: 4K
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Eraser, RotateCcw } from 'lucide-react';
+import { ArrowLeft, RotateCcw, ShieldCheck } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { IPO, LodSection, LodQuestion, LodChoice, LodAssessment, LodAnswer, LodLevelConfig, LodQuestionnaireVersion } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
@@ -8,6 +8,7 @@ import { useLogAction } from '../../hooks/useLogAction';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import { calculateLodScore, getLodEffectiveState, isLodPublishedState } from '../../lib/lodScoring';
 import { notifyLodDataChanged } from '../../lib/lodDataSync';
+import { buildLodOverrideAuditMetadata } from '../../lib/lodOverrides';
 import { ConfirmDialog } from '../ui/enterprise';
 
 interface LODDetailsProps {
@@ -181,7 +182,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             setLocalActualValues(initialActuals);
             setLocalTotalValues(initialTotals);
             setLocalSpecificValues(initialSpecifics);
-            setExpandedSections(Object.fromEntries(config.sections.map(section => [section.id, true])));
+            setExpandedSections(Object.fromEntries(config.sections.map((section, index) => [section.id, index === 0])));
             setDataReady(true);
         } catch (error: any) {
             if (sequence !== loadSequence.current) return;
@@ -351,7 +352,24 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             }
 
             setAssessment(persisted);
-            logAction('Updated LOD Assessment', `IPO: ${ipo.name}, Year: ${selectedYear}, State: ${persistedState.label}`);
+            logAction(
+                'Updated LOD Assessment',
+                `IPO: ${ipo.name}, Year: ${selectedYear}, State: ${persistedState.label}`,
+                ipo.name,
+                'LOD Assessment',
+                String(persisted.id),
+                manualLevelToSave !== null ? buildLodOverrideAuditMetadata({
+                    ipoId: ipo.id,
+                    ipoName: ipo.name,
+                    year: selectedYear,
+                    previousAssessment: assessment,
+                    newLevel: manualLevelToSave,
+                    reason: manualReasonToSave || '',
+                    actorName: currentUser?.fullName || currentUser?.email || '',
+                    actorRole: currentUser?.role || '',
+                    source: 'lod_detail',
+                }) : undefined
+            );
             notifyLodDataChanged({
                 ipoId: ipo.id,
                 year: selectedYear,
@@ -480,6 +498,9 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
 
                             const isExpanded = !!expandedSections[section.id];
                             const sectionScore = calculateSectionScore(section.id);
+                            const sectionScoreData = score.sectionScores.find(item => item.sectionId === section.id);
+                            const answeredCount = sectionScoreData?.answeredQuestions ?? 0;
+                            const requiredCount = sectionScoreData?.requiredQuestions ?? sectionQuestions.length;
 
                             return (
                                 <div key={section.id} className="lod-questionnaire__section">
@@ -487,13 +508,14 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                         onClick={() => toggleSection(section.id)}
                                         className="lod-questionnaire__toggle"
                                     >
-                                        <div className="flex items-center gap-3">
+                                        <div className="lod-questionnaire__section-heading">
                                             <div className="lod-questionnaire__section-number">
                                                 {section.order}
                                             </div>
                                             <h4 className="lod-questionnaire__section-title">{section.title}</h4>
                                         </div>
-                                        <div className="flex items-center gap-4">
+                                        <div className="lod-questionnaire__section-summary">
+                                            <span className={`lod-questionnaire__completion ${answeredCount === requiredCount ? 'is-complete' : ''}`}>{answeredCount} / {requiredCount} answered</span>
                                             <div className="lod-questionnaire__score">
                                                 Section Score: <strong>{sectionScore.toFixed(2)}</strong>
                                                 <span className="lod-questionnaire__weight-total">/ {section.weight}</span>
@@ -511,7 +533,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                     </button>
 
                                     {isExpanded && (
-                                        <div className="p-6 pt-2 space-y-6">
+                                        <div className="lod-questionnaire__question-list">
                                             {sectionQuestions.map(question => {
                                                 const qChoices = choices.filter(c => c.question_id === question.id);
                                                 const hasQuestionData = localAnswers[question.id] !== undefined
@@ -520,9 +542,9 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                                     || localTotalValues[question.id] !== undefined
                                                     || Boolean(localSpecificValues[question.id]);
                                                 return (
-                                                    <div key={question.id} className="lod-questionnaire__question-block">
-                                                        <div className="flex gap-3 mb-2">
-                                                            <div className="flex-1">
+                                                    <div key={question.id} className={`lod-questionnaire__question-block ${localAnswers[question.id] === undefined ? 'is-unanswered' : ''}`}>
+                                                        <div className="lod-questionnaire__question-header">
+                                                            <div className="lod-questionnaire__question-heading">
                                                                 <p className="lod-questionnaire__question">
                                                                     {question.text}
                                                                     <span className="lod-questionnaire__weight">(Weight: {question.weight})</span>
@@ -596,8 +618,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                                                     onClick={() => handleClearAnswer(question.id)}
                                                                     aria-label={`Clear answer for ${question.text}`}
                                                                 >
-                                                                    <Eraser aria-hidden="true" />
-                                                                    Clear answer
+                                                                    Clear
                                                                 </button>
                                                             )}
                                                         </div>
@@ -619,15 +640,13 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                                                 </label>
                                                             ))}
                                                         </div>
-                                                        <div className="ml-8">
-                                                            <textarea
-                                                                value={localAnswerRemarks[question.id] || ''}
-                                                                onChange={(e) => handleAnswerRemarkChange(question.id, e.target.value)}
-                                                                className="form-control lod-questionnaire__remarks"
-                                                                placeholder="Add remarks (optional)..."
-                                                                disabled={isLocked}
-                                                            />
-                                                        </div>
+                                                        <textarea
+                                                            value={localAnswerRemarks[question.id] || ''}
+                                                            onChange={(e) => handleAnswerRemarkChange(question.id, e.target.value)}
+                                                            className="form-control lod-questionnaire__remarks"
+                                                            placeholder="Add remarks (optional)..."
+                                                            disabled={isLocked}
+                                                        />
                                                     </div>
                                                 );
                                             })}
@@ -639,128 +658,65 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                     </div>
                 )}
 
-                {/* Admin Overrides & Actions */}
-                {isLocked && (
-                    <div className="notice notice--warning">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                        </svg>
-                        <p>
-                            You have view-only access to this assessment. Request Level of Development edit permission to modify LOD records.
-                        </p>
-                    </div>
-                )}
-                <div className="form-section lod-questionnaire__footer">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        <div>
-                            <label className="form-label">Overall Remarks / Notes</label>
-                            <textarea
-                                value={remarks}
-                                onChange={(e) => setRemarks(e.target.value)}
-                                className="form-control lod-questionnaire__overall-remarks"
-                                placeholder="Enter any observations or notes..."
-                                disabled={isLocked}
-                            />
-                        </div>
-                        {canManageLod && (
-                            <div className="space-y-4 lod-admin-controls">
-                                <h3 className="detail-card-title">Administrator Controls</h3>
-                                <div>
-                                    <label className="form-label">Manual Level Override</label>
-                                    <div className="lod-manual-override-grid">
-                                        <select
-                                            value={manualLevel}
-                                            onChange={(e) => {
-                                                const value = e.target.value === '' ? '' : Number(e.target.value);
-                                                if (value !== manualLevel) setManualOverrideReason('');
-                                                setManualLevel(value);
-                                            }}
-                                            className="form-control lod-assessment__manual-level"
-                                        >
-                                            <option value="">Auto</option>
-                                            {[1, 2, 3, 4, 5].map(level => <option key={level} value={level}>Level {level}</option>)}
-                                        </select>
-                                        <input
-                                            type="text"
-                                            value={manualOverrideReason}
-                                            onChange={(event) => setManualOverrideReason(event.target.value)}
-                                            className="form-control"
-                                            placeholder="Required reason for manual override"
-                                            disabled={manualLevel === ''}
-                                        />
-                                    </div>
-                                    <span className="form-help">
-                                        A manual level takes precedence until it is returned to Auto.
-                                    </span>
-                                </div>
-                                <div className="flex flex-wrap gap-4">
-                                    <label className="form-check">
-                                        <input
-                                            type="checkbox"
-                                            checked={isCarriedOver}
-                                            onChange={(e) => setIsCarriedOver(e.target.checked)}
-                                            className="form-checkbox"
-                                            disabled={!carrySource && !assessment?.carried_over_from_assessment_id}
-                                        />
-                                        <span>
-                                            Carry over from previous year
-                                            {(assessment?.carried_over_from_year || carrySource?.year) && (
-                                                <small className="form-help">
-                                                    Source: {assessment?.carried_over_from_year || carrySource?.year} / {assessment?.carried_over_level ? `Level ${assessment.carried_over_level}` : getLodEffectiveState(carrySource).label}
-                                                </small>
-                                            )}
-                                        </span>
-                                    </label>
-                                    <label className="form-check">
-                                        <input
-                                            type="checkbox"
-                                            checked={isDropped}
-                                            onChange={(e) => setIsDropped(e.target.checked)}
-                                            className="form-checkbox"
-                                        />
-                                        <span>IPO is Dropped</span>
-                                    </label>
-                                </div>
-                                {!carrySource && !assessment?.carried_over_from_assessment_id && (
-                                    <p className="form-help">No earlier published LOD is available to carry into {selectedYear}.</p>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {saveError && (
-                        <div className="notice notice--error" role="alert">
-                            <p>{saveError}</p>
-                        </div>
-                    )}
-                    <div className="form-footer">
-                        <span className="lod-assessment__active-year">Assessment year <strong>{selectedYear}</strong></span>
-                        <button
-                            onClick={onBack}
-                            className="btn btn-secondary"
-                        >
-                            Cancel
-                        </button>
-                        {!isLocked && (
-                            <button
-                                onClick={handleSave}
-                                disabled={saving || !dataReady || Boolean(loadError)}
-                                className="btn btn-primary"
-                            >
-                                {saving ? (
-                                    <>
-                                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        Saving...
-                                    </>
-                                ) : 'Save Assessment'}
-                            </button>
-                        )}
-                    </div>
-                </div>
             </div>
+
+            {isLocked && (
+                <div className="notice notice--warning lod-assessment__readonly">
+                    <p>You have view-only access to this assessment. Request Level of Development edit permission to modify LOD records.</p>
+                </div>
+            )}
+
+            <section className="detail-card lod-remarks-card">
+                <header className="lod-card-header"><h3 className="detail-card-title">Overall Remarks / Notes</h3></header>
+                <div className="lod-card-body">
+                    <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} className="form-control lod-questionnaire__overall-remarks" placeholder="Enter any observations or notes..." disabled={isLocked} />
+                </div>
+            </section>
+
+            {canManageLod && (
+                <section className="detail-card lod-admin-card">
+                    <header className="lod-card-header">
+                        <div className="lod-admin-card__title"><ShieldCheck aria-hidden="true" /><h3 className="detail-card-title">Administrator Controls</h3></div>
+                    </header>
+                    <div className="lod-card-body lod-admin-controls">
+                        <div className="lod-admin-controls__override">
+                            <label className="form-label">Manual Level Override</label>
+                            <div className="lod-manual-override-grid">
+                                <select value={manualLevel} onChange={(e) => { const value = e.target.value === '' ? '' : Number(e.target.value); if (value !== manualLevel) setManualOverrideReason(''); setManualLevel(value); }} className="form-control lod-assessment__manual-level">
+                                    <option value="">Auto</option>
+                                    {[1, 2, 3, 4, 5].map(level => <option key={level} value={level}>Level {level}</option>)}
+                                </select>
+                                <input type="text" value={manualOverrideReason} onChange={(event) => setManualOverrideReason(event.target.value)} className="form-control" placeholder="Required reason for manual override" disabled={manualLevel === ''} />
+                            </div>
+                            <span className="form-help">A manual level takes precedence until it is returned to Auto.</span>
+                        </div>
+                        <div className="lod-admin-controls__flags">
+                            <label className="form-check lod-admin-option">
+                                <input type="checkbox" checked={isCarriedOver} onChange={(e) => setIsCarriedOver(e.target.checked)} className="form-checkbox" disabled={!carrySource && !assessment?.carried_over_from_assessment_id} />
+                                <span><strong>Carry over from previous year</strong>{(assessment?.carried_over_from_year || carrySource?.year) && <small className="form-help">Source: {assessment?.carried_over_from_year || carrySource?.year} / {assessment?.carried_over_level ? `Level ${assessment.carried_over_level}` : getLodEffectiveState(carrySource).label}</small>}</span>
+                            </label>
+                            <label className="form-check lod-admin-option">
+                                <input type="checkbox" checked={isDropped} onChange={(e) => setIsDropped(e.target.checked)} className="form-checkbox" />
+                                <span><strong>IPO is Dropped</strong><small className="form-help">Excludes this IPO from the selected reporting year.</small></span>
+                            </label>
+                        </div>
+                        {!carrySource && !assessment?.carried_over_from_assessment_id && <p className="form-help lod-admin-controls__help">No earlier published LOD is available to carry into {selectedYear}.</p>}
+                    </div>
+                </section>
+            )}
+
+            <section className="detail-card lod-assessment-actions">
+                {saveError && <div className="notice notice--error" role="alert"><p>{saveError}</p></div>}
+                <div className="form-footer">
+                    <span className="lod-assessment__active-year">Assessment year <strong>{selectedYear}</strong></span>
+                    <button onClick={onBack} className="btn btn-secondary">Cancel</button>
+                    {!isLocked && (
+                        <button onClick={handleSave} disabled={saving || !dataReady || Boolean(loadError)} className="btn btn-primary">
+                            {saving ? 'Saving...' : 'Save Assessment'}
+                        </button>
+                    )}
+                </div>
+            </section>
 
             {showClearAllConfirm && (
                 <ConfirmDialog

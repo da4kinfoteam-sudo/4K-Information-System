@@ -1,6 +1,6 @@
 // Author: 4K
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Upload, X } from 'lucide-react';
+import { Check, Download, Settings2, Upload, X } from 'lucide-react';
 import { IPO, LodAssessment, operatingUnits, ouToRegionMap, philippineRegions } from '../../constants';
 import { supabase } from '../../supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
@@ -11,6 +11,7 @@ import { DataTablePagination, KpiCard, LoadingState, SortableTableHeader } from 
 import { ColumnFilterDialog, MajorTableToolbar, TableColumnFilters, TruncatedTableCell } from '../ui/MajorDataTable';
 import { getLodEffectiveState, LodEffectiveStateKind } from '../../lib/lodScoring';
 import { notifyLodDataChanged, subscribeToLodDataChanges } from '../../lib/lodDataSync';
+import { buildLodManualOverrideRows, LodOverrideSource } from '../../lib/lodOverrides';
 
 interface LODPageProps {
     onSelectIpo: (ipo: IPO, year?: number) => void;
@@ -33,6 +34,20 @@ interface ImportResultRow {
     year: number | null;
     status: 'Applied' | 'Rejected';
     message: string;
+}
+
+interface LodControllerSettings {
+    year: number;
+    bulkSelection: boolean;
+    inlineEditing: boolean;
+    defaultReason: string;
+}
+
+interface LodOverrideDialogState {
+    ipoIds: number[];
+    source: LodOverrideSource;
+    level: number | '';
+    reason: string;
 }
 
 type SortConfig = { key: string; direction: 'ascending' | 'descending' } | null;
@@ -90,7 +105,22 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
     const [loadError, setLoadError] = useState('');
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [importReport, setImportReport] = useState<ImportResultRow[] | null>(null);
+    const isSuperAdmin = currentUser?.role === 'Super Admin';
+    const [isControllerOpen, setIsControllerOpen] = useState(false);
+    const [controllerSettings, setControllerSettings] = useState<LodControllerSettings>({
+        year: filters.year,
+        bulkSelection: false,
+        inlineEditing: false,
+        defaultReason: '',
+    });
+    const [controllerDraft, setControllerDraft] = useState<LodControllerSettings>(controllerSettings);
+    const [selectedIpoIds, setSelectedIpoIds] = useState<Set<number>>(new Set());
+    const [inlineEditingIpoId, setInlineEditingIpoId] = useState<number | null>(null);
+    const [overrideDialog, setOverrideDialog] = useState<LodOverrideDialogState | null>(null);
+    const [overrideSaving, setOverrideSaving] = useState(false);
+    const [overrideFeedback, setOverrideFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const pageSelectionRef = useRef<HTMLInputElement>(null);
     const loadSequence = useRef(0);
 
     const updateFilters = (patch: Partial<LodListFilters>, resetPage = false) => {
@@ -151,6 +181,10 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
             updateFilters({ ou: currentUser?.operatingUnit || '', region: ownRegion }, true);
         }
     }, [visibilityScope, currentUser?.operatingUnit, ownRegion]);
+
+    useEffect(() => {
+        setControllerSettings(previous => ({ ...previous, year: filters.year }));
+    }, [filters.year]);
 
     const years = useMemo(() => {
         const values = new Set<number>([new Date().getFullYear(), filters.year]);
@@ -223,15 +257,110 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
     const totalPages = Math.max(1, Math.ceil(processedIpos.length / filters.pageSize));
     const currentPage = Math.min(Math.max(filters.page, 1), totalPages);
     const paginatedIpos = processedIpos.slice((currentPage - 1) * filters.pageSize, currentPage * filters.pageSize);
+    const selectedOnPage = paginatedIpos.filter(ipo => selectedIpoIds.has(Number(ipo.id))).length;
 
     useEffect(() => {
         if (filters.page !== currentPage) updateFilters({ page: currentPage });
     }, [currentPage, filters.page]);
 
+    useEffect(() => {
+        setSelectedIpoIds(new Set());
+        setInlineEditingIpoId(null);
+    }, [controllerSettings.year, filters.search, filters.ou, filters.region, filters.effectiveState, filters.year, filters.pageSize]);
+
+    useEffect(() => {
+        if (!pageSelectionRef.current) return;
+        pageSelectionRef.current.indeterminate = selectedOnPage > 0 && selectedOnPage < paginatedIpos.length;
+    }, [selectedOnPage, paginatedIpos.length]);
+
+    useEffect(() => {
+        if (isSuperAdmin) return;
+        setControllerSettings(previous => ({ ...previous, bulkSelection: false, inlineEditing: false }));
+        setSelectedIpoIds(new Set());
+        setInlineEditingIpoId(null);
+    }, [isSuperAdmin]);
+
     const requestSort = (key: string) => updateFilters({
         sortKey: key,
         sortDirection: filters.sortKey === key && filters.sortDirection === 'ascending' ? 'descending' : 'ascending',
     });
+
+    const openController = () => {
+        const next = {
+            ...controllerSettings,
+            year: filters.year,
+        };
+        setControllerDraft(next);
+        setIsControllerOpen(true);
+    };
+
+    const saveController = () => {
+        setControllerSettings(controllerDraft);
+        if (!controllerDraft.bulkSelection) setSelectedIpoIds(new Set());
+        if (!controllerDraft.inlineEditing) setInlineEditingIpoId(null);
+        setIsControllerOpen(false);
+    };
+
+    const toggleIpoSelection = (ipoId: number) => {
+        setSelectedIpoIds(previous => {
+            const next = new Set(previous);
+            if (next.has(ipoId)) next.delete(ipoId);
+            else next.add(ipoId);
+            return next;
+        });
+    };
+
+    const toggleCurrentPageSelection = () => {
+        const selectPage = selectedOnPage !== paginatedIpos.length;
+        setSelectedIpoIds(previous => {
+            const next = new Set(previous);
+            paginatedIpos.forEach(ipo => selectPage ? next.add(Number(ipo.id)) : next.delete(Number(ipo.id)));
+            return next;
+        });
+    };
+
+    const openOverrideDialog = (ipoIds: number[], source: LodOverrideSource, level: number | '' = '') => {
+        if (!isSuperAdmin || ipoIds.length === 0) return;
+        setOverrideFeedback(null);
+        setOverrideDialog({ ipoIds, source, level, reason: controllerSettings.defaultReason });
+    };
+
+    const applyManualOverrides = async () => {
+        if (!isSuperAdmin || !overrideDialog || !supabase || !currentUser) return;
+        setOverrideSaving(true);
+        setOverrideFeedback(null);
+        try {
+            const rows = buildLodManualOverrideRows(overrideDialog.ipoIds.map(ipoId => ({
+                ipoId,
+                year: controllerSettings.year,
+                level: Number(overrideDialog.level),
+                reason: overrideDialog.reason,
+            })));
+            const result = await supabase.rpc('save_lod_manual_overrides', {
+                p_rows: rows,
+                p_actor_id: currentUser.id,
+                p_actor_name: currentUser.fullName || currentUser.email,
+                p_source: overrideDialog.source,
+            });
+            if (result.error) throw result.error;
+            const savedCount = Array.isArray(result.data) ? result.data.length : rows.length;
+            if (savedCount !== rows.length) throw new Error(`Only ${savedCount} of ${rows.length} overrides were confirmed. Refresh before retrying.`);
+
+            await fetchLodData();
+            notifyLodDataChanged({ year: controllerSettings.year, reason: 'override' });
+            setSelectedIpoIds(new Set());
+            setInlineEditingIpoId(null);
+            setOverrideDialog(null);
+            setOverrideFeedback({
+                type: 'success',
+                message: `${savedCount} ${savedCount === 1 ? 'LOD override was' : 'LOD overrides were'} saved for ${controllerSettings.year}.`,
+            });
+        } catch (error: any) {
+            setOverrideFeedback({ type: 'error', message: error?.message || 'The LOD override transaction failed. No changes were applied.' });
+        } finally {
+            setOverrideSaving(false);
+        }
+    };
 
     const handleApplyFilters = (values: TableColumnFilters) => {
         const requestedOu = values.ou?.[0] || '';
@@ -395,9 +524,28 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
                     searchPlaceholder="Search IPOs by name or region..."
                     activeFilterCount={activeFilterCount}
                     onOpenFilters={() => setIsFilterOpen(true)}
+                    filterActions={isSuperAdmin ? (
+                        <button type="button" className="btn btn-secondary" onClick={openController}>
+                            <Settings2 aria-hidden="true" /> Super Admin Controls
+                        </button>
+                    ) : undefined}
                 />
 
                 {loadError && <div className="notice notice--error" role="alert"><p>{loadError}</p></div>}
+                {overrideFeedback && (
+                    <div className={`notice notice--${overrideFeedback.type}`} role="status">
+                        <p>{overrideFeedback.message}</p>
+                    </div>
+                )}
+                {isSuperAdmin && controllerSettings.bulkSelection && selectedIpoIds.size > 0 && (
+                    <div className="lod-bulk-action-bar" role="region" aria-label="LOD bulk actions">
+                        <span><strong>{selectedIpoIds.size}</strong> selected</span>
+                        <div>
+                            <button type="button" className="btn btn-secondary" onClick={() => setSelectedIpoIds(new Set())}>Clear selection</button>
+                            <button type="button" className="btn btn-primary" onClick={() => openOverrideDialog(Array.from(selectedIpoIds), 'lod_list_bulk')}>Set LOD</button>
+                        </div>
+                    </div>
+                )}
                 {loading ? (
                     <LoadingState title="Loading assessments" message="Preparing Level of Development records." />
                 ) : (
@@ -405,6 +553,18 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
                         <div className="data-table-scroll">
                             <table className="data-table lod-major-table">
                                 <thead><tr>
+                                    {isSuperAdmin && controllerSettings.bulkSelection && (
+                                        <th className="lod-selection-column">
+                                            <input
+                                                ref={pageSelectionRef}
+                                                type="checkbox"
+                                                className="form-checkbox"
+                                                checked={paginatedIpos.length > 0 && selectedOnPage === paginatedIpos.length}
+                                                onChange={toggleCurrentPageSelection}
+                                                aria-label="Select IPOs on this page"
+                                            />
+                                        </th>
+                                    )}
                                     <SortableTableHeader label="IPO Name" columnKey="name" sortConfig={{ key: filters.sortKey, direction: filters.sortDirection }} onSort={requestSort} />
                                     <SortableTableHeader label="Region" columnKey="region" sortConfig={{ key: filters.sortKey, direction: filters.sortDirection }} onSort={requestSort} />
                                     {displayYears.map(year => <SortableTableHeader key={year} label={String(year)} columnKey={`year:${year}`} sortConfig={{ key: filters.sortKey, direction: filters.sortDirection }} onSort={requestSort} className="data-table__numeric" />)}
@@ -412,15 +572,56 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
                                 <tbody>
                                     {paginatedIpos.map(ipo => (
                                         <tr key={ipo.id} className="data-table__row--interactive" onClick={() => onSelectIpo(ipo, filters.year)}>
+                                            {isSuperAdmin && controllerSettings.bulkSelection && (
+                                                <td className="lod-selection-column" onClick={event => event.stopPropagation()}>
+                                                    <input
+                                                        type="checkbox"
+                                                        className="form-checkbox"
+                                                        checked={selectedIpoIds.has(Number(ipo.id))}
+                                                        onChange={() => toggleIpoSelection(Number(ipo.id))}
+                                                        aria-label={`Select ${ipo.name}`}
+                                                    />
+                                                </td>
+                                            )}
                                             <td className="data-table__cell--primary"><TruncatedTableCell value={ipo.name} /></td>
                                             <td><TruncatedTableCell value={ipo.region} /></td>
                                             {displayYears.map(year => {
                                                 const state = getLodEffectiveState(getAssessment(ipo.id, year));
-                                                return <td key={year} className="data-table__numeric"><button type="button" className="lod-assessment-link" onClick={event => { event.stopPropagation(); onSelectIpo(ipo, year); }}>{state.label}</button></td>;
+                                                const canInlineEdit = isSuperAdmin && controllerSettings.inlineEditing && controllerSettings.year === year;
+                                                return (
+                                                    <td key={year} className="data-table__numeric" onClick={event => event.stopPropagation()}>
+                                                        {canInlineEdit && inlineEditingIpoId === Number(ipo.id) ? (
+                                                            <select
+                                                                autoFocus
+                                                                className="form-control lod-inline-level-select"
+                                                                value={state.level ?? ''}
+                                                                onBlur={() => setInlineEditingIpoId(null)}
+                                                                onChange={event => {
+                                                                    const level = Number(event.target.value);
+                                                                    setInlineEditingIpoId(null);
+                                                                    if (level) openOverrideDialog([Number(ipo.id)], 'lod_list_inline', level);
+                                                                }}
+                                                                aria-label={`Set ${ipo.name} LOD for ${year}`}
+                                                            >
+                                                                <option value="">Select level</option>
+                                                                {[1, 2, 3, 4, 5].map(level => <option key={level} value={level}>Level {level}</option>)}
+                                                            </select>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                className={`lod-assessment-link ${canInlineEdit ? 'is-inline-editable' : ''}`}
+                                                                onClick={() => canInlineEdit ? setInlineEditingIpoId(Number(ipo.id)) : onSelectIpo(ipo, year)}
+                                                                aria-label={canInlineEdit ? `Edit ${ipo.name} LOD for ${year}` : `Open ${ipo.name} assessment for ${year}`}
+                                                            >
+                                                                {state.label}
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                );
                                             })}
                                         </tr>
                                     ))}
-                                    {paginatedIpos.length === 0 && <tr><td className="data-table__empty-cell" colSpan={displayYears.length + 2}>No IPOs match the current LOD filters.</td></tr>}
+                                    {paginatedIpos.length === 0 && <tr><td className="data-table__empty-cell" colSpan={displayYears.length + 2 + (isSuperAdmin && controllerSettings.bulkSelection ? 1 : 0)}>No IPOs match the current LOD filters.</td></tr>}
                                 </tbody>
                             </table>
                         </div>
@@ -436,6 +637,72 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
                     </>
                 )}
             </div>
+
+            {isControllerOpen && isSuperAdmin && (
+                <div className="modal-backdrop" role="presentation" onMouseDown={() => setIsControllerOpen(false)}>
+                    <section className="modal-card lod-controller-modal" role="dialog" aria-modal="true" aria-labelledby="lod-controller-title" onMouseDown={event => event.stopPropagation()}>
+                        <header className="modal-card__header">
+                            <div><h3 id="lod-controller-title">Super Admin Controls</h3><p>Configure manual LOD editing for this table.</p></div>
+                            <button type="button" className="modal-card__close" onClick={() => setIsControllerOpen(false)} aria-label="Close Super Admin controls"><X aria-hidden="true" /></button>
+                        </header>
+                        <div className="modal-card__body lod-controller-form">
+                            <label className="form-field">
+                                <span className="form-label">Override year</span>
+                                <select className="form-control" value={controllerDraft.year} onChange={event => setControllerDraft(previous => ({ ...previous, year: Number(event.target.value) }))}>
+                                    {displayYears.map(year => <option key={year} value={year}>{year}</option>)}
+                                </select>
+                            </label>
+                            <label className="lod-controller-toggle">
+                                <span><strong>Enable bulk selection</strong><small>Select IPOs and apply one manual level.</small></span>
+                                <input type="checkbox" className="form-checkbox" checked={controllerDraft.bulkSelection} onChange={event => setControllerDraft(previous => ({ ...previous, bulkSelection: event.target.checked }))} />
+                            </label>
+                            <label className="lod-controller-toggle">
+                                <span><strong>Enable inline LOD editing</strong><small>Click a value in the override-year column.</small></span>
+                                <input type="checkbox" className="form-checkbox" checked={controllerDraft.inlineEditing} onChange={event => setControllerDraft(previous => ({ ...previous, inlineEditing: event.target.checked }))} />
+                            </label>
+                            <label className="form-field">
+                                <span className="form-label">Default override reason <small>(optional)</small></span>
+                                <input className="form-control" type="text" value={controllerDraft.defaultReason} onChange={event => setControllerDraft(previous => ({ ...previous, defaultReason: event.target.value }))} placeholder="Enter a reason to prefill confirmations" />
+                            </label>
+                            <p className="lod-controller-note">All changes made through these controls are saved as manual overrides.</p>
+                        </div>
+                        <footer className="modal-card__footer">
+                            <button type="button" className="btn btn-secondary" onClick={() => setIsControllerOpen(false)}>Cancel</button>
+                            <button type="button" className="btn btn-primary" onClick={saveController}><Check aria-hidden="true" /> Apply controls</button>
+                        </footer>
+                    </section>
+                </div>
+            )}
+
+            {overrideDialog && isSuperAdmin && (
+                <div className="modal-backdrop" role="presentation" onMouseDown={() => !overrideSaving && setOverrideDialog(null)}>
+                    <section className="modal-card lod-override-modal" role="dialog" aria-modal="true" aria-labelledby="lod-override-title" onMouseDown={event => event.stopPropagation()}>
+                        <header className="modal-card__header">
+                            <div><h3 id="lod-override-title">Apply Manual LOD Override</h3><p>{overrideDialog.ipoIds.length} {overrideDialog.ipoIds.length === 1 ? 'IPO' : 'IPOs'} selected for {controllerSettings.year}</p></div>
+                            <button type="button" className="modal-card__close" disabled={overrideSaving} onClick={() => setOverrideDialog(null)} aria-label="Close override confirmation"><X aria-hidden="true" /></button>
+                        </header>
+                        <div className="modal-card__body lod-override-form">
+                            <label className="form-field">
+                                <span className="form-label">New LOD level</span>
+                                <select className="form-control" value={overrideDialog.level} onChange={event => setOverrideDialog(previous => previous ? ({ ...previous, level: Number(event.target.value) }) : previous)}>
+                                    <option value="">Select level</option>
+                                    {[1, 2, 3, 4, 5].map(level => <option key={level} value={level}>Level {level}</option>)}
+                                </select>
+                            </label>
+                            <label className="form-field">
+                                <span className="form-label">Override reason</span>
+                                <textarea className="form-control" rows={3} value={overrideDialog.reason} onChange={event => setOverrideDialog(previous => previous ? ({ ...previous, reason: event.target.value }) : previous)} placeholder="Required for the audit record" />
+                            </label>
+                        </div>
+                        <footer className="modal-card__footer">
+                            <button type="button" className="btn btn-secondary" disabled={overrideSaving} onClick={() => setOverrideDialog(null)}>Cancel</button>
+                            <button type="button" className="btn btn-primary" disabled={overrideSaving || !overrideDialog.level || !overrideDialog.reason.trim()} onClick={applyManualOverrides}>
+                                {overrideSaving ? 'Applying...' : 'Apply Override'}
+                            </button>
+                        </footer>
+                    </section>
+                </div>
+            )}
 
             {importReport && (
                 <div className="modal-backdrop" role="presentation" onMouseDown={() => setImportReport(null)}>
