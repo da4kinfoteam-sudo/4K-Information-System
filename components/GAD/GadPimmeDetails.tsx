@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Download, FileText, Paperclip, Trash2, Upload, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Download, FileText, Gauge, Paperclip, Trash2, Upload, X } from 'lucide-react';
+import { filterYears } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { APP_BEFORE_NAVIGATION_EVENT, type AppBeforeNavigationDetail } from '../../lib/navigationGuards';
@@ -29,6 +30,7 @@ interface Props {
     initialYear: number;
     canEdit: boolean;
     onBack: () => void;
+    onSelectYear: (year: number) => void;
 }
 
 interface StoredAnswer {
@@ -45,6 +47,10 @@ interface LocalAnswer {
 
 const emptyAnswers = () => Object.fromEntries(GAD_PIMME_QUESTIONS.map(question => [question.key, { response: null, remarks: '' }])) as Record<string, LocalAnswer>;
 const snapshot = (answers: Record<string, LocalAnswer>) => JSON.stringify(answers);
+const formatSavedAt = (value: string) => new Intl.DateTimeFormat('en-PH', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+}).format(new Date(value));
 
 const EvidencePanel: React.FC<{
     operatingUnit: string;
@@ -111,7 +117,7 @@ const EvidencePanel: React.FC<{
     };
 
     return <div className="gad-pimme-evidence">
-        <button type="button" className="btn btn-ghost btn-compact" onClick={() => setOpen(value => !value)}>
+        <button type="button" className="gad-pimme-evidence__trigger" onClick={() => setOpen(value => !value)}>
             <Paperclip aria-hidden="true" /> Evidence {files.length ? `(${files.length})` : ''}
         </button>
         {open && <div className="gad-pimme-evidence__body">
@@ -142,7 +148,7 @@ const EvidencePanel: React.FC<{
     </div>;
 };
 
-const GadPimmeDetails: React.FC<Props> = ({ operatingUnit, initialYear, canEdit, onBack }) => {
+const GadPimmeDetails: React.FC<Props> = ({ operatingUnit, initialYear, canEdit, onBack, onSelectYear }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const [assessment, setAssessment] = useState<GadPimmeAssessmentRecord | null>(null);
@@ -230,61 +236,117 @@ const GadPimmeDetails: React.FC<Props> = ({ operatingUnit, initialYear, canEdit,
 
     if (loading) return <LoadingState title="Loading GAD PIMME assessment" message={`Preparing ${operatingUnit} for ${initialYear}.`} />;
     const status = !assessment && score.answeredCount === 0 ? 'For Assessment' : score.status;
+    const availableYears = filterYears.map(Number).filter(year => year >= 2019 && year <= new Date().getFullYear()).sort((a, b) => b - a);
+    const encoder = assessment?.updated_by_name || assessment?.created_by_name;
+    const answeredPercent = Math.round((score.answeredCount / GAD_PIMME_QUESTION_COUNT) * 100);
 
-    return <div className="lod-assessment gad-pimme-assessment">
-        <header className="detail-header">
-            <button type="button" className="btn btn-ghost lod-assessment__back" onClick={handleBack}><ArrowLeft aria-hidden="true" /> Back</button>
-            <div className="detail-header__main"><h2>{operatingUnit}</h2><p>Gender and Development PIMME Assessment · {initialYear}</p></div>
+    return <div className="gad-pimme-assessment">
+        <header className="gad-pimme-detail-header">
+            <button type="button" className="gad-pimme-back" onClick={handleBack}><ArrowLeft aria-hidden="true" /> Back to Gender and Development</button>
+            <div className="gad-pimme-detail-heading">
+                <div>
+                    <h1>{operatingUnit}</h1>
+                    <p>Gender and Development PIMME Assessment &middot; {initialYear}</p>
+                    <div className="gad-pimme-detail-meta">
+                        <span>Status: <strong>{status}</strong></span>
+                        {assessment?.updated_at && <><span aria-hidden="true">&bull;</span><span>Last saved {formatSavedAt(assessment.updated_at)}</span></>}
+                        {encoder && <><span aria-hidden="true">&bull;</span><span>Encoder: {encoder}</span></>}
+                    </div>
+                </div>
+                <label className="gad-pimme-year-select">
+                    <span>Assessment year</span>
+                    <select value={initialYear} onChange={event => onSelectYear(Number(event.target.value))}>
+                        {availableYears.map(year => <option value={year} key={year}>{year}</option>)}
+                    </select>
+                </label>
+            </div>
         </header>
-        <section className="detail-metric-grid gad-pimme-metrics">
-            <article className="detail-metric"><span>Status</span><strong>{status}</strong></article>
-            <article className="detail-metric"><span>Overall PIMME</span><strong>{score.totalScore.toFixed(2)} / 20</strong></article>
-            <article className="detail-metric"><span>Box 16</span><strong>{score.box16Score.toFixed(2)} / 8</strong></article>
-            <article className="detail-metric"><span>Box 17</span><strong>{score.box17Score.toFixed(2)} / 12</strong></article>
-            <article className="detail-metric"><span>Answered</span><strong>{score.answeredCount} / {GAD_PIMME_QUESTION_COUNT}</strong></article>
+        <section className="gad-pimme-metrics" aria-label="PIMME assessment summary">
+            <article className="gad-pimme-metric">
+                <span>Overall PIMME</span>
+                <div><strong>{score.totalScore.toFixed(2)}</strong><small>/ 20</small></div>
+                <div className="gad-pimme-metric__progress" aria-hidden="true"><i style={{ width: `${Math.min(100, (score.totalScore / 20) * 100)}%` }} /></div>
+            </article>
+            <article className="gad-pimme-metric">
+                <Gauge aria-hidden="true" /><span>Box 16</span>
+                <div><strong>{score.box16Score.toFixed(2)}</strong><small>/ 8</small></div>
+                <p>Management and implementation</p>
+            </article>
+            <article className="gad-pimme-metric">
+                <Gauge aria-hidden="true" /><span>Box 17</span>
+                <div><strong>{score.box17Score.toFixed(2)}</strong><small>/ 12</small></div>
+                <p>Monitoring and evaluation</p>
+            </article>
+            <article className="gad-pimme-metric">
+                <CheckCircle2 aria-hidden="true" /><span>Answered</span>
+                <div><strong>{score.answeredCount}</strong><small>/ {GAD_PIMME_QUESTION_COUNT}</small></div>
+                <p>{answeredPercent}% coverage</p>
+            </article>
         </section>
         {error && <div className="notice notice--error" role="alert"><p>{error}</p></div>}
         {success && <div className="notice notice--success" role="status"><p>{success}</p></div>}
         {!canEdit && <div className="notice notice--info"><p>This assessment is read-only under your configured module permissions.</p></div>}
-        <section className="lod-questionnaire gad-pimme-questionnaire">
-            <header className="lod-questionnaire__header"><div><h3 className="detail-card-title">PIMME Checklist</h3></div>{canEdit && <button type="button" className="btn btn-secondary" onClick={() => setClearAllOpen(true)}>Clear All</button>}</header>
-            <div className="lod-questionnaire__sections">
+        <section className="gad-pimme-questionnaire">
+            <header className="gad-pimme-questionnaire__header">
+                <div><h2>PIMME Checklist</h2><p>Select one response per question, add remarks, and attach supporting evidence.</p></div>
+                {canEdit && <button type="button" className="btn btn-secondary btn-compact" onClick={() => setClearAllOpen(true)}>Clear all</button>}
+            </header>
+            <div className="gad-pimme-questionnaire__body">
                 {GAD_PIMME_CHECKLIST.map(box => {
                     const boxScore = box.key === 'box16' ? score.box16Score : score.box17Score;
                     const boxAnswered = box.elements.flatMap(element => element.questions).filter(question => answers[question.key].response).length;
                     const boxTotal = box.elements.flatMap(element => element.questions).length;
+                    const boxLabel = box.key === 'box16' ? 'Box 16' : 'Box 17';
+                    const boxTitle = box.title.replace(/^Box \d+\.\s*/, '');
                     return <section className="gad-pimme-box" key={box.key}>
-                        <header className="gad-pimme-box__header"><h3>{box.title}</h3><span>{boxAnswered} / {boxTotal} answered · {boxScore.toFixed(2)} / {box.maxScore}</span></header>
-                        {box.elements.map(element => {
-                            const answered = element.questions.filter(question => answers[question.key].response).length;
-                            return <section className="lod-questionnaire__section gad-pimme-element" key={element.key}>
-                                <header className="lod-questionnaire__toggle gad-pimme-element__header">
-                                    <div className="lod-questionnaire__section-heading"><span className="lod-questionnaire__section-number">{element.label}</span><strong className="lod-questionnaire__section-title">{element.title}</strong></div>
-                                    <div className="lod-questionnaire__section-summary"><span className={`lod-questionnaire__completion ${answered === element.questions.length ? 'is-complete' : ''}`}>{answered} / {element.questions.length} answered</span><span className="lod-questionnaire__score">{score.elementScores[element.key].toFixed(2)} / {element.maxScore}</span></div>
-                                </header>
-                                <div className="lod-questionnaire__question-list">
-                                    {element.questions.map(question => {
-                                        const local = answers[question.key];
-                                        return <article className={`lod-questionnaire__question-block ${local.response ? '' : 'is-unanswered'}`} key={question.key}>
-                                            <div className="lod-questionnaire__question-header"><div className="lod-questionnaire__question-heading"><strong>{question.label}</strong><p className="lod-questionnaire__question">{question.text}</p></div>{canEdit && local.response && <button type="button" className="lod-questionnaire__clear-answer" onClick={() => updateAnswer(question.key, { response: null })}>Clear</button>}</div>
-                                            <div className="lod-choice-grid">
-                                                {question.choices.map(choice => <label className={`lod-choice ${local.response === choice.response ? 'is-selected' : ''}`} key={choice.response}>
-                                                    <input type="radio" name={question.key} value={choice.response} checked={local.response === choice.response} disabled={!canEdit} onChange={() => updateAnswer(question.key, { response: choice.response })} />
-                                                    <span className="lod-choice__text">{choice.response}</span><span className="lod-choice__points">{choice.points.toFixed(2)} pts</span>
-                                                </label>)}
-                                            </div>
-                                            <textarea className="form-control lod-questionnaire__remarks" rows={3} disabled={!canEdit} value={local.remarks} onChange={event => updateAnswer(question.key, { remarks: event.target.value })} placeholder="Add remarks (optional)..." />
-                                            <EvidencePanel operatingUnit={operatingUnit} year={initialYear} questionKey={question.key} canEdit={canEdit} />
-                                        </article>;
+                        <header className="gad-pimme-box__header">
+                            <div><span>{boxLabel}</span><h3>{boxTitle}</h3></div>
+                            <strong>{boxAnswered} / {boxTotal} answered &middot; {boxScore.toFixed(2)} / {box.maxScore}</strong>
+                        </header>
+                        <div className="gad-pimme-checklist-scroll">
+                            <table className="gad-pimme-checklist-table">
+                                <colgroup><col className="gad-pimme-checklist-table__question" /><col span={3} className="gad-pimme-checklist-table__choice" /><col className="gad-pimme-checklist-table__remarks" /><col className="gad-pimme-checklist-table__evidence" /></colgroup>
+                                <thead><tr><th>Question</th><th>No</th><th>Partly Yes</th><th>Yes</th><th>Remarks</th><th>Evidence</th></tr></thead>
+                                <tbody>
+                                    {box.elements.map(element => {
+                                        const answered = element.questions.filter(question => answers[question.key].response).length;
+                                        return <React.Fragment key={element.key}>
+                                            <tr className="gad-pimme-element-row"><td colSpan={6}>
+                                                <div className="gad-pimme-element-row__content">
+                                                    <div><span>{element.label}</span><strong>{element.title}</strong></div>
+                                                    <p>{answered} / {element.questions.length} answered &middot; <strong>{score.elementScores[element.key].toFixed(2)} / {element.maxScore}</strong></p>
+                                                </div>
+                                            </td></tr>
+                                            {element.questions.map(question => {
+                                                const local = answers[question.key];
+                                                return <tr className="gad-pimme-question-row" key={question.key}>
+                                                    <td className="gad-pimme-question-cell">
+                                                        <div><strong>{question.label}</strong><p>{question.text}</p></div>
+                                                        {canEdit && local.response && <button type="button" className="gad-pimme-clear-answer" onClick={() => updateAnswer(question.key, { response: null })}>Clear answer</button>}
+                                                    </td>
+                                                    {(['No', 'Partly Yes', 'Yes'] as const).map(response => {
+                                                        const choice = question.choices.find(item => item.response === response)!;
+                                                        return <td className="gad-pimme-choice-cell" key={response}>
+                                                            <label className={local.response === response ? 'is-selected' : ''}>
+                                                                <input type="radio" name={question.key} value={response} checked={local.response === response} disabled={!canEdit} onChange={() => updateAnswer(question.key, { response })} aria-label={`${question.label} ${response}`} />
+                                                                <span>{choice.points.toFixed(2)} pts</span>
+                                                            </label>
+                                                        </td>;
+                                                    })}
+                                                    <td className="gad-pimme-remarks-cell"><textarea rows={3} disabled={!canEdit} value={local.remarks} onChange={event => updateAnswer(question.key, { remarks: event.target.value })} placeholder="Add remarks (optional)..." aria-label={`Remarks for ${question.label}`} /></td>
+                                                    <td className="gad-pimme-evidence-cell"><EvidencePanel operatingUnit={operatingUnit} year={initialYear} questionKey={question.key} canEdit={canEdit} /></td>
+                                                </tr>;
+                                            })}
+                                        </React.Fragment>;
                                     })}
-                                </div>
-                            </section>;
-                        })}
+                                </tbody>
+                            </table>
+                        </div>
                     </section>;
                 })}
             </div>
         </section>
-        <section className="lod-assessment-actions"><div className="form-footer"><span>{dirty ? 'Unsaved changes' : assessment?.updated_at ? `Last saved ${new Date(assessment.updated_at).toLocaleString()}` : 'Not yet saved'}</span><div><button type="button" className="btn btn-secondary" onClick={handleBack}>Cancel</button>{canEdit && <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save assessment'}</button>}</div></div></section>
+        <section className="gad-pimme-assessment-actions"><span>{dirty ? 'Unsaved changes' : assessment?.updated_at ? `Last saved ${formatSavedAt(assessment.updated_at)}` : 'Not yet saved'}</span><div><button type="button" className="btn btn-secondary" onClick={handleBack}>Cancel</button>{canEdit && <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save assessment'}</button>}</div></section>
         {clearAllOpen && <ConfirmDialog title="Clear all answers?" description="Responses and remarks will be cleared locally. Existing evidence files will remain attached. Save the assessment to persist the changes." confirmLabel="Clear all" tone="danger" onCancel={() => setClearAllOpen(false)} onConfirm={() => { setAnswers(emptyAnswers()); setClearAllOpen(false); }} />}
     </div>;
 };
