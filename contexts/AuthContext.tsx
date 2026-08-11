@@ -93,7 +93,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         // LOD deliberately fails closed until its configured scope is available.
-        if (module === 'Level of Development') return 'Own OU';
+        if (module === 'Level of Development' || module === 'Gender and Development') return 'Own OU';
 
         // 3. Legacy fallbacks retained for modules that have not moved to strict scope configuration.
         if (['Super Admin', 'Administrator'].includes(currentUser.role)) return 'All';

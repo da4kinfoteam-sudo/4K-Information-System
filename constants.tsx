@@ -97,6 +97,7 @@ export const appModules = [
     'IPO Management',
     'Marketing Database',
     'Level of Development',
+    'Gender and Development',
     'Commodity Mapping',
     'References',
     'System Management'

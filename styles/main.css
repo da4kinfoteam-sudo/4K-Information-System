@@ -11012,6 +11012,203 @@ button.bar1-drilldown-card:focus-visible {
   }
 }
 
+/* Gender and Development PIMME resource */
+.gad-pimme-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.gad-pimme-toolbar .major-table-search {
+  flex: 1 1 24rem;
+  max-width: 34rem;
+}
+
+.gad-pimme-status-filter {
+  margin: 0;
+  min-width: 11rem;
+}
+
+.gad-pimme-table-scroll {
+  max-width: 100%;
+}
+
+.gad-pimme-table {
+  min-width: max-content;
+}
+
+.gad-pimme-table th,
+.gad-pimme-table td {
+  min-width: 8.5rem;
+  white-space: nowrap;
+}
+
+.gad-pimme-table .gad-pimme-ou-column {
+  background: var(--surface-card);
+  left: 0;
+  min-width: 11rem;
+  position: sticky;
+  text-align: left;
+  z-index: 2;
+}
+
+.gad-pimme-table thead .gad-pimme-ou-column {
+  background: var(--surface-muted);
+  z-index: 3;
+}
+
+.gad-pimme-metrics {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.gad-pimme-box + .gad-pimme-box {
+  border-top: 1px solid var(--border-default);
+}
+
+.gad-pimme-box__header {
+  align-items: center;
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.9rem 1.25rem;
+}
+
+.gad-pimme-box__header h3 {
+  font-size: 1rem;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.gad-pimme-box__header span {
+  color: var(--text-secondary);
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.gad-pimme-element__header {
+  cursor: default;
+}
+
+.gad-pimme-evidence {
+  margin-top: 0.65rem;
+}
+
+.gad-pimme-evidence__body {
+  background: var(--surface-muted);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.45rem;
+  padding: 0.65rem;
+}
+
+.gad-pimme-evidence__upload {
+  justify-self: start;
+}
+
+.gad-pimme-upload-modal {
+  width: min(34rem, calc(100vw - 2rem));
+}
+
+.gad-pimme-evidence__dropzone {
+  align-items: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.82rem;
+  gap: 0.45rem;
+  justify-content: center;
+  min-height: 3.25rem;
+  padding: 0.65rem;
+}
+
+.gad-pimme-evidence__dropzone:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+.gad-pimme-evidence__dropzone svg,
+.gad-pimme-evidence__file > svg {
+  height: 1rem;
+  width: 1rem;
+}
+
+.gad-pimme-evidence__file {
+  align-items: center;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  padding: 0.55rem 0.65rem;
+}
+
+.gad-pimme-evidence__file span {
+  min-width: 0;
+}
+
+.gad-pimme-evidence__file strong,
+.gad-pimme-evidence__file small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gad-pimme-evidence__file strong {
+  font-size: 0.82rem;
+}
+
+.gad-pimme-evidence__file small {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  margin-top: 0.15rem;
+}
+
+@media (max-width: 1100px) {
+  .gad-pimme-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .gad-pimme-toolbar,
+  .gad-pimme-box__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .gad-pimme-toolbar .major-table-search,
+  .gad-pimme-status-filter {
+    max-width: none;
+    width: 100%;
+  }
+
+  .gad-pimme-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gad-pimme-box__header span {
+    white-space: normal;
+  }
+
+  .gad-pimme-evidence__file {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .gad-pimme-evidence__file .icon-btn--danger {
+    grid-column: 3;
+  }
+}
+
 @media (min-width: 641px) and (max-width: 1024px) {
   .drive-gallery-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

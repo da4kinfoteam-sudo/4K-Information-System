@@ -155,10 +155,10 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             resetLocalAssessment();
             if (currentAssessment) {
                 setAssessment(currentAssessment);
-                setManualLevel(currentAssessment.manual_level ?? '');
-                setManualOverrideReason(currentAssessment.manual_override_reason ?? '');
+                setManualLevel(currentAssessment.is_complete ? '' : (currentAssessment.manual_level ?? ''));
+                setManualOverrideReason(currentAssessment.is_complete ? '' : (currentAssessment.manual_override_reason ?? ''));
                 setRemarks(currentAssessment.remarks ?? '');
-                setIsCarriedOver(Boolean(currentAssessment.is_carried_over));
+                setIsCarriedOver(!currentAssessment.is_complete && Boolean(currentAssessment.is_carried_over));
                 setIsDropped(Boolean(currentAssessment.is_dropped));
             }
 
@@ -287,9 +287,10 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                 };
             });
 
-        const manualLevelToSave = canManageLod
+        const requestedManualLevel = canManageLod
             ? (manualLevel === '' ? null : Number(manualLevel))
             : (assessment?.manual_level ?? null);
+        const manualLevelToSave = score.isComplete ? null : requestedManualLevel;
         const manualReasonToSave = manualLevelToSave !== null
             ? (manualOverrideReason || assessment?.manual_override_reason || '')
             : null;
@@ -300,7 +301,8 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             return;
         }
 
-        const carryEnabled = canManageLod ? isCarriedOver : Boolean(assessment?.is_carried_over);
+        const carryEnabled = !score.isComplete
+            && (canManageLod ? isCarriedOver : Boolean(assessment?.is_carried_over));
         const carrySourceId = carryEnabled
             ? (canManageLod ? carrySource?.id : assessment?.carried_over_from_assessment_id)
             : null;
@@ -335,17 +337,18 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             const persistedState = getLodEffectiveState(persisted);
             const expectedKind = (canManageLod ? isDropped : assessment?.is_dropped)
                 ? 'dropped'
-                : manualLevelToSave !== null
-                    ? 'manual'
-                    : score.isComplete
-                        ? 'computed'
+                : score.isComplete
+                    ? 'computed'
+                    : manualLevelToSave !== null
+                        ? 'manual'
                         : carryEnabled
                             ? 'carried-over'
                             : answersPayload.length > 0
                                 ? 'incomplete'
                                 : 'for-assessment';
-            const expectedLevel = manualLevelToSave
-                ?? (score.isComplete ? score.computedLevel : carryEnabled ? getLodEffectiveState(carrySource).level : null);
+            const expectedLevel = score.isComplete
+                ? score.computedLevel
+                : manualLevelToSave ?? (carryEnabled ? getLodEffectiveState(carrySource).level : null);
             if (persistedState.kind !== expectedKind
                 || (expectedLevel !== null && Number(persistedState.level) !== Number(expectedLevel))) {
                 throw new Error(`Saved LOD verification failed. Expected ${expectedLevel ? `Level ${expectedLevel}` : expectedKind}, but received ${persistedState.label}.`);
@@ -373,7 +376,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             notifyLodDataChanged({
                 ipoId: ipo.id,
                 year: selectedYear,
-                reason: isDropped ? 'drop' : manualLevelToSave !== null ? 'override' : answersPayload.length === 0 ? 'clear' : 'save',
+                reason: isDropped ? 'drop' : score.isComplete ? 'save' : manualLevelToSave !== null ? 'override' : answersPayload.length === 0 ? 'clear' : 'save',
             });
             await fetchAssessmentData();
             setShowSuccessModal(true);
@@ -682,17 +685,17 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                         <div className="lod-admin-controls__override">
                             <label className="form-label">Manual Level Override</label>
                             <div className="lod-manual-override-grid">
-                                <select value={manualLevel} onChange={(e) => { const value = e.target.value === '' ? '' : Number(e.target.value); if (value !== manualLevel) setManualOverrideReason(''); setManualLevel(value); }} className="form-control lod-assessment__manual-level">
+                                <select value={manualLevel} onChange={(e) => { const value = e.target.value === '' ? '' : Number(e.target.value); if (value !== manualLevel) setManualOverrideReason(''); setManualLevel(value); }} className="form-control lod-assessment__manual-level" disabled={score.isComplete}>
                                     <option value="">Auto</option>
                                     {[1, 2, 3, 4, 5].map(level => <option key={level} value={level}>Level {level}</option>)}
                                 </select>
-                                <input type="text" value={manualOverrideReason} onChange={(event) => setManualOverrideReason(event.target.value)} className="form-control" placeholder="Required reason for manual override" disabled={manualLevel === ''} />
+                                <input type="text" value={manualOverrideReason} onChange={(event) => setManualOverrideReason(event.target.value)} className="form-control" placeholder="Required reason for manual override" disabled={score.isComplete || manualLevel === ''} />
                             </div>
-                            <span className="form-help">A manual level takes precedence until it is returned to Auto.</span>
+                            <span className="form-help">Manual levels apply while the questionnaire is incomplete. A completed questionnaire uses its computed level.</span>
                         </div>
                         <div className="lod-admin-controls__flags">
                             <label className="form-check lod-admin-option">
-                                <input type="checkbox" checked={isCarriedOver} onChange={(e) => setIsCarriedOver(e.target.checked)} className="form-checkbox" disabled={!carrySource && !assessment?.carried_over_from_assessment_id} />
+                                <input type="checkbox" checked={isCarriedOver} onChange={(e) => setIsCarriedOver(e.target.checked)} className="form-checkbox" disabled={score.isComplete || (!carrySource && !assessment?.carried_over_from_assessment_id)} />
                                 <span><strong>Carry over from previous year</strong>{(assessment?.carried_over_from_year || carrySource?.year) && <small className="form-help">Source: {assessment?.carried_over_from_year || carrySource?.year} / {assessment?.carried_over_level ? `Level ${assessment.carried_over_level}` : getLodEffectiveState(carrySource).label}</small>}</span>
                             </label>
                             <label className="form-check lod-admin-option">

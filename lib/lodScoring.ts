@@ -273,14 +273,14 @@ export const getLodEffectiveState = (
     if (assessment.is_dropped) {
         return { kind: 'dropped', label: 'Dropped', level: null, source: 'dropped' };
     }
-    if (isPublishedLevel(assessment.manual_level)) {
-        const level = Number(assessment.manual_level);
-        return { kind: 'manual', label: `Level ${level}`, level, source: 'manual' };
-    }
     const isLegacyAssessment = assessment.is_complete === undefined || assessment.is_complete === null;
     if ((assessment.is_complete || isLegacyAssessment) && isPublishedLevel(assessment.computed_level)) {
         const level = Number(assessment.computed_level);
         return { kind: 'computed', label: `Level ${level}`, level, source: 'computed' };
+    }
+    if (isPublishedLevel(assessment.manual_level)) {
+        const level = Number(assessment.manual_level);
+        return { kind: 'manual', label: `Level ${level}`, level, source: 'manual' };
     }
     if (assessment.is_carried_over && isPublishedLevel(assessment.carried_over_level)) {
         const level = Number(assessment.carried_over_level);
@@ -316,11 +316,11 @@ export const resolveManualLevelForSave = ({
     const existing = isPublishedLevel(existingManualLevel) ? Number(existingManualLevel) : null;
 
     if (canManageOverride) {
+        if (nextAssessmentComplete) return null;
         if (retainManualOverride && entered !== null) return entered;
-        return !nextAssessmentComplete ? existing : null;
+        return existing;
     }
 
     if (existing === null) return null;
-    if (!nextAssessmentComplete || existingAssessmentComplete) return existing;
-    return null;
+    return nextAssessmentComplete ? null : existing;
 };

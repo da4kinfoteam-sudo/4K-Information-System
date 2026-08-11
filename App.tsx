@@ -33,6 +33,10 @@ import MarketLinkageDetail from './components/resources/MarketLinkageDetail';
 import CommodityMappingPage from './components/resources/CommodityMappingPage';
 import LODPage from './components/LOD/LODPage';
 import LODDetailsRoute from './components/LOD/LODDetailsRoute';
+import GadPimmePage from './components/GAD/GadPimmePage';
+import GadPimmeDetailsRoute from './components/GAD/GadPimmeDetailsRoute';
+import { buildGadPimmeDetailPath } from './lib/gadPimmeAccess';
+import { requestAppNavigation } from './lib/navigationGuards';
 import AIChatbot from './components/AIChatbot'; // Import Chatbot
 import { EmptyState, ErrorState, LoadingState } from './components/ui/enterprise';
 
@@ -808,6 +812,7 @@ const AppContent: React.FC = () => {
 
     const navigateTo = (page: string, options: NavigationOptions = {}) => {
         const current = currentPageRef.current;
+        if (!requestAppNavigation(current, page)) return;
         const stack = historyStackRef.current;
         const newStack = [...stack, current];
         if (page === '/reports' && options.resetReports) {
@@ -832,6 +837,13 @@ const AppContent: React.FC = () => {
     useEffect(() => {
         const handlePopState = (event: PopStateEvent) => {
             const leavingPage = parseAppRoute(currentPageRef.current).path;
+            const nextPage = event.state?.page || window.location.hash.replace('#', '') || '/';
+            if (!requestAppNavigation(currentPageRef.current, nextPage)) {
+                const current = currentPageRef.current;
+                const stack = historyStackRef.current;
+                window.history.pushState({ page: current, stack }, '', `/#${current}`);
+                return;
+            }
             
             if (leavingPage === '/subproject-detail') setSelectedSubproject(null);
             if (leavingPage === '/activity-detail') setSelectedActivity(null);
@@ -841,7 +853,6 @@ const AppContent: React.FC = () => {
             if (leavingPage === '/program-management/staffing-detail') setSelectedStaffingReq(null);
             if (leavingPage === '/program-management/other-expense-detail') setSelectedOtherExpense(null);
             if (leavingPage === '/marketing-profile-detail') {
-                const nextPage = event.state?.page || window.location.hash.replace('#', '') || '/';
                 if (!['/marketing-profile-edit', '/marketing-linkage-edit', '/marketing-linkage-detail'].includes(nextPage)) {
                     setSelectedMarketingPartner(null);
                     setSelectedMarketingLinkageKey(null);
@@ -1087,6 +1098,10 @@ const AppContent: React.FC = () => {
         navigateTo(year ? `${detailPath}&year=${encodeURIComponent(String(year))}` : detailPath);
     };
 
+    const handleSelectGadPimmeAssessment = (operatingUnit: string, year: number) => {
+        navigateTo(buildGadPimmeDetailPath(operatingUnit, year));
+    };
+
     const renderPage = () => {
         const checkAccess = (module: string) => hasAccess(module, 'view');
         const denied = <AccessDenied onBackToHome={() => navigateTo('/')} />;
@@ -1115,6 +1130,9 @@ const AppContent: React.FC = () => {
         }
         if (['/level-of-development', '/lod-details'].includes(routePath)) {
             if (!checkAccess('Level of Development')) return denied;
+        }
+        if (['/gender-and-development', '/gender-and-development/detail'].includes(routePath)) {
+            if (!checkAccess('Gender and Development')) return denied;
         }
         if (routePath === '/commodity-mapping') {
             if (!checkAccess('Commodity Mapping')) return denied;
@@ -1767,6 +1785,18 @@ const AppContent: React.FC = () => {
                         selectedIpo={selectedIpo}
                         onBack={handleBack}
                         initialYear={assessmentYear}
+                    />;
+                }
+            case '/gender-and-development':
+                return <GadPimmePage onSelectAssessment={handleSelectGadPimmeAssessment} />;
+            case '/gender-and-development/detail':
+                {
+                    const routeOu = routeParams.get('ou');
+                    const routeYear = Number(routeParams.get('year'));
+                    return <GadPimmeDetailsRoute
+                        operatingUnit={routeOu}
+                        year={Number.isFinite(routeYear) ? routeYear : null}
+                        onBack={() => navigateTo('/gender-and-development')}
                     />;
                 }
             case '/commodity-mapping':

@@ -17,6 +17,13 @@ const DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 const IPO_DRIVE_MODULE = "IPO Management";
 const SUBPROJECT_DRIVE_MODULE = "Subprojects";
 const ACTIVITY_DRIVE_MODULE = "Activities";
+const GAD_PIMME_DRIVE_MODULE = "Gender and Development";
+const GAD_PIMME_QUESTION_KEYS = new Set([
+  "box16-1.1", "box16-1.2", "box16-2.1", "box16-2.2", "box16-2.3",
+  "box16-3.1", "box16-3.2", "box16-4.1", "box16-4.2", "box16-4.3", "box16-4.4",
+  "box17-1.1", "box17-1.2", "box17-2.1", "box17-2.2", "box17-2.3", "box17-2.4",
+  "box17-3.1", "box17-3.2", "box17-4.0", "box17-5.1", "box17-5.2"
+]);
 const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   "application/pdf",
   "application/msword",
@@ -86,6 +93,8 @@ type UserRow = {
   role?: string | null;
   fullName?: string | null;
   username?: string | null;
+  operatingUnit?: string | null;
+  visibility_scope?: string | null;
   permissions_override?: Record<string, any> | null;
 };
 
@@ -430,6 +439,39 @@ export async function requireActivityEditor(userId: unknown) {
   if (data?.can_edit) return user;
 
   throw new Error("You do not have permission to upload Activity files.");
+}
+
+export async function requireGadPimmeEditor(userId: unknown) {
+  const user = await fetchUser(userId);
+  const override = user.permissions_override?.[GAD_PIMME_DRIVE_MODULE];
+  if (override && typeof override.can_edit === "boolean") {
+    if (override.can_edit) return user;
+    throw new Error("You do not have permission to manage GAD PIMME evidence files.");
+  }
+
+  const { data, error } = await adminClient()
+    .from("roles_config")
+    .select("can_edit")
+    .eq("role", user.role)
+    .eq("module", GAD_PIMME_DRIVE_MODULE)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (data?.can_edit) return user;
+  throw new Error("You do not have permission to manage GAD PIMME evidence files.");
+}
+
+export async function requireGadPimmeViewer(userId: unknown) {
+  const user = await fetchUser(userId);
+  const override = user.permissions_override?.[GAD_PIMME_DRIVE_MODULE];
+  if (override && typeof override.can_view === "boolean") {
+    if (override.can_view) return user;
+    throw new Error("You do not have permission to view GAD PIMME evidence files.");
+  }
+  const { data, error } = await adminClient().from("roles_config").select("can_view")
+    .eq("role", user.role).eq("module", GAD_PIMME_DRIVE_MODULE).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (data?.can_view) return user;
+  throw new Error("You do not have permission to view GAD PIMME evidence files.");
 }
 
 export function getEnvironmentStatus() {
@@ -1823,5 +1865,168 @@ export async function deleteActivityFile(fileRowId: number, user: UserRow) {
     .single();
   if (error) throw new Error(error.message);
 
+  return data;
+}
+
+async function gadPimmePermission(user: UserRow) {
+  if (user.visibility_scope === "All OUs" || user.visibility_scope === "Own OU") return user.visibility_scope;
+  const { data, error } = await adminClient()
+    .from("roles_config")
+    .select("visibility_scope")
+    .eq("role", user.role)
+    .eq("module", GAD_PIMME_DRIVE_MODULE)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.visibility_scope || "Own OU";
+}
+
+async function assertGadPimmeOuAccess(user: UserRow, operatingUnit: string) {
+  const visibility = await gadPimmePermission(user);
+  if (visibility !== "All OUs" && user.operatingUnit !== operatingUnit) {
+    throw new Error("The selected operating unit is outside your configured visibility scope.");
+  }
+}
+
+function assertGadPimmeIdentity(operatingUnit: unknown, year: unknown, questionKey: unknown) {
+  const normalizedOu = typeof operatingUnit === "string" ? operatingUnit.trim() : "";
+  const normalizedYear = Number(year);
+  const normalizedQuestion = typeof questionKey === "string" ? questionKey.trim() : "";
+  if (!normalizedOu) throw new Error("An operating unit is required.");
+  if (!Number.isInteger(normalizedYear) || normalizedYear < 2019 || normalizedYear > new Date().getFullYear()) {
+    throw new Error("A supported assessment year is required.");
+  }
+  if (!GAD_PIMME_QUESTION_KEYS.has(normalizedQuestion)) throw new Error("A valid PIMME question is required.");
+  return { operatingUnit: normalizedOu, year: normalizedYear, questionKey: normalizedQuestion };
+}
+
+async function ensureGadPimmeAssessment(operatingUnit: string, year: number, user: UserRow) {
+  const supabase = adminClient();
+  const { data: existing, error: existingError } = await supabase
+    .from("gad_pimme_assessments")
+    .select("*")
+    .eq("operating_unit", operatingUnit)
+    .eq("year", year)
+    .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+  if (existing) return existing;
+  const actorName = displayUserName(user);
+  const { data, error } = await supabase.from("gad_pimme_assessments").insert({
+    operating_unit: operatingUnit,
+    year,
+    checklist_version: "PIMME-2026-v1",
+    created_by: user.id,
+    created_by_name: actorName,
+    updated_by: user.id,
+    updated_by_name: actorName
+  }).select("*").single();
+  if (error) {
+    if (isUniqueViolation(error)) {
+      const retry = await supabase.from("gad_pimme_assessments").select("*")
+        .eq("operating_unit", operatingUnit).eq("year", year).single();
+      if (retry.error) throw new Error(retry.error.message);
+      return retry.data;
+    }
+    throw new Error(error.message);
+  }
+  return data;
+}
+
+async function ensureGadPimmeFolder(operatingUnit: string, year: number) {
+  const { connection, accessToken } = await connectedDrive();
+  if (!connection.root_folder_id) throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
+  const findExisting = async () => {
+    const { data, error } = await adminClient().from("gad_pimme_folders").select("*")
+      .eq("connection_id", connection.id).eq("year", year).eq("operating_unit", operatingUnit).maybeSingle();
+    if (error) throw new Error(FOLDER_PREPARATION_ERROR);
+    return data?.operating_unit_folder_id ? data : null;
+  };
+  const folder = await withDriveFolderInitializationLock(
+    `gad-pimme:${connection.id}:${year}:${operatingUnit}`,
+    findExisting,
+    async () => {
+      const moduleFolder = await ensureFolder(accessToken, GAD_PIMME_DRIVE_MODULE, connection.root_folder_id);
+      const yearFolder = await ensureFolder(accessToken, String(year), moduleFolder.id);
+      const ouFolder = await ensureFolder(accessToken, cleanDriveName(operatingUnit, "Operating Unit"), yearFolder.id);
+      const { error } = await adminClient().from("gad_pimme_folders").insert({
+        connection_id: connection.id,
+        year,
+        operating_unit: operatingUnit,
+        module_folder_id: moduleFolder.id,
+        year_folder_id: yearFolder.id,
+        operating_unit_folder_id: ouFolder.id
+      });
+      if (error && !isUniqueViolation(error)) throw new Error(FOLDER_PREPARATION_ERROR);
+      return await findExisting() || {
+        connection_id: connection.id,
+        year,
+        operating_unit: operatingUnit,
+        module_folder_id: moduleFolder.id,
+        year_folder_id: yearFolder.id,
+        operating_unit_folder_id: ouFolder.id
+      };
+    }
+  );
+  return { connection, accessToken, folder };
+}
+
+export async function listGadPimmeFiles(operatingUnitInput: unknown, yearInput: unknown, questionKeyInput: unknown, user: UserRow) {
+  const identity = assertGadPimmeIdentity(operatingUnitInput, yearInput, questionKeyInput);
+  await assertGadPimmeOuAccess(user, identity.operatingUnit);
+  const { data: assessment, error: assessmentError } = await adminClient().from("gad_pimme_assessments").select("id")
+    .eq("operating_unit", identity.operatingUnit).eq("year", identity.year).maybeSingle();
+  if (assessmentError) throw new Error(assessmentError.message);
+  if (!assessment) return [];
+  const { data, error } = await adminClient().from("gad_pimme_files").select("*")
+    .eq("assessment_id", assessment.id).eq("question_key", identity.questionKey)
+    .is("deleted_at", null).order("uploaded_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function uploadGadPimmeFile(operatingUnitInput: unknown, yearInput: unknown, questionKeyInput: unknown, file: File, user: UserRow) {
+  const identity = assertGadPimmeIdentity(operatingUnitInput, yearInput, questionKeyInput);
+  await assertGadPimmeOuAccess(user, identity.operatingUnit);
+  assertAllowedUploadFile(file, "files");
+  const assessment = await ensureGadPimmeAssessment(identity.operatingUnit, identity.year, user);
+  const { connection, accessToken, folder } = await ensureGadPimmeFolder(identity.operatingUnit, identity.year);
+  const uploadedFile = await uploadMultipartFile(accessToken, file, folder.operating_unit_folder_id);
+  let previewPermission: DrivePermissionResponse | null = null;
+  try {
+    previewPermission = await grantPreviewPermission(accessToken, uploadedFile.id);
+    const { data, error } = await adminClient().from("gad_pimme_files").insert({
+      assessment_id: assessment.id,
+      question_key: identity.questionKey,
+      connection_id: connection.id,
+      folder_id: folder.operating_unit_folder_id,
+      file_id: uploadedFile.id,
+      file_name: uploadedFile.name || file.name,
+      mime_type: uploadedFile.mimeType || file.type || "application/octet-stream",
+      file_size: Number(uploadedFile.size || file.size || 0),
+      web_view_link: uploadedFile.webViewLink ?? null,
+      web_content_link: uploadedFile.webContentLink ?? null,
+      preview_url: getPreviewUrl(uploadedFile.id),
+      uploaded_by: user.id,
+      uploaded_by_name: displayUserName(user)
+    }).select("*").single();
+    if (error) throw new Error(UPLOAD_RECORD_ERROR);
+    return { ...data, preview_permission_id: previewPermission?.id ?? null };
+  } catch (error) {
+    await deleteDriveFile(accessToken, uploadedFile.id);
+    throw error;
+  }
+}
+
+export async function deleteGadPimmeFile(fileRowId: number, user: UserRow) {
+  const supabase = adminClient();
+  const { data: fileRow, error: fileError } = await supabase.from("gad_pimme_files").select("*,gad_pimme_assessments(operating_unit)")
+    .eq("id", fileRowId).is("deleted_at", null).maybeSingle();
+  if (fileError) throw new Error(fileError.message);
+  if (!fileRow) throw new Error("GAD PIMME evidence file was not found.");
+  await assertGadPimmeOuAccess(user, fileRow.gad_pimme_assessments?.operating_unit);
+  const { accessToken } = await connectedDrive();
+  await deleteDriveFile(accessToken, fileRow.file_id);
+  const { data, error } = await supabase.from("gad_pimme_files")
+    .update({ deleted_at: new Date().toISOString() }).eq("id", fileRowId).select("*").single();
+  if (error) throw new Error(error.message);
   return data;
 }
