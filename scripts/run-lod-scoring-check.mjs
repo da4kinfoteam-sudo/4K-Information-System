@@ -76,6 +76,7 @@ assert.equal(partial.computedLevel, null);
 assert.equal(getLodEffectiveState({ computed_level: 5, is_complete: false }).label, 'Incomplete');
 assert.equal(getLodEffectiveState({ computed_level: 5 }).label, 'Level 5');
 assert.equal(getLodEffectiveState({ manual_level: 3, computed_level: 5, is_complete: false }).label, 'Level 3');
+assert.equal(getLodEffectiveState({ manual_level: 3, computed_level: 5, is_complete: true }).label, 'Level 5');
 assert.deepEqual(
     getLodEffectiveState({ is_carried_over: true, carried_over_level: 4, is_complete: false }),
     { kind: 'carried-over', label: 'Level 4', level: 4, source: 'carried-over' }
@@ -103,7 +104,7 @@ assert.equal(resolveManualLevelForSave({
     existingManualLevel: 4,
     existingAssessmentComplete: true,
     nextAssessmentComplete: true,
-}), 4);
+}), null);
 assert.equal(resolveManualLevelForSave({
     canManageOverride: true,
     retainManualOverride: true,
@@ -111,6 +112,6 @@ assert.equal(resolveManualLevelForSave({
     existingManualLevel: 2,
     existingAssessmentComplete: false,
     nextAssessmentComplete: true,
-}), 5);
+}), null);
 
 console.log('LOD scoring checks passed.');

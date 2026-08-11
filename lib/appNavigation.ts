@@ -203,6 +203,7 @@ export const appNavigationStructure: readonly AppNavigationItem[] = [
         children: [
             { id: 'marketing-database', name: 'Marketing Database', kind: 'link', href: '/marketing-database', module: 'Marketing Database' },
             { id: 'level-of-development', name: 'Level of Development', kind: 'link', href: '/level-of-development', module: 'Level of Development' },
+            { id: 'gender-and-development', name: 'Gender and Development', kind: 'link', href: '/gender-and-development', module: 'Gender and Development' },
             { id: 'commodity-mapping', name: 'Commodity Mapping', kind: 'link', href: '/commodity-mapping', module: 'Commodity Mapping' },
             {
                 id: 'references-group',

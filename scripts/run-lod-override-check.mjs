@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+    buildLodAdminStateRows,
     buildLodManualOverrideRows,
     buildLodOverrideAuditMetadata,
 } from '../lib/lodOverrides.ts';
@@ -45,5 +46,15 @@ const audit = buildLodOverrideAuditMetadata({
 assert.equal(audit.previous_level, 2);
 assert.equal(audit.new_manual_level, 4);
 assert.equal(audit.source, 'lod_detail');
+
+assert.deepEqual(buildLodAdminStateRows([
+    { ipoId: 10, year: 2026, selection: 4, reason: 'Validated correction' },
+    { ipoId: 11, year: 2026, selection: 'carry-over', reason: 'Approved carry over' },
+    { ipoId: 12, year: 2026, selection: 'dropped', reason: 'Removed from reporting' },
+]), [
+    { ipo_id: 10, year: 2026, action: 'manual', manual_level: 4, manual_override_reason: 'Validated correction' },
+    { ipo_id: 11, year: 2026, action: 'carry-over', manual_level: null, manual_override_reason: 'Approved carry over' },
+    { ipo_id: 12, year: 2026, action: 'dropped', manual_level: null, manual_override_reason: 'Removed from reporting' },
+]);
 
 console.log('LOD override checks passed.');

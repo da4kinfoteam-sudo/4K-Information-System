@@ -11,7 +11,7 @@ import { DataTablePagination, KpiCard, LoadingState, SortableTableHeader } from 
 import { ColumnFilterDialog, MajorTableToolbar, TableColumnFilters, TruncatedTableCell } from '../ui/MajorDataTable';
 import { getLodEffectiveState, LodEffectiveStateKind } from '../../lib/lodScoring';
 import { notifyLodDataChanged, subscribeToLodDataChanges } from '../../lib/lodDataSync';
-import { buildLodManualOverrideRows, LodOverrideSource } from '../../lib/lodOverrides';
+import { buildLodAdminStateRows, LodAdminOverrideSelection, LodOverrideSource } from '../../lib/lodOverrides';
 
 interface LODPageProps {
     onSelectIpo: (ipo: IPO, year?: number) => void;
@@ -46,7 +46,7 @@ interface LodControllerSettings {
 interface LodOverrideDialogState {
     ipoIds: number[];
     source: LodOverrideSource;
-    level: number | '';
+    selection: LodAdminOverrideSelection | '';
     reason: string;
 }
 
@@ -89,6 +89,12 @@ const parseImportedLevel = (value: unknown) => {
 const parseImportedBoolean = (value: unknown) => {
     const normalized = String(value ?? '').trim().toLowerCase();
     return ['yes', 'true', '1', 'dropped'].includes(normalized);
+};
+
+const parseAdminOverrideSelection = (value: string): LodAdminOverrideSelection | '' => {
+    if (value === 'carry-over' || value === 'dropped') return value;
+    const level = Number(value);
+    return Number.isInteger(level) && level >= 1 && level <= 5 ? level : '';
 };
 
 const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
@@ -319,10 +325,10 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
         });
     };
 
-    const openOverrideDialog = (ipoIds: number[], source: LodOverrideSource, level: number | '' = '') => {
+    const openOverrideDialog = (ipoIds: number[], source: LodOverrideSource, selection: LodAdminOverrideSelection | '' = '') => {
         if (!isSuperAdmin || ipoIds.length === 0) return;
         setOverrideFeedback(null);
-        setOverrideDialog({ ipoIds, source, level, reason: controllerSettings.defaultReason });
+        setOverrideDialog({ ipoIds, source, selection, reason: controllerSettings.defaultReason });
     };
 
     const applyManualOverrides = async () => {
@@ -330,10 +336,10 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
         setOverrideSaving(true);
         setOverrideFeedback(null);
         try {
-            const rows = buildLodManualOverrideRows(overrideDialog.ipoIds.map(ipoId => ({
+            const rows = buildLodAdminStateRows(overrideDialog.ipoIds.map(ipoId => ({
                 ipoId,
                 year: controllerSettings.year,
-                level: Number(overrideDialog.level),
+                selection: overrideDialog.selection as LodAdminOverrideSelection,
                 reason: overrideDialog.reason,
             })));
             const result = await supabase.rpc('save_lod_manual_overrides', {
@@ -343,17 +349,41 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
                 p_source: overrideDialog.source,
             });
             if (result.error) throw result.error;
-            const savedCount = Array.isArray(result.data) ? result.data.length : rows.length;
-            if (savedCount !== rows.length) throw new Error(`Only ${savedCount} of ${rows.length} overrides were confirmed. Refresh before retrying.`);
-
-            await fetchLodData();
+            const verification = await supabase.from('lod_assessments')
+                .select('id,ipo_id,year,total_score,computed_level,manual_level,manual_override_reason,is_carried_over,is_dropped,is_complete,answered_question_count,required_question_count,questionnaire_version_id,carried_over_from_assessment_id,carried_over_from_year,carried_over_level,carried_over_total_score,assessed_by,assessor_name,updated_at')
+                .eq('year', controllerSettings.year)
+                .in('ipo_id', overrideDialog.ipoIds);
+            if (verification.error) throw verification.error;
+            const verifiedRows = (verification.data || []) as LodAssessment[];
+            if (verifiedRows.length !== rows.length) {
+                throw new Error(`Only ${verifiedRows.length} of ${rows.length} saved LOD records could be verified.`);
+            }
+            rows.forEach(row => {
+                const persisted = verifiedRows.find(item => Number(item.ipo_id) === row.ipo_id && Number(item.year) === row.year);
+                if (!persisted) throw new Error(`The saved LOD for IPO ${row.ipo_id} and ${row.year} could not be verified.`);
+                const state = getLodEffectiveState(persisted);
+                if (row.action === 'manual' && (state.kind !== 'manual' || state.level !== row.manual_level)) {
+                    throw new Error(`The Level ${row.manual_level} override for IPO ${row.ipo_id} was not persisted.`);
+                }
+                if (row.action === 'carry-over' && state.kind !== 'carried-over') {
+                    throw new Error(`The carry-over state for IPO ${row.ipo_id} was not persisted.`);
+                }
+                if (row.action === 'dropped' && state.kind !== 'dropped') {
+                    throw new Error(`The dropped state for IPO ${row.ipo_id} was not persisted.`);
+                }
+            });
+            setAssessments(previous => {
+                const merged = new Map(previous.map(item => [`${Number(item.ipo_id)}:${Number(item.year)}`, item]));
+                verifiedRows.forEach(item => merged.set(`${Number(item.ipo_id)}:${Number(item.year)}`, item));
+                return Array.from(merged.values());
+            });
             notifyLodDataChanged({ year: controllerSettings.year, reason: 'override' });
             setSelectedIpoIds(new Set());
             setInlineEditingIpoId(null);
             setOverrideDialog(null);
             setOverrideFeedback({
                 type: 'success',
-                message: `${savedCount} ${savedCount === 1 ? 'LOD override was' : 'LOD overrides were'} saved for ${controllerSettings.year}.`,
+                message: `${verifiedRows.length} ${verifiedRows.length === 1 ? 'LOD change was' : 'LOD changes were'} saved for ${controllerSettings.year}.`,
             });
         } catch (error: any) {
             setOverrideFeedback({ type: 'error', message: error?.message || 'The LOD override transaction failed. No changes were applied.' });
@@ -594,17 +624,19 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
                                                             <select
                                                                 autoFocus
                                                                 className="form-control lod-inline-level-select"
-                                                                value={state.level ?? ''}
+                                                                value={state.kind === 'dropped' ? 'dropped' : state.kind === 'carried-over' ? 'carry-over' : state.level ?? ''}
                                                                 onBlur={() => setInlineEditingIpoId(null)}
                                                                 onChange={event => {
-                                                                    const level = Number(event.target.value);
+                                                                    const selection = parseAdminOverrideSelection(event.target.value);
                                                                     setInlineEditingIpoId(null);
-                                                                    if (level) openOverrideDialog([Number(ipo.id)], 'lod_list_inline', level);
+                                                                    if (selection !== '') openOverrideDialog([Number(ipo.id)], 'lod_list_inline', selection);
                                                                 }}
                                                                 aria-label={`Set ${ipo.name} LOD for ${year}`}
                                                             >
-                                                                <option value="">Select level</option>
+                                                                <option value="">Select state</option>
                                                                 {[1, 2, 3, 4, 5].map(level => <option key={level} value={level}>Level {level}</option>)}
+                                                                <option value="carry-over">Carry Over</option>
+                                                                <option value="dropped">Dropped</option>
                                                             </select>
                                                         ) : (
                                                             <button
@@ -678,15 +710,17 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
                 <div className="modal-backdrop" role="presentation" onMouseDown={() => !overrideSaving && setOverrideDialog(null)}>
                     <section className="modal-card lod-override-modal" role="dialog" aria-modal="true" aria-labelledby="lod-override-title" onMouseDown={event => event.stopPropagation()}>
                         <header className="modal-card__header">
-                            <div><h3 id="lod-override-title">Apply Manual LOD Override</h3><p>{overrideDialog.ipoIds.length} {overrideDialog.ipoIds.length === 1 ? 'IPO' : 'IPOs'} selected for {controllerSettings.year}</p></div>
+                            <div><h3 id="lod-override-title">Apply LOD Administrative State</h3><p>{overrideDialog.ipoIds.length} {overrideDialog.ipoIds.length === 1 ? 'IPO' : 'IPOs'} selected for {controllerSettings.year}</p></div>
                             <button type="button" className="modal-card__close" disabled={overrideSaving} onClick={() => setOverrideDialog(null)} aria-label="Close override confirmation"><X aria-hidden="true" /></button>
                         </header>
                         <div className="modal-card__body lod-override-form">
                             <label className="form-field">
-                                <span className="form-label">New LOD level</span>
-                                <select className="form-control" value={overrideDialog.level} onChange={event => setOverrideDialog(previous => previous ? ({ ...previous, level: Number(event.target.value) }) : previous)}>
-                                    <option value="">Select level</option>
+                                <span className="form-label">New LOD state</span>
+                                <select className="form-control" value={overrideDialog.selection} onChange={event => setOverrideDialog(previous => previous ? ({ ...previous, selection: parseAdminOverrideSelection(event.target.value) }) : previous)}>
+                                    <option value="">Select state</option>
                                     {[1, 2, 3, 4, 5].map(level => <option key={level} value={level}>Level {level}</option>)}
+                                    <option value="carry-over">Carry Over</option>
+                                    <option value="dropped">Dropped</option>
                                 </select>
                             </label>
                             <label className="form-field">
@@ -696,7 +730,7 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
                         </div>
                         <footer className="modal-card__footer">
                             <button type="button" className="btn btn-secondary" disabled={overrideSaving} onClick={() => setOverrideDialog(null)}>Cancel</button>
-                            <button type="button" className="btn btn-primary" disabled={overrideSaving || !overrideDialog.level || !overrideDialog.reason.trim()} onClick={applyManualOverrides}>
+                            <button type="button" className="btn btn-primary" disabled={overrideSaving || overrideDialog.selection === '' || !overrideDialog.reason.trim()} onClick={applyManualOverrides}>
                                 {overrideSaving ? 'Applying...' : 'Apply Override'}
                             </button>
                         </footer>
