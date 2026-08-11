@@ -1797,6 +1797,7 @@ const AppContent: React.FC = () => {
                         operatingUnit={routeOu}
                         year={Number.isFinite(routeYear) ? routeYear : null}
                         onBack={() => navigateTo('/gender-and-development')}
+                        onSelectYear={year => routeOu && handleSelectGadPimmeAssessment(routeOu, year)}
                     />;
                 }
             case '/commodity-mapping':
