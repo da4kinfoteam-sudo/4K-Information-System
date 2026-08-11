@@ -11015,8 +11015,17 @@ button.bar1-drilldown-card:focus-visible {
 /* GAD PIMME Lovable-fidelity list and assessment layouts */
 .gad-pimme-list-page,
 .gad-pimme-assessment {
-  gap: 1rem;
   min-width: 0;
+}
+
+.gad-pimme-list-page {
+  gap: 1rem;
+}
+
+.gad-pimme-assessment {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
 .gad-pimme-list-header h1,
@@ -11685,17 +11694,28 @@ button.bar1-drilldown-card:focus-visible {
   width: 1rem;
 }
 
+.gad-pimme-question-row td.gad-pimme-remarks-cell {
+  padding: 0;
+  position: relative;
+}
+
 .gad-pimme-remarks-cell textarea {
   background: transparent;
   border: 0;
+  box-sizing: border-box;
   color: var(--text-primary);
+  display: block;
   font: inherit;
   font-size: 0.78rem;
+  height: 100%;
+  inset: 0;
   line-height: 1.45;
-  min-height: 4.5rem;
+  min-height: 100%;
   outline: none;
-  padding: 0;
-  resize: vertical;
+  overflow: auto;
+  padding: 0.75rem 0.85rem;
+  position: absolute;
+  resize: none;
   width: 100%;
 }
 
