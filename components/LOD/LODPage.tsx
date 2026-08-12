@@ -79,6 +79,51 @@ const STATE_SORT_ORDER: Record<LodEffectiveStateKind, number> = {
 };
 
 const regionToOu = new Map(Object.entries(ouToRegionMap).map(([ou, region]) => [region, ou]));
+const LOD_ASSESSMENT_PAGE_SIZE = 500;
+const LOD_IPO_ID_BATCH_SIZE = 100;
+const LOD_ASSESSMENT_LIST_FIELDS = 'id,ipo_id,year,total_score,computed_level,manual_level,manual_override_reason,is_carried_over,is_dropped,is_complete,answered_question_count,required_question_count,questionnaire_version_id,carried_over_from_assessment_id,carried_over_from_year,carried_over_level,carried_over_total_score,assessed_by,assessor_name,updated_at';
+
+const getLodListYears = (selectedYear: number) =>
+    Array.from({ length: 4 }, (_, index) => selectedYear - index);
+
+const fetchPagedLodAssessments = async (
+    selectedYear: number,
+    visibleIpoIds?: number[],
+): Promise<LodAssessment[]> => {
+    if (!supabase) throw new Error('LOD data is unavailable because the database connection is not ready.');
+
+    const years = getLodListYears(selectedYear);
+    const minimumYear = Math.min(...years);
+    const maximumYear = Math.max(...years);
+    const assessmentsById = new Map<number, LodAssessment>();
+    const ipoBatches = visibleIpoIds
+        ? Array.from({ length: Math.ceil(visibleIpoIds.length / LOD_IPO_ID_BATCH_SIZE) }, (_, index) =>
+            visibleIpoIds.slice(index * LOD_IPO_ID_BATCH_SIZE, (index + 1) * LOD_IPO_ID_BATCH_SIZE))
+        : [null];
+
+    for (const ipoBatch of ipoBatches) {
+        let offset = 0;
+        while (true) {
+            let query = supabase.from('lod_assessments')
+                .select(LOD_ASSESSMENT_LIST_FIELDS)
+                .gte('year', minimumYear)
+                .lte('year', maximumYear)
+                .order('id', { ascending: true })
+                .range(offset, offset + LOD_ASSESSMENT_PAGE_SIZE - 1);
+            if (ipoBatch) query = query.in('ipo_id', ipoBatch);
+
+            const result = await query;
+            if (result.error) throw result.error;
+
+            const page = (result.data || []) as LodAssessment[];
+            page.forEach(assessment => assessmentsById.set(Number(assessment.id), assessment));
+            if (page.length < LOD_ASSESSMENT_PAGE_SIZE) break;
+            offset += LOD_ASSESSMENT_PAGE_SIZE;
+        }
+    }
+
+    return Array.from(assessmentsById.values()).sort((left, right) => Number(left.id) - Number(right.id));
+};
 
 const parseImportedLevel = (value: unknown) => {
     if (value === '' || value === null || value === undefined) return null;
@@ -128,6 +173,7 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const pageSelectionRef = useRef<HTMLInputElement>(null);
     const loadSequence = useRef(0);
+    const verifiedAssessmentsRef = useRef<Map<string, LodAssessment>>(new Map());
 
     const updateFilters = (patch: Partial<LodListFilters>, resetPage = false) => {
         setFilters(previous => ({ ...previous, ...patch, ...(resetPage ? { page: 1 } : {}) }));
@@ -151,17 +197,39 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
             const ipoResult = await ipoQuery;
             if (ipoResult.error) throw ipoResult.error;
             const visibleIpos = (ipoResult.data || []) as IPO[];
-            const visibleIds = visibleIpos.map(ipo => Number(ipo.id));
-            let assessmentQuery = supabase.from('lod_assessments')
-                .select('id,ipo_id,year,total_score,computed_level,manual_level,manual_override_reason,is_carried_over,is_dropped,is_complete,answered_question_count,required_question_count,questionnaire_version_id,carried_over_from_assessment_id,carried_over_from_year,carried_over_level,carried_over_total_score,assessed_by,assessor_name,updated_at');
-            if (visibilityScope === 'Own OU' && visibleIds.length > 0) assessmentQuery = assessmentQuery.in('ipo_id', visibleIds);
-            const assessmentResult = visibleIds.length === 0
-                ? { data: [] as LodAssessment[], error: null }
-                : await assessmentQuery;
-            if (assessmentResult.error) throw assessmentResult.error;
+            const visibleIds = new Set(visibleIpos.map(ipo => Number(ipo.id)));
+            const displayYearSet = new Set(getLodListYears(filters.year));
+            const fetchedAssessments = visibleIds.size === 0
+                ? []
+                : (await fetchPagedLodAssessments(
+                    filters.year,
+                    visibilityScope === 'Own OU' ? Array.from(visibleIds) : undefined,
+                ))
+                    .filter(assessment => visibleIds.has(Number(assessment.ipo_id)));
             if (sequence !== loadSequence.current) return;
+
+            const completeResult = new Map(fetchedAssessments.map(assessment => [
+                `${Number(assessment.ipo_id)}:${Number(assessment.year)}`,
+                assessment,
+            ]));
+            verifiedAssessmentsRef.current.forEach((verified, key) => {
+                const remainsInScope = visibleIds.has(Number(verified.ipo_id))
+                    && displayYearSet.has(Number(verified.year));
+                if (!remainsInScope) {
+                    verifiedAssessmentsRef.current.delete(key);
+                    return;
+                }
+                const fetched = completeResult.get(key);
+                const fetchedTimestamp = fetched?.updated_at ? new Date(fetched.updated_at).getTime() : 0;
+                const verifiedTimestamp = verified.updated_at ? new Date(verified.updated_at).getTime() : 0;
+                if (fetched && fetchedTimestamp >= verifiedTimestamp) {
+                    verifiedAssessmentsRef.current.delete(key);
+                } else {
+                    completeResult.set(key, verified);
+                }
+            });
             setIpos(visibleIpos);
-            setAssessments((assessmentResult.data || []) as LodAssessment[]);
+            setAssessments(Array.from(completeResult.values()));
         } catch (error: any) {
             if (sequence !== loadSequence.current) return;
             console.error('LOD list load error:', error);
@@ -173,14 +241,17 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
 
     useEffect(() => {
         fetchLodData();
-        const unsubscribe = subscribeToLodDataChanges(fetchLodData);
+        const unsubscribe = subscribeToLodDataChanges(detail => {
+            const visibleYears = getLodListYears(filters.year);
+            if (!detail.year || visibleYears.includes(Number(detail.year))) fetchLodData();
+        });
         const refreshOnFocus = () => fetchLodData();
         window.addEventListener('focus', refreshOnFocus);
         return () => {
             unsubscribe();
             window.removeEventListener('focus', refreshOnFocus);
         };
-    }, [currentUser?.id, visibilityScope, ownRegion]);
+    }, [currentUser?.id, visibilityScope, ownRegion, filters.year]);
 
     useEffect(() => {
         if (visibilityScope === 'Own OU' && filters.ou !== currentUser?.operatingUnit) {
@@ -198,7 +269,7 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
         return Array.from(values).filter(Number.isFinite).sort((left, right) => right - left);
     }, [assessments, filters.year]);
 
-    const displayYears = useMemo(() => Array.from({ length: 4 }, (_, index) => filters.year - index), [filters.year]);
+    const displayYears = useMemo(() => getLodListYears(filters.year), [filters.year]);
     const assessmentsByIpoYear = useMemo(() => {
         const map = new Map<string, LodAssessment>();
         assessments.forEach(assessment => map.set(`${Number(assessment.ipo_id)}:${Number(assessment.year)}`, assessment));
@@ -374,7 +445,11 @@ const LODPage: React.FC<LODPageProps> = ({ onSelectIpo }) => {
             });
             setAssessments(previous => {
                 const merged = new Map(previous.map(item => [`${Number(item.ipo_id)}:${Number(item.year)}`, item]));
-                verifiedRows.forEach(item => merged.set(`${Number(item.ipo_id)}:${Number(item.year)}`, item));
+                verifiedRows.forEach(item => {
+                    const key = `${Number(item.ipo_id)}:${Number(item.year)}`;
+                    verifiedAssessmentsRef.current.set(key, item);
+                    merged.set(key, item);
+                });
                 return Array.from(merged.values());
             });
             notifyLodDataChanged({ year: controllerSettings.year, reason: 'override' });
