@@ -21,6 +21,25 @@ export interface GadPimmeScoreResult {
     elementScores: Record<string, number>;
 }
 
+export const GAD_PIMME_CLASSIFICATIONS = [
+    'Gender-Responsive',
+    'Gender-Sensitive',
+    'Promising GAD Prospects',
+    'GAD-Invisible',
+] as const;
+
+export type GadPimmeClassification = typeof GAD_PIMME_CLASSIFICATIONS[number];
+
+export const getGadPimmeClassification = (score: number): GadPimmeClassification => {
+    const normalizedScore = Number.isFinite(Number(score))
+        ? Math.max(0, Math.min(GAD_PIMME_MAX_SCORE, Number(score)))
+        : 0;
+    if (normalizedScore >= 15) return 'Gender-Responsive';
+    if (normalizedScore >= 8) return 'Gender-Sensitive';
+    if (normalizedScore >= 4) return 'Promising GAD Prospects';
+    return 'GAD-Invisible';
+};
+
 export const getGadPimmeListStatus = (assessment: { status?: string | null } | null | undefined) => {
     if (!assessment) return 'For Assessment' as const;
     return assessment.status === 'Completed' ? 'Completed' as const : 'Incomplete' as const;

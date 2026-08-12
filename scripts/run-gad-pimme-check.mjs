@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GAD_PIMME_CHECKLIST, GAD_PIMME_MAX_SCORE, GAD_PIMME_QUESTION_COUNT, GAD_PIMME_QUESTIONS } from '../lib/gadPimmeChecklist.ts';
 import { buildGadPimmeDetailPath, getGadPimmeAccess, getVisibleGadPimmeOperatingUnits } from '../lib/gadPimmeAccess.ts';
-import { calculateGadPimmeScore, getGadPimmeListStatus } from '../lib/gadPimmeScoring.ts';
+import { calculateGadPimmeScore, getGadPimmeClassification, getGadPimmeListStatus } from '../lib/gadPimmeScoring.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -63,6 +63,11 @@ assert.equal(partial.status, 'Incomplete');
 assert.equal(getGadPimmeListStatus(null), 'For Assessment');
 assert.equal(getGadPimmeListStatus({ status: 'Incomplete' }), 'Incomplete');
 assert.equal(getGadPimmeListStatus({ status: 'Completed' }), 'Completed');
+assert.equal(getGadPimmeClassification(0), 'GAD-Invisible');
+assert.equal(getGadPimmeClassification(4), 'Promising GAD Prospects');
+assert.equal(getGadPimmeClassification(8), 'Gender-Sensitive');
+assert.equal(getGadPimmeClassification(15), 'Gender-Responsive');
+assert.equal(getGadPimmeClassification(20), 'Gender-Responsive');
 
 const testOus = ['NPMO', 'RPMO CAR', 'RPMO 1'];
 assert.deepEqual(getVisibleGadPimmeOperatingUnits(testOus, 'All', 'RPMO 1'), testOus);

@@ -134,6 +134,9 @@ export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
         'Tier': s.tier,
         Budget: calculateTotalBudget(s.details),
         'End Date': s.estimatedCompletionDate,
+        'Actual Male Beneficiaries': s.actualMaleBeneficiaries ?? '',
+        'Actual Female Beneficiaries': s.actualFemaleBeneficiaries ?? '',
+        'Actual 4Ps Beneficiaries': s.actualFourPsBeneficiaries ?? '',
         'Operating Unit': s.operatingUnit
     }));
     const ws = XLSX.utils.json_to_sheet(data);
@@ -145,7 +148,7 @@ export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
 export const downloadSubprojectsTemplate = () => {
     const headers = [
         'uid', 'name', 'indigenousPeopleOrganization', 'status', 'packageType', 
-        'estimatedCompletionDate', 'actualCompletionDate', 'fundingYear', 'fundType', 'tier', 'operatingUnit', 'remarks',
+        'estimatedCompletionDate', 'actualCompletionDate', 'actualMaleBeneficiaries', 'actualFemaleBeneficiaries', 'actualFourPsBeneficiaries', 'fundingYear', 'fundType', 'tier', 'operatingUnit', 'remarks',
         'detail_type', 'detail_particulars', 'detail_deliveryDate', 'detail_unitOfMeasure', 'detail_pricePerUnit', 'detail_numberOfUnits', 
         'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth'
     ];
@@ -159,6 +162,9 @@ export const downloadSubprojectsTemplate = () => {
             packageType: 'Package 1',
             estimatedCompletionDate: 'June 2024',
             actualCompletionDate: '',
+            actualMaleBeneficiaries: '',
+            actualFemaleBeneficiaries: '',
+            actualFourPsBeneficiaries: '',
             fundingYear: 2024,
             fundType: 'Current',
             tier: 'Tier 1',
@@ -185,6 +191,9 @@ export const downloadSubprojectsTemplate = () => {
         ["packageType", "Package 1, Package 2, etc."],
         ["estimatedCompletionDate", "Month Year (e.g., June 2024)"],
         ["actualCompletionDate", "Month Year (Optional)"],
+        ["actualMaleBeneficiaries", "Optional nonnegative whole number. Leave blank when not reported."],
+        ["actualFemaleBeneficiaries", "Optional nonnegative whole number. Leave blank when not reported."],
+        ["actualFourPsBeneficiaries", "Optional nonnegative whole number. Leave blank when not reported."],
         ["fundingYear", "Year (e.g., 2024)"],
         ["fundType", "Current, Continuing, or Insertion"],
         ["tier", "Tier 1 or Tier 2"],
@@ -278,6 +287,9 @@ export const handleSubprojectsUpload = (
                         startDate: `${row.fundingYear || new Date().getFullYear()}-01-01`, // Default since start date is removed
                         estimatedCompletionDate: parseMonthToDate(row.estimatedCompletionDate),
                         actualCompletionDate: row.actualCompletionDate ? parseMonthToDate(row.actualCompletionDate) : undefined,
+                        actualMaleBeneficiaries: row.actualMaleBeneficiaries === '' || row.actualMaleBeneficiaries == null ? null : Math.max(0, Math.trunc(Number(row.actualMaleBeneficiaries))),
+                        actualFemaleBeneficiaries: row.actualFemaleBeneficiaries === '' || row.actualFemaleBeneficiaries == null ? null : Math.max(0, Math.trunc(Number(row.actualFemaleBeneficiaries))),
+                        actualFourPsBeneficiaries: row.actualFourPsBeneficiaries === '' || row.actualFourPsBeneficiaries == null ? null : Math.max(0, Math.trunc(Number(row.actualFourPsBeneficiaries))),
                         fundingYear: Number(row.fundingYear),
                         fundType: row.fundType,
                         tier: resolveTier(row.tier),
