@@ -695,6 +695,12 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setEditedSubproject(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
     };
 
+    const handleBeneficiaryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        const nextValue = value === '' ? null : Math.max(0, Math.trunc(Number(value)));
+        setEditedSubproject(prev => ({ ...prev, [name]: Number.isFinite(nextValue) ? nextValue : null }));
+    };
+
     const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setBudgetItemFormMessage(null);
@@ -1939,6 +1945,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         <legend className="form-legend">Gender and Inclusivity</legend>
                                         <div className="form-grid form-grid--compact">
                                             <div>
+                                                <label className="form-label form-label--compact">Male</label>
+                                                <input type="number" min="0" step="1" name="actualMaleBeneficiaries" value={editedSubproject.actualMaleBeneficiaries ?? ''} onChange={handleBeneficiaryChange} className={commonInputClasses} placeholder="Not reported" />
+                                            </div>
+                                            <div>
+                                                <label className="form-label form-label--compact">Female</label>
+                                                <input type="number" min="0" step="1" name="actualFemaleBeneficiaries" value={editedSubproject.actualFemaleBeneficiaries ?? ''} onChange={handleBeneficiaryChange} className={commonInputClasses} placeholder="Not reported" />
+                                            </div>
+                                            <div>
+                                                <label className="form-label form-label--compact">4Ps Beneficiary</label>
+                                                <input type="number" min="0" step="1" name="actualFourPsBeneficiaries" value={editedSubproject.actualFourPsBeneficiaries ?? ''} onChange={handleBeneficiaryChange} className={commonInputClasses} placeholder="Not reported" />
+                                            </div>
+                                            <div>
                                                 <label className="form-label form-label--compact">PWD</label>
                                                 <input type="number" name="actualPWD" value={editedSubproject.actualPWD || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" />
                                             </div>
@@ -2263,7 +2281,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                             {getBudgetLineTag(detail)}
                                                         </span>
                                                     ) : (
-                                                        <span className="detail-empty">-</span>
+                                                        <span>-</span>
                                                     )}
                                                 </td>
                                                 <td>{formatMonthYear(detail.deliveryDate)}</td>
@@ -2372,6 +2390,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             <div>
                                 <h4 className="detail-section-title">Gender and Inclusivity</h4>
                                 <div className="detail-dl">
+                                    <DetailItem label="Male" value={subproject.actualMaleBeneficiaries ?? 'No Data'} />
+                                    <DetailItem label="Female" value={subproject.actualFemaleBeneficiaries ?? 'No Data'} />
+                                    <DetailItem label="4Ps Beneficiary" value={subproject.actualFourPsBeneficiaries ?? 'No Data'} />
                                     <DetailItem label="PWD" value={subproject.actualPWD} />
                                     <DetailItem label="Muslim" value={subproject.actualMuslim} />
                                     <DetailItem label="LGBTQ+" value={subproject.actualLGBTQ} />

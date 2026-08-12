@@ -208,6 +208,9 @@ export interface Subproject extends BaseEntity {
     startDate: string;
     estimatedCompletionDate: string;
     actualCompletionDate?: string;
+    actualMaleBeneficiaries?: number | null;
+    actualFemaleBeneficiaries?: number | null;
+    actualFourPsBeneficiaries?: number | null;
     lat?: number;
     lng?: number;
     fundingYear?: number;

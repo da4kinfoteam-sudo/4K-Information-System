@@ -592,6 +592,7 @@ const AppContent: React.FC = () => {
             refreshPermissions(),
             refreshUser()
         ]);
+        window.dispatchEvent(new CustomEvent('app-data-refreshed'));
     }, [ensureDataScope, refreshPermissions, refreshUser, refreshUsersList]);
 
     const clearLocalCache = useCallback(async () => {
