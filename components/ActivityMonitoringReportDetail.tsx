@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Edit3, Loader2, Plus, Save, Trash2, X } from 'lucide-react';
+import { Edit3, Loader2, Plus, Save, Trash2, X } from 'lucide-react';
 import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, ActivityMonitoringStatus, IPO } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
@@ -10,7 +10,6 @@ interface ActivityMonitoringReportDetailProps {
     ipo: IPO;
     initialReport?: ActivityMonitoringReport | null;
     initialActions?: ActivityMonitoringAction[];
-    onBack: () => void;
 }
 
 const statusOptions: ActivityMonitoringStatus[] = ['Pending', 'Ongoing', 'Completed'];
@@ -80,8 +79,7 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
     activity,
     ipo,
     initialReport,
-    initialActions = [],
-    onBack
+    initialActions = []
 }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Activities');
@@ -378,10 +376,6 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
                     <p className="detail-meta">{activity.name} | {ipo.name}</p>
                 </div>
                 <div className="detail-actions">
-                    <button type="button" onClick={onBack} className="btn btn-secondary btn-responsive">
-                        <ArrowLeft className="btn-symbol" aria-hidden="true" />
-                        <span className="btn-text">Back</span>
-                    </button>
                 </div>
             </header>
 

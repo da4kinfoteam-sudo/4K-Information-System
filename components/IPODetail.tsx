@@ -3,7 +3,6 @@
 import React, { useState, useEffect, FormEvent, useMemo, useCallback, useRef } from 'react';
 import {
     AlertCircle,
-    ArrowLeft,
     CalendarDays,
     Check,
     ChevronRight,
@@ -76,8 +75,6 @@ interface IPODetailProps {
     linkedDcfLoading?: boolean;
     linkedDcfError?: string | null;
     marketingPartners: MarketingPartner[];
-    onBack: () => void;
-    previousPageName: string;
     onUpdateIpo: (updatedIpo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
     onSelectActivity: (activity: Training) => void;
@@ -371,7 +368,7 @@ const IpoSectionModal: React.FC<{
     );
 };
 
-const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, monitoringActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], linkedDcfLoading = false, linkedDcfError = null, marketingPartners, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, onOpenMonitoringReport, onSelectLodYear, onSelectMarketingPartner, particularTypes, commodityCategories }) => {
+const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, monitoringActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], linkedDcfLoading = false, linkedDcfError = null, marketingPartners, onUpdateIpo, onSelectSubproject, onSelectActivity, onOpenMonitoringReport, onSelectLodYear, onSelectMarketingPartner, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('IPO Management');
     const canDeleteDriveFiles = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
@@ -1526,11 +1523,6 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                     onClose={closeSectionModal}
                 />
             )}
-            <button type="button" onClick={onBack} className="record-detail-back-link">
-                <ArrowLeft aria-hidden="true" />
-                Back to {previousPageName}
-            </button>
-
             <header className="record-detail-header">
                 <div className="record-detail-header__main">
                     <h1 className="record-detail-header__title">{ipo.name}</h1>

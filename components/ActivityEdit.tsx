@@ -915,7 +915,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     {mode === 'create' ? 'Create New Activity' : `Edit ${mode === 'expenses' ? 'Expenses' : mode === 'accomplishment' ? 'Accomplishment' : 'Details'}: ${formData.name}`}
                 </h1>
                 </div>
-                <button onClick={onBack} className="btn btn-secondary">Back to List</button>
             </div>
 
             <form onSubmit={handleSubmit} className="form-card">

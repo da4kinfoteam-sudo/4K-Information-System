@@ -17,7 +17,6 @@ import { replaceFinancialObligationRecords } from '../../lib/financialObligation
 
 interface OfficeRequirementDetailProps {
     item: OfficeRequirement;
-    onBack: () => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     onUpdate: (item: OfficeRequirement) => void;
 }
@@ -46,7 +45,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
     </div>
 );
 
-const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
+const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Program Management');
     const { logAction } = useLogAction();
@@ -668,12 +667,6 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                             </span>
                         </button>
                     )}
-                    <button onClick={onBack} className="btn btn-secondary btn-responsive">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                        <span className="btn-text">
-                        Back
-                        </span>
-                    </button>
                 </div>
             </header>
 

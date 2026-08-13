@@ -1,6 +1,6 @@
 // Author: 4K
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { ArrowLeft, Info, Pencil, Trash2 } from 'lucide-react';
+import { Info, Pencil, Trash2 } from 'lucide-react';
 import { MonthYearPicker } from './ui/MonthYearPicker';
 import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, philippineRegions, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock } from '../constants';
 import LocationPicker from './LocationPicker';
@@ -630,7 +630,6 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         <div className="form-card form-page animate-fadeIn">
             <div className="detail-header">
                 <h3 className="detail-title">{subproject ? 'Edit Subproject' : 'Add New Subproject'}</h3>
-                <button onClick={onBack} className="btn btn-secondary"><ArrowLeft className="btn-symbol" aria-hidden="true" />Back to List</button>
             </div>
             <form onSubmit={handleSubmit}>
                 <div className="mb-6">
@@ -1174,6 +1173,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                     )}
                 </div>
                 <div className="form-footer">
+                    <button type="button" onClick={onBack} className="btn btn-secondary">Cancel</button>
                     {activeTab !== 'details' && (
                         <button type="button" onClick={handleBackSection} className="btn btn-secondary">Back Section</button>
                     )}

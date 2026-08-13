@@ -191,7 +191,6 @@ const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({ partner, link
                     <p className="detail-meta">{partner.companyName} | {partner.uid}</p>
                 </div>
                 <div className="detail-actions">
-                    <button onClick={onBack} className="btn btn-secondary">Back to Profile</button>
                     {!isEditing && canEdit && (
                         <button onClick={() => setIsEditing(true)} className="btn btn-primary">Edit Linkage</button>
                     )}

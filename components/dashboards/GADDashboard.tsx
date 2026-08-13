@@ -46,6 +46,7 @@ interface GADDashboardProps {
     selectedTier: string;
     selectedFundType: string;
     navigateTo?: (path: string) => void;
+    onSelectAssessment?: (operatingUnit: string, year: number) => void;
 }
 
 interface OuDashboardRow {
@@ -99,7 +100,7 @@ const getAssessmentState = (assessment?: GadAssessmentSummary): AssessmentState 
 
 const GADDashboard: React.FC<GADDashboardProps> = ({
     subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses,
-    ipos, selectedYear, selectedOu, selectedTier, selectedFundType, navigateTo,
+    ipos, selectedYear, selectedOu, selectedTier, selectedFundType, navigateTo, onSelectAssessment,
 }) => {
     const { currentUser, hasAccess, getVisibilityScope } = useAuth();
     const [assessments, setAssessments] = useState<GadAssessmentSummary[]>([]);
@@ -407,7 +408,10 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         if (sortKey === key) setSortDirection(value => value === 'asc' ? 'desc' : 'asc');
         else { setSortKey(key); setSortDirection('desc'); }
     };
-    const openAssessment = (ou: string) => navigateTo?.(buildGadPimmeDetailPath(ou, year));
+    const openAssessment = (ou: string) => {
+        if (onSelectAssessment) onSelectAssessment(ou, year);
+        else navigateTo?.(buildGadPimmeDetailPath(ou, year));
+    };
 
     if (!canView) return <div className="notice notice--warning"><p>You need both Dashboard and Gender and Development view access to open this dashboard.</p></div>;
     if (!Number.isFinite(year)) return <div className="gad-dashboard dashboard-view"><div className="dashboard-panel gad-dashboard-empty"><h3>Select a Fund Year</h3><p>Choose a specific Fund Year to align annual PIMME assessments and program records.</p></div></div>;

@@ -1575,13 +1575,13 @@ textarea {
   backdrop-filter: blur(12px);
   background: color-mix(in srgb, var(--surface-card) 94%, transparent);
   border-bottom: 1px solid var(--border-default);
-  display: flex;
+  display: grid;
   flex: 0 0 var(--app-topbar-height);
   gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) clamp(12rem, 22vw, 22rem) auto;
   height: var(--app-topbar-height);
-  justify-content: space-between;
   min-width: 0;
-  padding: 0 1rem;
+  padding: 0 1.5rem;
   position: sticky;
   top: 0;
   z-index: 30;
@@ -1589,17 +1589,75 @@ textarea {
 
 .app-topbar__left,
 .app-topbar__actions,
-.app-topbar__context,
-.app-topbar__status,
 .app-topbar__user-trigger {
   align-items: center;
   display: flex;
 }
 
 .app-topbar__left {
-  flex: 1 1 auto;
   gap: 0.625rem;
   min-width: 0;
+  overflow: visible;
+}
+
+.app-topbar__return,
+.app-topbar__mobile-parent {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 1 auto;
+  font-size: 0.78125rem;
+  font-weight: 400;
+  gap: 0.375rem;
+  min-height: 2.25rem;
+  min-width: 0;
+  padding: 0 0.625rem 0 0;
+  position: relative;
+  white-space: nowrap;
+}
+
+.app-topbar__return::after {
+  background: var(--border-default);
+  content: '';
+  height: 1.25rem;
+  position: absolute;
+  right: 0;
+  width: 1px;
+}
+
+.app-topbar__return:hover,
+.app-topbar__mobile-parent:hover {
+  color: var(--brand-primary);
+}
+
+.app-topbar__return:focus-visible,
+.app-topbar__mobile-parent:focus-visible {
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary) 25%, transparent);
+  outline: none;
+}
+
+.app-topbar__return svg,
+.app-topbar__mobile-parent svg {
+  flex: 0 0 0.875rem;
+  height: 0.875rem;
+  width: 0.875rem;
+}
+
+.app-topbar__return-full,
+.app-topbar__return-compact,
+.app-topbar__mobile-parent span {
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-topbar__return-compact,
+.app-topbar__mobile-parent {
+  display: none;
 }
 
 .app-topbar__actions {
@@ -1610,6 +1668,7 @@ textarea {
 
 .app-topbar__menu-toggle {
   display: none;
+  flex: 0 0 2.125rem;
 }
 
 .app-topbar__hamburger {
@@ -1625,25 +1684,226 @@ textarea {
   width: 0.875rem;
 }
 
-.app-topbar__context {
-  gap: 0.625rem;
+.app-topbar__breadcrumbs {
+  display: block;
+  min-width: 0;
+  position: relative;
+  width: 100%;
+}
+
+.app-topbar__breadcrumb-trail,
+.app-topbar__breadcrumb-measure {
+  align-items: center;
+  display: flex;
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.app-topbar__breadcrumb-trail {
+  overflow: hidden;
+}
+
+.app-topbar__breadcrumb-measure {
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  visibility: hidden;
+  white-space: nowrap;
+  width: max-content;
+}
+
+.app-topbar__breadcrumb {
+  align-items: center;
+  display: flex;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
-.app-topbar__product {
-  color: var(--text-primary);
-  font-size: 0.8125rem;
-  font-weight: 700;
+.app-topbar__breadcrumb:first-child,
+.app-topbar__breadcrumb:last-child {
+  flex-shrink: 0;
+}
+
+.app-topbar__breadcrumb--overflow {
+  flex: 0 0 auto;
+  overflow: visible;
+  position: relative;
+}
+
+.app-topbar__breadcrumb-separator {
+  color: var(--text-secondary);
+  flex: 0 0 0.875rem;
+  height: 0.875rem;
+  margin: 0 0.375rem;
+  stroke-width: 1.7;
+  width: 0.875rem;
+}
+
+.app-topbar__breadcrumb-link,
+.app-topbar__breadcrumb-current {
+  background: transparent;
+  border: 0;
+  display: block;
+  font-size: 0.78125rem;
+  line-height: 1.25rem;
+  max-width: 12rem;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.app-topbar__date {
-  border-left: 1px solid var(--border-default);
+.app-topbar__breadcrumb-link {
   color: var(--text-secondary);
-  font-size: 0.6875rem;
+  cursor: pointer;
+  font-weight: 400;
+  text-align: left;
+  transition: color 140ms ease;
+}
+
+.app-topbar__breadcrumb-link:hover {
+  color: var(--brand-primary);
+}
+
+.app-topbar__breadcrumb-link:focus-visible {
+  border-radius: 0.1875rem;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary) 30%, transparent);
+  outline: none;
+}
+
+.app-topbar__breadcrumb-current {
+  color: var(--text-primary);
   font-weight: 500;
-  padding-left: 0.625rem;
+}
+
+.app-topbar__breadcrumb-overflow-trigger {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  height: 1.75rem;
+  justify-content: center;
+  padding: 0;
+  width: 1.75rem;
+}
+
+.app-topbar__breadcrumb-overflow-trigger:hover,
+.app-topbar__breadcrumb-overflow-trigger[aria-expanded='true'] {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+.app-topbar__breadcrumb-overflow-trigger:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary) 25%, transparent);
+  outline: none;
+}
+
+.app-topbar__breadcrumb-overflow-trigger svg {
+  height: 1rem;
+  width: 1rem;
+}
+
+.app-topbar__breadcrumb-menu {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  display: grid;
+  left: 0;
+  max-width: min(20rem, calc(100vw - 2rem));
+  min-width: 12rem;
+  padding: 0.375rem;
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  z-index: 90;
+}
+
+.app-topbar__breadcrumb-menu button,
+.app-topbar__breadcrumb-menu span {
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  overflow: hidden;
+  padding: 0.4375rem 0.625rem;
+  text-align: left;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  width: 100%;
+}
+
+.app-topbar__breadcrumb-menu button {
+  cursor: pointer;
+}
+
+.app-topbar__breadcrumb-menu button:hover,
+.app-topbar__breadcrumb-menu button:focus-visible {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.app-topbar__search {
+  align-items: center;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  display: flex;
+  height: 2.25rem;
+  min-width: 0;
+  padding: 0 0.75rem;
+  justify-self: end;
+  max-width: 22rem;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  width: 100%;
+}
+
+.app-topbar__search:focus-within {
+  background: var(--surface-card);
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary) 12%, transparent);
+}
+
+.app-topbar__search-icon {
+  color: var(--text-tertiary);
+  flex: 0 0 1rem;
+  height: 1rem;
+  margin-right: 0.5rem;
+  stroke-width: 1.8;
+  width: 1rem;
+}
+
+.app-topbar__search-input {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  flex: 1 1 auto;
+  font: inherit;
+  font-size: 0.8125rem;
+  height: 100%;
+  min-width: 0;
+  outline: none;
+  padding: 0;
+}
+
+.app-topbar__search-input::placeholder {
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+
+.app-topbar__search-input::-webkit-search-cancel-button {
+  cursor: pointer;
 }
 
 .app-icon-button,
@@ -1668,6 +1928,10 @@ textarea {
   width: 2.125rem;
 }
 
+.app-topbar .app-topbar__menu-toggle {
+  display: none;
+}
+
 .app-icon-button:hover,
 .app-topbar__action:hover:not(:disabled) {
   background: var(--surface-muted);
@@ -1681,51 +1945,19 @@ textarea {
   width: 0.875rem;
 }
 
-.app-topbar__status {
-  color: var(--text-secondary);
-  gap: 0.375rem;
-  height: auto;
+.app-topbar .app-topbar__refresh {
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  flex: 0 0 2.75rem;
+  height: 2.75rem;
   padding: 0;
-  width: auto;
+  width: 2.75rem;
 }
 
-.app-topbar__status-dot {
-  border-radius: 999px;
-  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent);
-  flex: 0 0 0.4375rem;
-  height: 0.4375rem;
-  width: 0.4375rem;
-}
-
-.app-topbar__status--connected .app-topbar__status-dot {
-  background: var(--status-success);
-  color: var(--status-success);
-}
-
-.app-topbar__status--offline .app-topbar__status-dot {
-  background: var(--status-danger);
-  color: var(--status-danger);
-}
-
-.app-topbar__status--loading .app-topbar__status-dot {
-  animation: pulse 1.5s ease-in-out infinite;
-  background: var(--status-neutral);
-  color: var(--status-neutral);
-}
-
-.app-topbar__status-label,
-.app-topbar__refresh-time {
-  color: var(--text-secondary);
-  font-size: 0.6875rem;
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.app-topbar__refresh-time {
-  max-width: 8rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.app-topbar .app-topbar__refresh:hover:not(:disabled) {
+  background: var(--surface-muted);
+  border-color: transparent;
 }
 
 .app-topbar__refresh:disabled {
@@ -1738,8 +1970,8 @@ textarea {
 }
 
 .app-topbar__refresh.has-error {
-  background: var(--status-danger-soft);
-  border-color: color-mix(in srgb, var(--status-danger) 35%, var(--border-default));
+  background: transparent;
+  border-color: transparent;
   color: var(--status-danger);
 }
 
@@ -1777,6 +2009,19 @@ textarea {
   height: 1.75rem;
   justify-content: center;
   width: 1.75rem;
+}
+
+.app-topbar__avatar--connected {
+  box-shadow: 0 0 0 2px var(--status-success);
+}
+
+.app-topbar__avatar--offline {
+  box-shadow: 0 0 0 2px var(--status-danger);
+}
+
+.app-topbar__avatar--loading {
+  animation: pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 0 2px var(--status-neutral);
 }
 
 .app-topbar__user-text {
@@ -1980,10 +2225,23 @@ textarea {
 }
 
 @media (max-width: 1180px) {
-  .app-topbar__date,
-  .app-topbar__refresh-time,
-  .app-topbar__status-label {
+  .app-topbar {
+    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1fr) minmax(10rem, 16rem) auto;
+    padding-inline: 1rem;
+  }
+
+  .app-topbar__breadcrumb-link,
+  .app-topbar__breadcrumb-current {
+    max-width: 9rem;
+  }
+
+  .app-topbar__return-full {
     display: none;
+  }
+
+  .app-topbar__return-compact {
+    display: block;
   }
 }
 
@@ -1991,6 +2249,19 @@ textarea {
   .app-topbar__user-text,
   .app-topbar__user-chevron {
     display: none;
+  }
+
+  .app-topbar {
+    grid-template-columns: minmax(0, 1fr) minmax(8rem, 12rem) auto;
+  }
+
+  .app-topbar__actions {
+    gap: 0.375rem;
+  }
+
+  .app-topbar__breadcrumb-link,
+  .app-topbar__breadcrumb-current {
+    max-width: 7rem;
   }
 }
 
@@ -2017,7 +2288,7 @@ textarea {
   }
 
   .app-sidebar__mobile-close,
-  .app-topbar__menu-toggle {
+  .app-topbar .app-topbar__menu-toggle {
     display: inline-flex;
   }
 
@@ -2033,6 +2304,7 @@ textarea {
   }
 
   .app-topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
     padding: 0 0.75rem;
   }
 
@@ -2040,8 +2312,39 @@ textarea {
     padding: 1rem;
   }
 
-  .app-topbar__product {
-    font-size: 0.75rem;
+  .app-topbar__search {
+    display: none;
+  }
+
+  .app-topbar__return,
+  .app-topbar__mobile-parent {
+    flex: 0 1 auto;
+    min-height: 2.75rem;
+    padding-right: 0.5rem;
+  }
+
+  .app-topbar .app-topbar__menu-toggle {
+    flex-basis: 2.75rem;
+    height: 2.75rem;
+    width: 2.75rem;
+  }
+
+  .app-topbar__user-trigger {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+
+  .app-topbar__return::after {
+    display: none;
+  }
+
+  .app-topbar__mobile-parent {
+    display: inline-flex;
+  }
+
+  .app-topbar__return-compact,
+  .app-topbar__mobile-parent span {
+    max-width: 6.5rem;
   }
 
   .app-topbar__action span {
@@ -2052,6 +2355,29 @@ textarea {
     padding: 0;
     width: 2.125rem;
   }
+
+  .app-topbar__breadcrumb-trail {
+    width: 100%;
+  }
+
+  .app-topbar__breadcrumb--overflow {
+    display: none;
+  }
+
+  .app-topbar__breadcrumb:not(:last-child) {
+    display: none;
+  }
+
+  .app-topbar__breadcrumb:last-child,
+  .app-topbar__breadcrumb-current {
+    flex: 1 1 auto;
+    max-width: none;
+    width: 100%;
+  }
+
+  .app-topbar__breadcrumb:last-child .app-topbar__breadcrumb-separator {
+    display: none;
+  }
 }
 
 @media (max-width: 430px) {
@@ -2059,8 +2385,13 @@ textarea {
     padding: 0.75rem;
   }
 
-  .app-topbar__status {
-    display: none;
+  .app-topbar {
+    gap: 0.5rem;
+  }
+
+  .app-topbar__left,
+  .app-topbar__actions {
+    gap: 0.375rem;
   }
 
   .app-topbar__menu {

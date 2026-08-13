@@ -16,7 +16,6 @@ import { replaceFinancialObligationRecords } from '../../lib/financialObligation
 
 interface OtherExpenseDetailProps {
     item: OtherProgramExpense;
-    onBack: () => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     onUpdate: (item: OtherProgramExpense) => void;
 }
@@ -32,7 +31,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
+const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Program Management');
     const { logAction } = useLogAction();
@@ -711,12 +710,6 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                             </span>
                         </button>
                     )}
-                    <button onClick={onBack} className="btn btn-secondary btn-responsive">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                        <span className="btn-text">
-                        Back
-                        </span>
-                    </button>
                 </div>
             </header>
 

@@ -1,6 +1,6 @@
 // Author: 4K
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, RotateCcw, ShieldCheck } from 'lucide-react';
+import { RotateCcw, ShieldCheck } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { IPO, LodSection, LodQuestion, LodChoice, LodAssessment, LodAnswer, LodLevelConfig, LodQuestionnaireVersion } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
@@ -418,7 +418,6 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             {/* Header */}
             <div className="detail-header">
                 <div className="detail-heading">
-                    <button onClick={onBack} className="btn btn-link lod-assessment__back"><ArrowLeft aria-hidden="true" /> Back to Level of Development</button>
                     <h2 className="detail-title">{ipo.name}</h2>
                     <p className="detail-meta">{ipo.location}</p>
                 </div>
