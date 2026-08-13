@@ -31,6 +31,7 @@ export interface DashboardsPageProps {
     onSelectSubproject?: (project: Subproject) => void;
     onSelectActivity?: (activity: Training | OtherActivity) => void;
     onSelectMarketingPartner?: (partner: MarketingPartner) => void;
+    onSelectGadAssessment?: (operatingUnit: string, year: number) => void;
     setExternalFilters?: (filters: any) => void;
     navigateTo?: (page: string) => void;
     onDataScopeChange?: (scope: Partial<DataScope>) => void;
@@ -232,6 +233,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                         selectedTier={selectedTier}
                         selectedFundType={selectedFundType}
                         navigateTo={props.navigateTo}
+                        onSelectAssessment={props.onSelectGadAssessment}
                     />
                 )}
                 {activeTab === 'IPO Level of Development' && <IPOLevelDashboard ipos={filteredData.ipos} selectedYear={selectedYear} onSelectLodIpo={props.onSelectLodIpo} />}

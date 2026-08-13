@@ -46,7 +46,6 @@ import {
     getPersistedDriveUploadSection
 } from './ui/DriveMediaSections';
 import {
-    RecordBackLink,
     RecordDetailAside,
     RecordDetailGrid,
     RecordDetailMain,
@@ -62,8 +61,6 @@ import {
 interface ActivityDetailProps {
     activity: Activity;
     ipos: IPO[];
-    onBack: () => void;
-    previousPageName: string;
     onUpdateActivity: (updatedActivity: Activity) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     referenceActivities?: ReferenceActivity[];
@@ -118,7 +115,7 @@ const MonitoringPreviewLine: React.FC<{ label: string; value?: string | null }> 
     </div>
 );
 
-export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onSelectIpo, onEdit, uacsCodes, referenceActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], onOpenMonitoringReport }) => {
+export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onSelectIpo, onEdit, uacsCodes, referenceActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], onOpenMonitoringReport }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Activities');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
@@ -436,7 +433,6 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                 />
             )}
 
-            <RecordBackLink onClick={onBack}>Back to {previousPageName}</RecordBackLink>
 
             <RecordHeader
                 title={activity.name}

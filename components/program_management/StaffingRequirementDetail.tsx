@@ -30,7 +30,6 @@ import { replaceFinancialObligationRecords } from '../../lib/financialObligation
 
 interface StaffingRequirementDetailProps {
     item: StaffingRequirement;
-    onBack: () => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     onUpdate: (item: StaffingRequirement) => void;
 }
@@ -78,7 +77,7 @@ const getHiringStatusBadge = (status: StaffingRequirement['hiringStatus']) => {
     }
 }
 
-const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
+const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ item, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
@@ -1211,12 +1210,6 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                             </span>
                         </button>
                     )}
-                    <button onClick={onBack} className="btn btn-secondary btn-responsive">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                        <span className="btn-text">
-                        Back
-                        </span>
-                    </button>
                 </div>
             </header>
 

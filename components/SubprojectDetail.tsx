@@ -70,7 +70,6 @@ import {
     getPersistedDriveUploadSection
 } from './ui/DriveMediaSections';
 import {
-    RecordBackLink,
     RecordDetailAside,
     RecordDetailGrid,
     RecordDetailMain,
@@ -86,8 +85,7 @@ import {
 interface SubprojectDetailProps {
     subproject: Subproject;
     ipos: IPO[];
-    onBack: () => void;
-    previousPageName: string;
+    onEditModeChange?: (mode: 'none' | 'details' | 'commodity' | 'budget' | 'accomplishment') => void;
     onUpdateSubproject: (updatedSubproject: Subproject) => void;
     particularTypes: { [key: string]: string[] };
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
@@ -155,7 +153,7 @@ const budgetItemFieldLabels: Record<string, string> = {
     numberOfUnits: 'Number of Units'
 };
 
-const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onBack, previousPageName, onUpdateSubproject, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock }) => {
+const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onEditModeChange, onUpdateSubproject, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Subprojects');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
@@ -167,6 +165,12 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     // Edit Modes: 'full' (legacy), 'details' (exclusive), 'commodity' (exclusive), 'budget' (exclusive), 'accomplishment'
     const [editMode, setEditMode] = useState<'none' | 'full' | 'details' | 'commodity' | 'budget' | 'accomplishment'>('none');
+
+    useEffect(() => {
+        onEditModeChange?.(editMode === 'full' ? 'details' : editMode);
+    }, [editMode, onEditModeChange]);
+
+    useEffect(() => () => onEditModeChange?.('none'), [onEditModeChange]);
 
     const [editedSubproject, setEditedSubproject] = useState(subproject);
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
@@ -2125,7 +2129,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     onClose={() => setUploadModal(null)}
                 />
             )}
-            <RecordBackLink onClick={onBack}>Back to {previousPageName}</RecordBackLink>
 
             <RecordHeader
                 title={subproject.name}

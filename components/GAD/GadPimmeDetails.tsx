@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Download, FileText, Gauge, Paperclip, Trash2, Upload, X } from 'lucide-react';
+import { CheckCircle2, Download, FileText, Gauge, Paperclip, Trash2, Upload, X } from 'lucide-react';
 import { filterYears } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
@@ -232,8 +232,6 @@ const GadPimmeDetails: React.FC<Props> = ({ operatingUnit, initialYear, canEdit,
         finally { setSaving(false); }
     };
 
-    const handleBack = () => onBack();
-
     if (loading) return <LoadingState title="Loading GAD PIMME assessment" message={`Preparing ${operatingUnit} for ${initialYear}.`} />;
     const status = !assessment && score.answeredCount === 0 ? 'For Assessment' : score.status;
     const availableYears = filterYears.map(Number).filter(year => year >= 2019 && year <= new Date().getFullYear()).sort((a, b) => b - a);
@@ -242,7 +240,6 @@ const GadPimmeDetails: React.FC<Props> = ({ operatingUnit, initialYear, canEdit,
 
     return <div className="gad-pimme-assessment">
         <header className="gad-pimme-detail-header">
-            <button type="button" className="gad-pimme-back" onClick={handleBack}><ArrowLeft aria-hidden="true" /> Back to Gender and Development</button>
             <div className="gad-pimme-detail-heading">
                 <div>
                     <h1>{operatingUnit}</h1>
@@ -346,7 +343,7 @@ const GadPimmeDetails: React.FC<Props> = ({ operatingUnit, initialYear, canEdit,
                 })}
             </div>
         </section>
-        <section className="gad-pimme-assessment-actions"><span>{dirty ? 'Unsaved changes' : assessment?.updated_at ? `Last saved ${formatSavedAt(assessment.updated_at)}` : 'Not yet saved'}</span><div><button type="button" className="btn btn-secondary" onClick={handleBack}>Cancel</button>{canEdit && <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save assessment'}</button>}</div></section>
+        <section className="gad-pimme-assessment-actions"><span>{dirty ? 'Unsaved changes' : assessment?.updated_at ? `Last saved ${formatSavedAt(assessment.updated_at)}` : 'Not yet saved'}</span><div><button type="button" className="btn btn-secondary" onClick={onBack}>Cancel</button>{canEdit && <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save assessment'}</button>}</div></section>
         {clearAllOpen && <ConfirmDialog title="Clear all answers?" description="Responses and remarks will be cleared locally. Existing evidence files will remain attached. Save the assessment to persist the changes." confirmLabel="Clear all" tone="danger" onCancel={() => setClearAllOpen(false)} onConfirm={() => { setAnswers(emptyAnswers()); setClearAllOpen(false); }} />}
     </div>;
 };
