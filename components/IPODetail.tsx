@@ -33,6 +33,7 @@ import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
 import { getLodEffectiveState } from '../lib/lodScoring';
 import { subscribeToLodDataChanges } from '../lib/lodDataSync';
+import { commodityCapacityToFormValue, getCommodityCapacityValues } from '../lib/commodityProfile';
 import {
     deleteIpoDriveFile,
     formatFileSize,
@@ -418,6 +419,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
         value: '',
         yield: '',
         isScad: false,
+        potentialExpansionArea: '',
+        numberOfFarmers: '',
+        numberOfTrees: '',
         marketingPercentage: '',
         foodSecurityPercentage: '',
         averageIncome: ''
@@ -930,16 +934,19 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
             const { checked } = e.target as HTMLInputElement;
             setCurrentCommodity(prev => ({ ...prev, [name]: checked }));
         } else if (name === 'type') {
-            setCurrentCommodity({
+            setCurrentCommodity(previous => ({
                 type: value,
                 particular: '',
                 value: '',
                 yield: '',
                 isScad: false,
+                potentialExpansionArea: '',
+                numberOfFarmers: previous.numberOfFarmers,
+                numberOfTrees: '',
                 marketingPercentage: '',
                 foodSecurityPercentage: '',
                 averageIncome: ''
-            });
+            }));
         } else {
             if (name === 'marketingPercentage' || name === 'foodSecurityPercentage') {
                 const numValue = parseFloat(value);
@@ -964,11 +971,21 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
             alert(`Please fill out all commodity fields including ${isAnimal ? 'Number of Heads' : 'Area and Yield'}.`);
             return;
         }
+        let capacityFields: Pick<Commodity, 'potentialExpansionArea' | 'numberOfFarmers' | 'numberOfTrees'>;
+        try {
+            capacityFields = getCommodityCapacityValues(currentCommodity.type, currentCommodity);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Invalid commodity capacity value.');
+            return;
+        }
+        const existingCommodity = editingCommodityIndex !== null ? editedIpo.commodities[editingCommodityIndex] : undefined;
         const newCommodity: Commodity = {
+            ...existingCommodity,
             type: currentCommodity.type,
             particular: currentCommodity.particular,
             value: parseFloat(currentCommodity.value),
             yield: isAnimal ? undefined : parseFloat(currentCommodity.yield),
+            ...capacityFields,
             isScad: currentCommodity.isScad,
             marketingPercentage: currentCommodity.marketingPercentage ? parseFloat(currentCommodity.marketingPercentage) : undefined,
             foodSecurityPercentage: currentCommodity.foodSecurityPercentage ? parseFloat(currentCommodity.foodSecurityPercentage) : undefined,
@@ -991,6 +1008,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
 
         setCurrentCommodity({
             type: '', particular: '', value: '', yield: '', isScad: false,
+            potentialExpansionArea: '', numberOfFarmers: '', numberOfTrees: '',
             marketingPercentage: '', foodSecurityPercentage: '', averageIncome: ''
         });
     };
@@ -1003,6 +1021,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
             value: String(commodity.value),
             yield: commodity.yield ? String(commodity.yield) : '',
             isScad: commodity.isScad || false,
+            potentialExpansionArea: commodityCapacityToFormValue(commodity.potentialExpansionArea),
+            numberOfFarmers: commodityCapacityToFormValue(commodity.numberOfFarmers),
+            numberOfTrees: commodityCapacityToFormValue(commodity.numberOfTrees),
             marketingPercentage: commodity.marketingPercentage ? String(commodity.marketingPercentage) : '',
             foodSecurityPercentage: commodity.foodSecurityPercentage ? String(commodity.foodSecurityPercentage) : '',
             averageIncome: commodity.averageIncome ? String(commodity.averageIncome) : ''
@@ -1014,6 +1035,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
         setEditingCommodityIndex(null);
         setCurrentCommodity({
             type: '', particular: '', value: '', yield: '', isScad: false,
+            potentialExpansionArea: '', numberOfFarmers: '', numberOfTrees: '',
             marketingPercentage: '', foodSecurityPercentage: '', averageIncome: ''
         });
     };
@@ -1145,6 +1167,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                             {commodity.isScad && <span className="status-badge status-badge--cyan status-badge--compact">SCAD</span>}
                                         </div>
                                         <div className="form-repeat-card__meta form-repeat-card__meta--inline">
+                                            {commodity.type === 'Crop' && commodity.potentialExpansionArea !== undefined && <span>Expansion: {formatFullNumber(commodity.potentialExpansionArea)} ha</span>}
+                                            {commodity.numberOfFarmers !== undefined && <span>Farmers: {formatFullNumber(commodity.numberOfFarmers)}</span>}
+                                            {commodity.type === 'Crop' && commodity.numberOfTrees !== undefined && <span>Trees: {formatFullNumber(commodity.numberOfTrees)}</span>}
                                             {(commodity.marketingPercentage || 0) > 0 && <span>Marketing: {formatFullNumber(commodity.marketingPercentage)}%</span>}
                                             {(commodity.foodSecurityPercentage || 0) > 0 && <span>Food Security: {formatFullNumber(commodity.foodSecurityPercentage)}%</span>}
                                             {(commodity.averageIncome || 0) > 0 && <span title={formatCurrency(commodity.averageIncome || 0)}>Income: {formatCurrency(commodity.averageIncome || 0)}</span>}
@@ -1189,6 +1214,26 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                 )}
                             </div>
                         </div>
+                        {currentCommodity.type && (
+                            <div className="commodity-capacity-fields form-divider">
+                                {currentCommodity.type === 'Crop' && (
+                                    <div>
+                                        <label className="form-label">Potential Expansion Area (ha)</label>
+                                        <input type="number" name="potentialExpansionArea" value={currentCommodity.potentialExpansionArea} onChange={handleCommodityChange} min="0" step="any" className={commonInputClasses} />
+                                    </div>
+                                )}
+                                <div>
+                                    <label className="form-label">Number of Farmers</label>
+                                    <input type="number" name="numberOfFarmers" value={currentCommodity.numberOfFarmers} onChange={handleCommodityChange} min="0" step="1" className={commonInputClasses} />
+                                </div>
+                                {currentCommodity.type === 'Crop' && (
+                                    <div>
+                                        <label className="form-label">Number of Trees</label>
+                                        <input type="number" name="numberOfTrees" value={currentCommodity.numberOfTrees} onChange={handleCommodityChange} min="0" step="1" className={commonInputClasses} />
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         <div className="commodity-edit-metrics commodity-edit-metrics--allocation">
                             <div>
                                 <label className="form-label">Marketing %</label>
@@ -1568,33 +1613,61 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
 
             <RecordDetailGrid>
                 <RecordDetailMain>
-                    <IpoDetailPanel title="Level of Development" description="Annual maturity scoring based on the IPO's recorded assessments" className="ipo-lod-panel">
+                    <IpoDetailPanel
+                        title="Level of Development"
+                        description="Annual maturity scoring based on the IPO's recorded assessments"
+                        className="ipo-table-panel ipo-lod-panel"
+                        footer={<IpoTableCount filtered={lodAssessments.length} total={lodAssessments.length} />}
+                    >
                         {lodAssessments.length > 0 ? (
-                            <div className="ipo-lod-grid">
-                                {lodAssessments.map(assessment => {
-                                    const isCurrentYear = assessment.year === new Date().getFullYear();
-                                    const state = getLodEffectiveState(assessment);
-                                    return (
-                                        <button
-                                            key={assessment.id}
-                                            type="button"
-                                            onClick={() => onSelectLodYear?.(ipo, assessment.year)}
-                                            className={`ipo-lod-card ${isCurrentYear ? 'is-current' : ''}`}
-                                            title={`Open ${assessment.year} LOD assessment`}
-                                        >
-                                            <span className="ipo-lod-card__header">
-                                                <strong>{assessment.year}</strong>
-                                                {isCurrentYear && <span>Current</span>}
-                                            </span>
-                                            <span className={`ipo-lod-card__level lod-table-state--${state.kind}`}>{state.label}</span>
-                                            <span className="ipo-lod-card__details">
-                                                <span><small>Score</small><strong>{formatFullNumber(assessment.total_score)}</strong></span>
-                                                <span><small>Answered</small><strong>{assessment.answered_question_count ?? 0} / {assessment.required_question_count ?? 0}</strong></span>
-                                            </span>
-                                            <span className="ipo-lod-card__source">{getLodAssessmentSource(assessment)}</span>
-                                        </button>
-                                    );
-                                })}
+                            <div className="ipo-detail-table-scroll custom-scrollbar">
+                                <table className="data-table ipo-detail-data-table ipo-detail-data-table--lod">
+                                    <colgroup>
+                                        <col className="ipo-table-col--lod-year" />
+                                        <col className="ipo-table-col--lod-level" />
+                                        <col className="ipo-table-col--lod-score" />
+                                        <col className="ipo-table-col--lod-answered" />
+                                        <col className="ipo-table-col--lod-source" />
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>Year</th>
+                                            <th>Level</th>
+                                            <th className="data-table__numeric">Score</th>
+                                            <th className="data-table__numeric">Answered</th>
+                                            <th>Source</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {lodAssessments.map(assessment => {
+                                            const isCurrentYear = assessment.year === new Date().getFullYear();
+                                            const state = getLodEffectiveState(assessment);
+                                            const openAssessment = () => onSelectLodYear?.(ipo, assessment.year);
+                                            return (
+                                                <tr
+                                                    key={assessment.id}
+                                                    className="ipo-detail-table-row--clickable"
+                                                    onClick={openAssessment}
+                                                    onKeyDown={event => {
+                                                        if (event.key === 'Enter' || event.key === ' ') {
+                                                            event.preventDefault();
+                                                            openAssessment();
+                                                        }
+                                                    }}
+                                                    role="link"
+                                                    tabIndex={0}
+                                                    title={`Open ${assessment.year} LOD assessment`}
+                                                >
+                                                    <td className="data-table__primary">{assessment.year}{isCurrentYear ? ' (Current)' : ''}</td>
+                                                    <td>{state.label}</td>
+                                                    <td className="data-table__numeric">{formatFullNumber(assessment.total_score)}</td>
+                                                    <td className="data-table__numeric">{assessment.answered_question_count ?? 0} / {assessment.required_question_count ?? 0}</td>
+                                                    <td><TruncatedTableCell value={getLodAssessmentSource(assessment)} /></td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
                         ) : (
                             <p className="detail-empty">No assessments available.</p>
@@ -1615,6 +1688,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                         <col className="ipo-table-col--commodity-type" />
                                         <col className="ipo-table-col--coverage" />
                                         <col className="ipo-table-col--yield" />
+                                        <col className="ipo-table-col--expansion-area" />
+                                        <col className="ipo-table-col--farmers" />
+                                        <col className="ipo-table-col--trees" />
                                         <col className="ipo-table-col--marketing" />
                                         <col className="ipo-table-col--food-security" />
                                         <col className="ipo-table-col--income" />
@@ -1626,6 +1702,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                             <th>Type</th>
                                             <th className="data-table__numeric">Coverage</th>
                                             <th className="data-table__numeric">Avg. Yield</th>
+                                            <th className="data-table__numeric">Potential Expansion Area</th>
+                                            <th className="data-table__numeric">Number of Farmers</th>
+                                            <th className="data-table__numeric">Number of Trees</th>
                                             <th className="data-table__numeric">Marketing</th>
                                             <th className="data-table__numeric">Food Security</th>
                                             <th className="data-table__numeric">Avg. Income</th>
@@ -1642,6 +1721,15 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                                 </td>
                                                 <td className="data-table__numeric" title={commodity.yield ? `${formatFullNumber(commodity.yield)} kg/ha` : 'N/A'}>
                                                     {commodity.yield ? `${formatFullNumber(commodity.yield)} kg/ha` : 'N/A'}
+                                                </td>
+                                                <td className="data-table__numeric" title={commodity.type === 'Crop' && commodity.potentialExpansionArea !== undefined ? `${formatFullNumber(commodity.potentialExpansionArea)} ha` : undefined}>
+                                                    {commodity.type === 'Crop' && commodity.potentialExpansionArea !== undefined ? `${formatFullNumber(commodity.potentialExpansionArea)} ha` : ''}
+                                                </td>
+                                                <td className="data-table__numeric" title={commodity.numberOfFarmers !== undefined ? formatFullNumber(commodity.numberOfFarmers) : undefined}>
+                                                    {commodity.numberOfFarmers !== undefined ? formatFullNumber(commodity.numberOfFarmers) : ''}
+                                                </td>
+                                                <td className="data-table__numeric" title={commodity.type === 'Crop' && commodity.numberOfTrees !== undefined ? formatFullNumber(commodity.numberOfTrees) : undefined}>
+                                                    {commodity.type === 'Crop' && commodity.numberOfTrees !== undefined ? formatFullNumber(commodity.numberOfTrees) : ''}
                                                 </td>
                                                 <td className="data-table__numeric">{formatFullNumber(commodity.marketingPercentage || 0)}%</td>
                                                 <td className="data-table__numeric">{formatFullNumber(commodity.foodSecurityPercentage || 0)}%</td>

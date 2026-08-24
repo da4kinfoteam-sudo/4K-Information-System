@@ -238,6 +238,9 @@ export interface Commodity {
     particular: string;
     value: number;
     yield?: number;
+    potentialExpansionArea?: number;
+    numberOfFarmers?: number;
+    numberOfTrees?: number;
     isScad?: boolean;
     marketingPercentage?: number;
     foodSecurityPercentage?: number;
