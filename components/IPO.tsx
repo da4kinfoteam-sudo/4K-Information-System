@@ -15,6 +15,7 @@ import { ConfirmDialog, DataTablePagination, SortableTableHeader as CanonicalSor
 import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from './ui/MajorDataTable';
 import { getLodEffectiveState } from '../lib/lodScoring';
 import { subscribeToLodDataChanges } from '../lib/lodDataSync';
+import { commodityCapacityToFormValue, getCommodityCapacityValues } from '../lib/commodityProfile';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -144,6 +145,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         value: '',
         yield: '',
         isScad: false,
+        potentialExpansionArea: '',
+        numberOfFarmers: '',
+        numberOfTrees: '',
         marketingPercentage: '',
         foodSecurityPercentage: '',
         averageIncome: ''
@@ -479,16 +483,19 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             const { checked } = e.target as HTMLInputElement;
             setCurrentCommodity(prev => ({ ...prev, [name]: checked }));
         } else if (name === 'type') {
-            setCurrentCommodity({ 
+            setCurrentCommodity(previous => ({
                 type: value, 
                 particular: '', 
                 value: '', 
                 yield: '', 
                 isScad: false, 
+                potentialExpansionArea: '',
+                numberOfFarmers: previous.numberOfFarmers,
+                numberOfTrees: '',
                 marketingPercentage: '', 
                 foodSecurityPercentage: '', 
                 averageIncome: ''
-            });
+            }));
         } else {
             if (name === 'marketingPercentage' || name === 'foodSecurityPercentage') {
                 const numValue = parseFloat(value);
@@ -512,11 +519,21 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             alert(`Please fill out all commodity fields including ${isAnimal ? 'Number of Heads' : 'Area and Yield'}.`);
             return;
         }
+        let capacityFields: Pick<Commodity, 'potentialExpansionArea' | 'numberOfFarmers' | 'numberOfTrees'>;
+        try {
+            capacityFields = getCommodityCapacityValues(currentCommodity.type, currentCommodity);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Invalid commodity capacity value.');
+            return;
+        }
+        const existingCommodity = editingCommodityIndex !== null ? formData.commodities[editingCommodityIndex] : undefined;
         const newCommodity: Commodity = {
+            ...existingCommodity,
             type: currentCommodity.type,
             particular: currentCommodity.particular,
             value: parseFloat(currentCommodity.value),
             yield: isAnimal ? undefined : parseFloat(currentCommodity.yield),
+            ...capacityFields,
             isScad: currentCommodity.isScad,
             marketingPercentage: currentCommodity.marketingPercentage ? parseFloat(currentCommodity.marketingPercentage) : undefined,
             foodSecurityPercentage: currentCommodity.foodSecurityPercentage ? parseFloat(currentCommodity.foodSecurityPercentage) : undefined,
@@ -537,6 +554,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
         setCurrentCommodity({ 
             type: '', particular: '', value: '', yield: '', isScad: false, 
+            potentialExpansionArea: '', numberOfFarmers: '', numberOfTrees: '',
             marketingPercentage: '', foodSecurityPercentage: '', averageIncome: '' 
         });
     };
@@ -549,6 +567,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             value: String(commodity.value),
             yield: commodity.yield ? String(commodity.yield) : '',
             isScad: commodity.isScad || false,
+            potentialExpansionArea: commodityCapacityToFormValue(commodity.potentialExpansionArea),
+            numberOfFarmers: commodityCapacityToFormValue(commodity.numberOfFarmers),
+            numberOfTrees: commodityCapacityToFormValue(commodity.numberOfTrees),
             marketingPercentage: commodity.marketingPercentage ? String(commodity.marketingPercentage) : '',
             foodSecurityPercentage: commodity.foodSecurityPercentage ? String(commodity.foodSecurityPercentage) : '',
             averageIncome: commodity.averageIncome ? String(commodity.averageIncome) : ''
@@ -560,6 +581,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         setEditingCommodityIndex(null);
         setCurrentCommodity({ 
             type: '', particular: '', value: '', yield: '', isScad: false, 
+            potentialExpansionArea: '', numberOfFarmers: '', numberOfTrees: '',
             marketingPercentage: '', foodSecurityPercentage: '', averageIncome: '' 
         });
     };
@@ -1047,6 +1069,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                         {commodity.isScad && <span className="status-badge status-badge--compact status-badge--cyan">SCAD</span>}
                                     </div>
                                     <div className="form-repeat-card__meta form-repeat-card__meta--inline">
+                                        {commodity.type === 'Crop' && commodity.potentialExpansionArea !== undefined && <span>Expansion: {commodity.potentialExpansionArea.toLocaleString()} ha</span>}
+                                        {commodity.numberOfFarmers !== undefined && <span>Farmers: {commodity.numberOfFarmers.toLocaleString()}</span>}
+                                        {commodity.type === 'Crop' && commodity.numberOfTrees !== undefined && <span>Trees: {commodity.numberOfTrees.toLocaleString()}</span>}
                                         {(commodity.marketingPercentage || 0) > 0 && <span>Mktg: {commodity.marketingPercentage}%</span>}
                                         {(commodity.foodSecurityPercentage || 0) > 0 && <span>FS: {commodity.foodSecurityPercentage}%</span>}
                                         {(commodity.averageIncome || 0) > 0 && <span>Inc: ₱{commodity.averageIncome?.toLocaleString()}</span>}
@@ -1091,6 +1116,26 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                             )}
                         </div>
                     </div>
+                    {currentCommodity.type && (
+                        <div className="commodity-capacity-fields form-divider">
+                            {currentCommodity.type === 'Crop' && (
+                                <div>
+                                    <label className="form-label">Potential Expansion Area (ha)</label>
+                                    <input type="number" name="potentialExpansionArea" value={currentCommodity.potentialExpansionArea} onChange={handleCommodityChange} min="0" step="any" className="form-control form-control--compact" />
+                                </div>
+                            )}
+                            <div>
+                                <label className="form-label">Number of Farmers</label>
+                                <input type="number" name="numberOfFarmers" value={currentCommodity.numberOfFarmers} onChange={handleCommodityChange} min="0" step="1" className="form-control form-control--compact" />
+                            </div>
+                            {currentCommodity.type === 'Crop' && (
+                                <div>
+                                    <label className="form-label">Number of Trees</label>
+                                    <input type="number" name="numberOfTrees" value={currentCommodity.numberOfTrees} onChange={handleCommodityChange} min="0" step="1" className="form-control form-control--compact" />
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <div className="form-grid form-grid--four form-grid--compact form-grid--align-end form-divider">
                         <div>
                             <label className="form-label">Marketing %</label>

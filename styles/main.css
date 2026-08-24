@@ -12483,16 +12483,6 @@ button.bar1-drilldown-card:focus-visible {
   width: 0.95rem;
 }
 
-.ipo-lod-grid {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-}
-
-.ipo-lod-grid .detail-metric {
-  box-shadow: none;
-}
-
 .ipo-subproject-preview__main {
   align-items: flex-start;
   display: flex;
@@ -13456,6 +13446,14 @@ button.bar1-drilldown-card:focus-visible {
   align-items: end;
   border-top: 1px solid var(--app-border);
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.commodity-capacity-fields {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 0.75rem;
   padding-top: 0.75rem;
 }
@@ -19139,6 +19137,10 @@ button.bar1-drilldown-card:focus-visible {
   }
 
   .commodity-edit-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .commodity-capacity-fields {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -25263,10 +25265,6 @@ button.lod-table-state:hover {
   }
 }
 
-.ipo-detail-page .ipo-lod-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 .ipo-detail-page .detail-list {
   gap: 0;
 }
@@ -25416,76 +25414,6 @@ button.lod-table-state:hover {
   max-height: 27rem;
 }
 
-.ipo-detail-page .ipo-lod-grid {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-}
-
-.ipo-lod-card {
-  background: var(--app-surface-muted);
-  border: 1px solid var(--app-border);
-  border-radius: 7px;
-  color: var(--app-text);
-  display: grid;
-  gap: 0.65rem;
-  min-width: 0;
-  padding: 0.9rem;
-  text-align: left;
-  transition: border-color 150ms ease, background-color 150ms ease;
-}
-
-.ipo-lod-card:hover,
-.ipo-lod-card:focus-visible {
-  background: var(--app-surface);
-  border-color: var(--brand-green-600);
-}
-
-.ipo-lod-card__header {
-  align-items: center;
-  display: flex;
-  gap: 0.5rem;
-  justify-content: space-between;
-}
-
-.ipo-lod-card__header strong {
-  font-size: 0.78rem;
-}
-
-.ipo-lod-card__header span,
-.ipo-lod-card__source {
-  color: var(--app-text-muted);
-  font-size: 0.68rem;
-}
-
-.ipo-lod-card__level {
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-
-.ipo-lod-card__details {
-  display: grid;
-  gap: 0.6rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.ipo-lod-card__details > span {
-  display: grid;
-  gap: 0.18rem;
-}
-
-.ipo-lod-card__details small {
-  color: var(--app-text-muted);
-  font-size: 0.64rem;
-  text-transform: uppercase;
-}
-
-.ipo-lod-card__details strong {
-  font-size: 0.78rem;
-}
-
 .ipo-detail-table-scroll {
   border: 1px solid var(--app-border);
   border-radius: 7px;
@@ -25503,7 +25431,11 @@ button.lod-table-state:hover {
 }
 
 .ipo-detail-data-table--commodities {
-  min-width: 82rem;
+  min-width: 119rem;
+}
+
+.ipo-detail-data-table--lod {
+  min-width: 66rem;
 }
 
 .ipo-detail-data-table--subprojects {
@@ -25591,6 +25523,37 @@ button.lod-table-state:hover {
   white-space: nowrap;
 }
 
+.ipo-detail-table-row--clickable {
+  cursor: pointer;
+}
+
+.ipo-detail-table-row--clickable:hover td,
+.ipo-detail-table-row--clickable:focus-visible td {
+  background: var(--app-surface-muted);
+}
+
+.ipo-detail-table-row--clickable:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.ipo-table-col--lod-year {
+  width: 10rem;
+}
+
+.ipo-table-col--lod-level,
+.ipo-table-col--lod-answered {
+  width: 12rem;
+}
+
+.ipo-table-col--lod-score {
+  width: 10rem;
+}
+
+.ipo-table-col--lod-source {
+  width: 22rem;
+}
+
 .ipo-table-col--code {
   width: 10rem;
 }
@@ -25647,6 +25610,18 @@ button.lod-table-state:hover {
 .ipo-table-col--yield,
 .ipo-table-col--marketing {
   width: 9rem;
+}
+
+.ipo-table-col--expansion-area {
+  width: 14rem;
+}
+
+.ipo-table-col--farmers {
+  width: 12rem;
+}
+
+.ipo-table-col--trees {
+  width: 11rem;
 }
 
 .ipo-table-col--food-security {

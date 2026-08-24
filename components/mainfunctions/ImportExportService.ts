@@ -1,7 +1,7 @@
 // Author: 4K
 import React from 'react';
 import { 
-    Subproject, Activity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense,
+    Subproject, Activity, IPO, Commodity, OfficeRequirement, StaffingRequirement, OtherProgramExpense,
     SubprojectDetail, ActivityExpense, fundTypes, tiers, objectTypes, ObjectType, philippineRegions, operatingUnits, Tier, FundType
 } from '../../constants';
 import { parseLocation } from '../LocationPicker';
@@ -9,6 +9,7 @@ import { supabase } from '../../supabaseClient';
 import { parseOfficeRequirementRow } from '../program_management/OfficeRequirementsTab';
 import { parseStaffingRequirementRow } from '../program_management/StaffingRequirementsTab';
 import { parseOtherExpenseRow } from '../program_management/OtherExpensesTab';
+import { normalizeImportedCommodity } from '../../lib/commodityProfile';
 
 declare const XLSX: any;
 
@@ -707,7 +708,7 @@ export const downloadIposTemplate = () => {
         contactPerson: 'Juan Dela Cruz',
         contactNumber: '09171234567',
         registrationDate: '2023-01-15',
-        commodities: '[{"type":"Crop","particular":"Rice Seeds","value":50,"isScad":true}]',
+        commodities: '[{"type":"Crop","particular":"Rice Seeds","value":50,"potentialExpansionArea":12.5,"numberOfFarmers":40,"numberOfTrees":1200,"isScad":true}]',
         levelOfDevelopment: 2
     }];
 
@@ -728,7 +729,7 @@ export const downloadIposTemplate = () => {
         ["contactPerson", "Name of the contact person."],
         ["contactNumber", "Contact phone number."],
         ["registrationDate", "Date in YYYY-MM-DD format."],
-        ["commodities", `A JSON string for commodities. Format: '[{"type":"Type","particular":"Name","value":Number,"isScad":boolean}]'. Example: '[{"type":"Livestock","particular":"Goats","value":100,"isScad":false}]'. Use '[]' for none.`],
+        ["commodities", `A JSON array for commodities. Crop entries may optionally include potentialExpansionArea, numberOfFarmers, and numberOfTrees. Livestock entries may optionally include numberOfFarmers only. Omit optional properties when blank. Example: '[{"type":"Crop","particular":"Rice Seeds","value":50,"potentialExpansionArea":12.5,"numberOfFarmers":40,"numberOfTrees":1200,"isScad":true}]'. Use '[]' for none.`],
         ["levelOfDevelopment", "A number from 1 to 5."]
     ];
 
@@ -771,12 +772,22 @@ export const handleIposUpload = (
                     throw new Error(`Row ${index + 2} is missing required fields (name, region, province, municipality).`);
                 }
 
-                let commodities: any[];
+                let commodities: Commodity[];
                 try {
-                    commodities = typeof row.commodities === 'string' ? JSON.parse(row.commodities) : [];
-                } catch {
-                    console.warn(`Row ${index + 2}: Invalid JSON in 'commodities' column. Defaulting to empty.`);
-                    commodities = [];
+                    const parsedCommodities = typeof row.commodities === 'string' ? JSON.parse(row.commodities) : [];
+                    if (!Array.isArray(parsedCommodities)) {
+                        throw new Error('Commodities must be a JSON array.');
+                    }
+                    commodities = parsedCommodities.map((commodity, commodityIndex) => {
+                        try {
+                            return normalizeImportedCommodity(commodity);
+                        } catch (error) {
+                            const message = error instanceof Error ? error.message : 'Invalid commodity.';
+                            throw new Error(`Commodity ${commodityIndex + 1}: ${message}`);
+                        }
+                    });
+                } catch (error) {
+                    throw new Error(`Row ${index + 2}: Invalid commodities data${error instanceof Error ? ` (${error.message})` : ''}.`);
                 }
 
                 let locationString = '';
