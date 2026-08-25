@@ -20906,6 +20906,9 @@ button.bar1-drilldown-card:focus-visible {
 .gad-dashboard-header { align-items: end; display: flex; gap: 1rem; justify-content: space-between; }
 .gad-dashboard-header h2, .gad-dashboard h3 { color: var(--app-text); margin: 0; }
 .gad-dashboard-header h2 { font-size: var(--font-size-page-title); }
+.gad-dashboard-header__actions { align-items: end; display: flex; gap: 0.75rem; justify-content: flex-end; }
+.gad-dashboard-header__actions .btn { min-height: 2.75rem; white-space: nowrap; }
+.gad-dashboard-header__actions .btn svg { height: 1rem; width: 1rem; }
 .gad-dashboard-classification-filter { display: grid; gap: 0.25rem; min-width: min(100%, 15rem); }
 .gad-dashboard-classification-filter > span { color: var(--app-text-muted); font-size: var(--font-size-label); font-weight: var(--font-weight-semibold); }
 .gad-dashboard-kpis { display: grid; gap: 0.75rem; grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -20938,6 +20941,12 @@ button.bar1-drilldown-card:focus-visible {
 .gad-dashboard-table-card { overflow: hidden; padding: 0; }
 .gad-dashboard-table-card > h3 { padding: 1rem 1rem 0; }
 .gad-dashboard-table { min-width: 74rem; }
+.gad-dashboard-table th,
+.gad-dashboard-table td { padding-block: 0.55rem; white-space: nowrap; }
+.gad-dashboard-table th:nth-child(2),
+.gad-dashboard-table td:nth-child(2),
+.gad-dashboard-table th:nth-child(n + 4),
+.gad-dashboard-table td:nth-child(n + 4) { text-align: right; }
 .gad-dashboard-table th button { background: none; border: 0; color: inherit; cursor: pointer; font: inherit; padding: 0; text-align: inherit; }
 .gad-dashboard-table-card .data-table-pagination { border-top: 1px solid var(--app-border); }
 .gad-dashboard-metric-list, .gad-dashboard-sex-bars { display: grid; gap: 0.65rem; }
@@ -20959,6 +20968,8 @@ button.bar1-drilldown-card:focus-visible {
 
 @media (max-width: 760px) {
   .gad-dashboard-header { align-items: stretch; flex-direction: column; }
+  .gad-dashboard-header__actions { align-items: stretch; flex-direction: column-reverse; }
+  .gad-dashboard-header__actions .btn { justify-content: center; width: 100%; }
   .gad-dashboard-kpis, .gad-dashboard-grid--three, .gad-dashboard-grid--two, .gad-dashboard-beneficiary-kpis { grid-template-columns: 1fr; }
   .gad-dashboard-grid--three > :last-child { grid-column: auto; }
   .gad-dashboard-financial__flow { grid-template-columns: 1fr; }

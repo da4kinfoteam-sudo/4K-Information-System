@@ -11,6 +11,7 @@
     "test:lod-scoring": "node --experimental-strip-types scripts/run-lod-scoring-check.mjs",
     "test:lod-overrides": "node --experimental-strip-types scripts/run-lod-override-check.mjs",
     "test:gad-pimme": "node --experimental-strip-types scripts/run-gad-pimme-check.mjs",
+    "test:gad-attribution": "node --experimental-strip-types scripts/run-gad-attribution-check.mjs",
     "test:financial-breakdown": "node scripts/run-financial-breakdown-hierarchy-check.mjs",
     "test:financial-obligation-sync": "node --experimental-strip-types scripts/run-financial-obligation-sync-check.mjs",
     "test:drive-folder-identity": "node --experimental-strip-types scripts/run-drive-folder-identity-check.mjs",
