@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle, ArrowDown, ArrowRight, ArrowUp, Banknote, Building2,
-    CheckCircle2, CircleDollarSign, ClipboardCheck, Users,
+    CheckCircle2, CircleDollarSign, ClipboardCheck, FileSpreadsheet, Users,
 } from 'lucide-react';
 import {
     Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart,
@@ -16,6 +16,11 @@ import {
     GAD_PIMME_CLASSIFICATIONS, GadPimmeClassification, getGadPimmeClassification,
 } from '../../lib/gadPimmeScoring';
 import { buildGadPimmeDetailPath } from '../../lib/gadPimmeAccess';
+import {
+    calculateGadAttribution, GAD_HGDG_ATTRIBUTION_RATE, GAD_HGDG_MAX_SCORE,
+    GAD_HGDG_SCORE, summarizeGadAttribution,
+} from '../../lib/gadAttribution';
+import { downloadGadAttributionWorkbook } from '../../lib/gadAttributionExcel';
 import { collectFinancialLineItems } from '../../lib/financialAggregation';
 import { resolveSubprojectCompletionRollup } from '../../lib/subprojectCompletion';
 import { supabase } from '../../supabaseClient';
@@ -56,10 +61,11 @@ interface OuDashboardRow {
     previousScore: number | null;
     change: number | null;
     classification: GadPimmeClassification | null;
-    rate: number | null;
+    attributionRate: number;
+    pimmeRate: number | null;
     allocation: number;
     obligation: number;
-    attributableAllocation: number | null;
+    attributableAllocation: number;
     attributableObligation: number | null;
     utilization: number | null;
     womenTargeted: number;
@@ -107,6 +113,8 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [classificationFilter, setClassificationFilter] = useState<GadFilter>('All');
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportError, setExportError] = useState('');
     const [attributionPage, setAttributionPage] = useState(1);
     const [summaryPage, setSummaryPage] = useState(1);
     const [sortKey, setSortKey] = useState<keyof OuDashboardRow>('score');
@@ -185,16 +193,13 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         const allocation = lines.reduce((sum, line) => sum + line.alloc, 0);
         const obligation = lines.reduce((sum, line) => sum + line.obli, 0);
         const score = completed ? toNumber(completed.total_score) : null;
-        const rate = score === null ? null : score / 20;
-        const attributableAllocation = rate === null ? null : allocation * rate;
-        const attributableObligation = rate === null ? null : obligation * rate;
+        const attribution = calculateGadAttribution({ allocation, obligation, pimmeScore: score });
         return {
             ou, state, score,
             previousScore: previous ? toNumber(previous.total_score) : null,
             change: score !== null && previous ? score - toNumber(previous.total_score) : null,
             classification: score === null ? null : getGadPimmeClassification(score),
-            rate, allocation, obligation, attributableAllocation, attributableObligation,
-            utilization: attributableAllocation ? (attributableObligation! / attributableAllocation) * 100 : null,
+            allocation, obligation, ...attribution,
             womenTargeted: 0,
             womenAssisted: 0,
             actualFemaleParticipants: 0,
@@ -219,10 +224,10 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         setSummaryPage(1);
     }, [classificationFilter, selectedYear, selectedOu, selectedTier, selectedFundType]);
 
-    const totalAllocation = rows.reduce((sum, row) => sum + row.allocation, 0);
-    const assessedAllocation = completedRows.reduce((sum, row) => sum + row.allocation, 0);
-    const attributableAllocation = completedRows.reduce((sum, row) => sum + (row.attributableAllocation || 0), 0);
-    const attributableObligation = completedRows.reduce((sum, row) => sum + (row.attributableObligation || 0), 0);
+    const attributionTotals = summarizeGadAttribution(rows);
+    const totalAllocation = attributionTotals.allocation;
+    const attributableAllocation = attributionTotals.attributableAllocation;
+    const attributableObligation = attributionTotals.attributableObligation;
     const averageScore = completedRows.length ? completedRows.reduce((sum, row) => sum + (row.score || 0), 0) / completedRows.length : null;
     const averagePrevious = completedRows.filter(row => row.previousScore !== null);
     const averageChange = averagePrevious.length ? averagePrevious.reduce((sum, row) => sum + (row.change || 0), 0) / averagePrevious.length : null;
@@ -249,7 +254,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
     }, { improved: 0, maintained: 0, declined: 0, noBaseline: 0 });
 
     const quarterlyFinancial = useMemo(() => {
-        const completedByOu = new Map<string, number>(completedRows.map(row => [row.ou, row.rate || 0]));
+        const completedByOu = new Map<string, number>(completedRows.map(row => [row.ou, row.pimmeRate || 0]));
         const monthly: number[] = Array(12).fill(0);
         allFinancialLines.forEach(line => {
             if (!line.operatingUnit || !rowOus.has(line.operatingUnit)) return;
@@ -412,6 +417,30 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         if (onSelectAssessment) onSelectAssessment(ou, year);
         else navigateTo?.(buildGadPimmeDetailPath(ou, year));
     };
+    const handleDownloadExcel = async () => {
+        setIsExporting(true);
+        setExportError('');
+        try {
+            await downloadGadAttributionWorkbook({
+                year,
+                ouScope: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                rows: sortedRows.map(row => ({
+                    ou: row.ou,
+                    state: row.state,
+                    pimmeScore: row.score,
+                    allocation: row.allocation,
+                    obligation: row.obligation,
+                    attributableAllocation: row.attributableAllocation,
+                    attributableObligation: row.attributableObligation,
+                })),
+            });
+        } catch (downloadError) {
+            console.error('Unable to generate GAD attribution workbook:', downloadError);
+            setExportError('The attribution workbook could not be generated. Please try again.');
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     if (!canView) return <div className="notice notice--warning"><p>You need both Dashboard and Gender and Development view access to open this dashboard.</p></div>;
     if (!Number.isFinite(year)) return <div className="gad-dashboard dashboard-view"><div className="dashboard-panel gad-dashboard-empty"><h3>Select a Fund Year</h3><p>Choose a specific Fund Year to align annual PIMME assessments and program records.</p></div></div>;
@@ -420,9 +449,9 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         { label: 'Average PIMME', value: averageScore === null ? 'No Data' : `${averageScore.toFixed(2)} / 20`, meta: averageChange === null ? 'No previous baseline' : `${averageChange >= 0 ? '+' : ''}${averageChange.toFixed(2)} vs previous`, icon: ClipboardCheck },
         ...GAD_PIMME_CLASSIFICATIONS.map(name => ({ label: name, value: completedRows.filter(row => row.classification === name).length.toLocaleString(), meta: completedDenominator ? `${((completedRows.filter(row => row.classification === name).length / completedDenominator) * 100).toFixed(1)}% of completed` : 'No completed assessments', icon: CheckCircle2 })),
         { label: 'Program Allocation', value: formatCurrency(totalAllocation), meta: `${rows.length} visible OUs`, icon: Banknote },
-        { label: 'Attributable Allocation', value: completedRows.length ? formatCurrency(attributableAllocation) : 'No Data', meta: `${formatNumber(percent(assessedAllocation, totalAllocation) || 0, 1)}% allocation coverage`, icon: CircleDollarSign },
-        { label: 'Attributable Obligation', value: completedRows.length ? formatCurrency(attributableObligation) : 'No Data', meta: 'Signed FY item actuals', icon: Banknote },
-        { label: 'Attribution Utilization', value: attributableAllocation ? `${formatNumber((attributableObligation / attributableAllocation) * 100, 1)}%` : 'No Data', meta: 'Obligation / attributable allocation', icon: ArrowUp },
+        { label: 'Attributable Allocation', value: rows.length ? formatCurrency(attributableAllocation) : 'No Data', meta: `HGDG ${GAD_HGDG_SCORE.toFixed(2)} / ${GAD_HGDG_MAX_SCORE} (${formatNumber(GAD_HGDG_ATTRIBUTION_RATE * 100, 2)}%)`, icon: CircleDollarSign },
+        { label: 'Attributable Obligation', value: attributionTotals.hasAttributedObligation ? formatCurrency(attributableObligation) : 'No Data', meta: 'Actual obligation x completed PIMME rate', icon: Banknote },
+        { label: 'Attribution Utilization', value: attributionTotals.utilization === null ? 'No Data' : `${formatNumber(attributionTotals.utilization, 1)}%`, meta: 'Attributed obligation / attributable allocation', icon: ArrowUp },
         { label: 'Assessed OUs', value: `${completedRows.length} / ${rows.length}`, meta: `${rows.filter(row => row.state === 'Incomplete').length} incomplete`, icon: Building2 },
     ];
 
@@ -430,17 +459,24 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         <div className="gad-dashboard dashboard-view animate-fadeIn">
             <header className="gad-dashboard-header">
                 <div><h2>Gender and Development Dashboard</h2></div>
-                <label className="gad-dashboard-classification-filter">
-                    <span>Classification</span>
-                    <select className="form-control" value={classificationFilter} onChange={event => setClassificationFilter(event.target.value as GadFilter)}>
-                        <option value="All">All</option>
-                        {GAD_PIMME_CLASSIFICATIONS.map(item => <option value={item} key={item}>{item}</option>)}
-                        <option value="Incomplete">Incomplete</option>
-                        <option value="For Assessment">For Assessment</option>
-                    </select>
-                </label>
+                <div className="gad-dashboard-header__actions">
+                    <button className="btn btn-primary btn-responsive" type="button" onClick={handleDownloadExcel} disabled={isExporting || loading}>
+                        <FileSpreadsheet aria-hidden="true" />
+                        <span>{isExporting ? 'Generating...' : 'Download Excel'}</span>
+                    </button>
+                    <label className="gad-dashboard-classification-filter">
+                        <span>Classification</span>
+                        <select className="form-control" value={classificationFilter} onChange={event => setClassificationFilter(event.target.value as GadFilter)}>
+                            <option value="All">All</option>
+                            {GAD_PIMME_CLASSIFICATIONS.map(item => <option value={item} key={item}>{item}</option>)}
+                            <option value="Incomplete">Incomplete</option>
+                            <option value="For Assessment">For Assessment</option>
+                        </select>
+                    </label>
+                </div>
             </header>
             {error && <div className="notice notice--warning" role="alert"><p>PIMME data could not be refreshed: {error}. Program implementation metrics remain available.</p></div>}
+            {exportError && <div className="notice notice--warning" role="alert"><p>{exportError}</p></div>}
             {loading ? <LoadingState title="Loading GAD dashboard" message="Preparing visible PIMME assessment summaries." /> : (
                 <>
                     <section className="gad-dashboard-kpis" aria-label="GAD executive indicators">
@@ -465,9 +501,9 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
 
                     <section className="gad-dashboard-grid gad-dashboard-grid--two">
                         <article className="dashboard-panel gad-dashboard-financial"><h3>Financial Attribution</h3>
-                            <div className="gad-dashboard-financial__flow"><div><span>Total allocation</span><strong>{formatCurrency(totalAllocation)}</strong></div><ArrowRight /><div><span>Attributable allocation</span><strong>{completedRows.length ? formatCurrency(attributableAllocation) : 'No Data'}</strong></div><ArrowRight /><div><span>Attributable obligation</span><strong>{completedRows.length ? formatCurrency(attributableObligation) : 'No Data'}</strong></div></div>
-                            <div className="gad-dashboard-progress"><span style={{ width: `${Math.max(0, Math.min(100, percent(attributableObligation, attributableAllocation) || 0))}%` }} /></div>
-                            <p>{formatNumber(percent(assessedAllocation, totalAllocation) || 0, 1)}% of allocation belongs to OUs with completed PIMME assessments.</p>
+                            <div className="gad-dashboard-financial__flow"><div><span>Total allocation</span><strong>{formatCurrency(totalAllocation)}</strong></div><ArrowRight /><div><span>Attributable allocation</span><strong>{rows.length ? formatCurrency(attributableAllocation) : 'No Data'}</strong></div><ArrowRight /><div><span>Attributable obligation</span><strong>{attributionTotals.hasAttributedObligation ? formatCurrency(attributableObligation) : 'No Data'}</strong></div></div>
+                            <div className="gad-dashboard-progress"><span style={{ width: `${Math.max(0, Math.min(100, attributionTotals.utilization || 0))}%` }} /></div>
+                            <p>Attributable allocation uses the fixed HGDG score of {GAD_HGDG_SCORE.toFixed(2)} / {GAD_HGDG_MAX_SCORE}. Attributed obligation uses each OU&apos;s completed PIMME score.</p>
                         </article>
                         <article className="dashboard-panel gad-dashboard-chart"><h3>Quarterly Cumulative Attributable Obligations</h3>
                             <ResponsiveContainer width="100%" height={220}><BarChart data={quarterlyFinancial}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="quarter" /><YAxis tickFormatter={value => formatCurrency(value)} width={82} /><Tooltip formatter={(value: number) => formatCurrency(value)} /><Bar dataKey="obligation" name="Cumulative obligation" fill="#247a52" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
@@ -475,9 +511,9 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
                     </section>
 
                     <section className="dashboard-panel gad-dashboard-table-card"><h3>Attribution by OU</h3><div className="data-table-scroll custom-scrollbar"><table className="data-table gad-dashboard-table"><thead><tr>{[
-                        ['ou', 'OU'], ['score', 'PIMME'], ['classification', 'Classification'], ['rate', 'Attribution'], ['allocation', 'Allocation'], ['attributableAllocation', 'Attributed Allocation'], ['obligation', 'Actual Obligation'], ['attributableObligation', 'Attributed Obligation'], ['utilization', 'Utilization'], ['change', 'Previous / Change'],
+                        ['ou', 'OU'], ['score', 'PIMME'], ['classification', 'Classification'], ['attributionRate', 'HGDG Attribution'], ['allocation', 'Allocation'], ['attributableAllocation', 'Attributed Allocation'], ['obligation', 'Actual Obligation'], ['attributableObligation', 'Attributed Obligation'], ['utilization', 'Utilization'], ['change', 'Previous / Change'],
                     ].map(([key, label]) => <th key={key}><button type="button" onClick={() => toggleSort(key as keyof OuDashboardRow)}>{label}</button></th>)}</tr></thead><tbody>
-                        {attributionRows.map(row => <tr key={row.ou}><td><button className="table-action-link" type="button" onClick={() => openAssessment(row.ou)}>{row.ou}</button></td><td>{row.score === null ? row.state : `${row.score.toFixed(2)} / 20`}</td><td>{row.classification || row.state}</td><td>{row.rate === null ? 'No Data' : `${formatNumber(row.rate * 100, 1)}%`}</td><td>{formatCurrency(row.allocation)}</td><td>{row.attributableAllocation === null ? 'No Data' : formatCurrency(row.attributableAllocation)}</td><td>{formatCurrency(row.obligation)}</td><td>{row.attributableObligation === null ? 'No Data' : formatCurrency(row.attributableObligation)}</td><td>{row.utilization === null ? 'No Data' : `${formatNumber(row.utilization, 1)}%`}</td><td>{row.previousScore === null ? 'No baseline' : `${row.previousScore.toFixed(2)} (${row.change! >= 0 ? '+' : ''}${row.change!.toFixed(2)})`}</td></tr>)}
+                        {attributionRows.map(row => <tr key={row.ou}><td><button className="table-action-link" type="button" onClick={() => openAssessment(row.ou)}>{row.ou}</button></td><td>{row.score === null ? row.state : `${row.score.toFixed(2)} / 20`}</td><td>{row.classification || row.state}</td><td>{`${formatNumber(row.attributionRate * 100, 2)}%`}</td><td>{formatCurrency(row.allocation)}</td><td>{formatCurrency(row.attributableAllocation)}</td><td>{formatCurrency(row.obligation)}</td><td>{row.attributableObligation === null ? 'No Data' : formatCurrency(row.attributableObligation)}</td><td>{row.utilization === null ? 'No Data' : `${formatNumber(row.utilization, 1)}%`}</td><td>{row.previousScore === null ? 'No baseline' : `${row.previousScore.toFixed(2)} (${row.change! >= 0 ? '+' : ''}${row.change!.toFixed(2)})`}</td></tr>)}
                         {!attributionRows.length && <tr><td colSpan={10} className="data-table__empty-cell">No OUs match the current classification filter.</td></tr>}
                     </tbody></table></div><DataTablePagination currentPage={attributionPage} totalPages={attributionPages} totalItems={sortedRows.length} itemsPerPage={PAGE_SIZE} onPageChange={setAttributionPage} />
                     </section>
@@ -492,7 +528,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
                         {physicalMetrics.beneficiaries.reported ? <><div className="gad-dashboard-beneficiary-kpis"><span>Total recipients <b>{physicalMetrics.beneficiaries.male + physicalMetrics.beneficiaries.female}</b></span><span>Female <b>{physicalMetrics.beneficiaries.female} ({formatNumber(percent(physicalMetrics.beneficiaries.female, physicalMetrics.beneficiaries.male + physicalMetrics.beneficiaries.female) || 0, 1)}%)</b></span><span>Male <b>{physicalMetrics.beneficiaries.male} ({formatNumber(percent(physicalMetrics.beneficiaries.male, physicalMetrics.beneficiaries.male + physicalMetrics.beneficiaries.female) || 0, 1)}%)</b></span><span>Average / reported SP <b>{formatNumber((physicalMetrics.beneficiaries.male + physicalMetrics.beneficiaries.female) / physicalMetrics.beneficiaries.reported, 1)}</b></span></div><ResponsiveContainer width="100%" height={240}><BarChart data={physicalMetrics.beneficiaries.byOu}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="ou" /><YAxis /><Tooltip /><Legend /><Bar dataKey="female" name="Female" stackId="a" fill="#168a55" /><Bar dataKey="male" name="Male" stackId="a" fill="#2f6fed" /></BarChart></ResponsiveContainer></> : <p className="dashboard-empty">No Data. Existing records remain unreported until recipient counts are entered.</p>}
                     </section>
 
-                    <section className="dashboard-panel gad-dashboard-table-card"><h3>Detailed OU Summary</h3><div className="data-table-scroll custom-scrollbar"><table className="data-table gad-dashboard-table"><thead><tr><th>OU</th><th>PIMME</th><th>Classification</th><th>Attributed Allocation</th><th>Attributed Obligation</th><th>Women-Led IPOs Targeted</th><th>Women-Led IPOs Assisted</th><th>Training Female</th><th>Training Male</th><th>SP Female Beneficiaries</th><th>SP Male Beneficiaries</th><th>Beneficiary Coverage</th></tr></thead><tbody>{summaryRows.map(row => <tr key={row.ou}><td><button className="table-action-link" type="button" onClick={() => openAssessment(row.ou)}>{row.ou}</button></td><td>{row.score === null ? 'No Data' : row.score.toFixed(2)}</td><td>{row.classification || row.state}</td><td>{row.attributableAllocation === null ? 'No Data' : formatCurrency(row.attributableAllocation)}</td><td>{row.attributableObligation === null ? 'No Data' : formatCurrency(row.attributableObligation)}</td><td>{row.womenTargeted}</td><td>{row.womenAssisted}</td><td>{row.actualFemaleParticipants}</td><td>{row.actualMaleParticipants}</td><td>{row.beneficiaryCoverage === null ? 'No Data' : row.femaleBeneficiaries}</td><td>{row.beneficiaryCoverage === null ? 'No Data' : row.maleBeneficiaries}</td><td>{row.beneficiaryCoverage === null ? 'No Data' : `${formatNumber(row.beneficiaryCoverage, 1)}%`}</td></tr>)}</tbody></table></div><DataTablePagination currentPage={summaryPage} totalPages={summaryPages} totalItems={detailedRows.length} itemsPerPage={PAGE_SIZE} onPageChange={setSummaryPage} />
+                    <section className="dashboard-panel gad-dashboard-table-card"><h3>Detailed OU Summary</h3><div className="data-table-scroll custom-scrollbar"><table className="data-table gad-dashboard-table"><thead><tr><th>OU</th><th>PIMME</th><th>Classification</th><th>Attributed Allocation</th><th>Attributed Obligation</th><th>Women-Led IPOs Targeted</th><th>Women-Led IPOs Assisted</th><th>Training Female</th><th>Training Male</th><th>SP Female Beneficiaries</th><th>SP Male Beneficiaries</th><th>Beneficiary Coverage</th></tr></thead><tbody>{summaryRows.map(row => <tr key={row.ou}><td><button className="table-action-link" type="button" onClick={() => openAssessment(row.ou)}>{row.ou}</button></td><td>{row.score === null ? 'No Data' : row.score.toFixed(2)}</td><td>{row.classification || row.state}</td><td>{formatCurrency(row.attributableAllocation)}</td><td>{row.attributableObligation === null ? 'No Data' : formatCurrency(row.attributableObligation)}</td><td>{row.womenTargeted}</td><td>{row.womenAssisted}</td><td>{row.actualFemaleParticipants}</td><td>{row.actualMaleParticipants}</td><td>{row.beneficiaryCoverage === null ? 'No Data' : row.femaleBeneficiaries}</td><td>{row.beneficiaryCoverage === null ? 'No Data' : row.maleBeneficiaries}</td><td>{row.beneficiaryCoverage === null ? 'No Data' : `${formatNumber(row.beneficiaryCoverage, 1)}%`}</td></tr>)}</tbody></table></div><DataTablePagination currentPage={summaryPage} totalPages={summaryPages} totalItems={detailedRows.length} itemsPerPage={PAGE_SIZE} onPageChange={setSummaryPage} />
                     </section>
                 </>
             )}
