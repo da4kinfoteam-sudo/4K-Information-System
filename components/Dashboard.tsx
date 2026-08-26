@@ -11,6 +11,8 @@ import { aggregateHomepageFinancials } from '../lib/financialAggregation';
 import { aggregateHomepagePhysicalStats } from '../lib/physicalAggregation';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import type { DataScope } from '../lib/scopedDataFetch';
+import { listHomepageGalleryFeed, HomepageGalleryFeedItem } from '../lib/googleDriveStorage';
+import { supabase } from '../supabaseClient';
 import { CalendarDays, ChevronLeft, ChevronRight, Ellipsis, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import {
@@ -23,6 +25,7 @@ import {
     StatusIndicator,
 } from './ui/enterprise';
 import useLocalStorageState from '../hooks/useLocalStorageState';
+import HomepageGalleryFeed from './ui/HomepageGalleryFeed';
 
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
 declare const L: any;
@@ -228,6 +231,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings })
 
 
 type ActivityDateView = 'Today' | 'This Week' | 'This Month' | 'This Quarter' | 'All';
+type ScheduleMode = 'NPMO' | 'OU';
 
 type ActivityItem = (
     (Subproject & { activityType: 'Subproject' }) |
@@ -237,6 +241,7 @@ type ActivityItem = (
     activityEndDate: string;
     activityOu: string;
     activityStatus: Subproject['status'] | Activity['status'];
+    activityDescription: string;
 };
 
 interface PanelMenuItem {
@@ -460,6 +465,18 @@ const Dashboard: React.FC<DashboardProps> = ({
     const activitiesPanelRef = useRef<HTMLDivElement>(null);
     const itemsPerPageActivities = 6;
 
+    // The NPMO schedule is intentionally loaded separately so own-OU users can
+    // still see centrally published schedules without widening the global scope.
+    const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('OU');
+    const [npmoActivities, setNpmoActivities] = useState<Activity[]>([]);
+    const [isNpmoLoading, setIsNpmoLoading] = useState(false);
+    const [npmoLoadError, setNpmoLoadError] = useState<string | null>(null);
+    const npmoCacheRef = useRef(new Map<string, Activity[]>());
+
+    const [galleryFeedItems, setGalleryFeedItems] = useState<HomepageGalleryFeedItem[]>([]);
+    const [isGalleryFeedLoading, setIsGalleryFeedLoading] = useState(false);
+    const [galleryFeedError, setGalleryFeedError] = useState<string | null>(null);
+
     // React to external filters
     useEffect(() => {
         if (externalFilters?.year) {
@@ -608,6 +625,113 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, activities, officeReqs, staffingReqs, otherProgramExpenses]);
 
+    const npmoScopeKey = `${selectedYear}|${selectedTier}|${selectedFundType}`;
+
+    useEffect(() => {
+        let cancelled = false;
+        if (scheduleMode !== 'NPMO') {
+            setIsNpmoLoading(false);
+            setNpmoLoadError(null);
+            return () => { cancelled = true; };
+        }
+
+        const cached = npmoCacheRef.current.get(npmoScopeKey);
+        const localNpmos = activities.filter(activity => {
+            if (activity.operatingUnit !== 'NPMO') return false;
+            if (activity.workflow_status && activity.workflow_status !== 'APPROVED') return false;
+            const year = activity.fundingYear || activity.fundYear;
+            if (selectedYear !== 'All' && year?.toString() !== selectedYear) return false;
+            if (selectedTier !== 'All' && activity.tier !== selectedTier) return false;
+            if (selectedFundType !== 'All' && activity.fundType !== selectedFundType) return false;
+            return true;
+        });
+
+        if (cached) {
+            setNpmoActivities(cached);
+            setNpmoLoadError(null);
+            setIsNpmoLoading(false);
+            return () => { cancelled = true; };
+        }
+
+        if (localNpmos.length > 0 || !supabase) {
+            npmoCacheRef.current.set(npmoScopeKey, localNpmos);
+            setNpmoActivities(localNpmos);
+            setNpmoLoadError(null);
+            setIsNpmoLoading(false);
+            return () => { cancelled = true; };
+        }
+
+        setIsNpmoLoading(true);
+        setNpmoLoadError(null);
+
+        const loadNpmos = async () => {
+            try {
+                let query = supabase.from('activities').select('*').eq('operatingUnit', 'NPMO');
+                if (selectedYear !== 'All') query = query.eq('fundingYear', Number(selectedYear));
+                if (selectedTier !== 'All') query = query.eq('tier', selectedTier);
+                if (selectedFundType !== 'All') query = query.eq('fundType', selectedFundType);
+                const { data, error } = await query.order('date', { ascending: true });
+                if (error) throw error;
+
+                const rows = ((data || []) as Activity[]).filter(activity => !activity.workflow_status || activity.workflow_status === 'APPROVED');
+                if (cancelled) return;
+                npmoCacheRef.current.set(npmoScopeKey, rows);
+                setNpmoActivities(rows);
+            } catch (error: any) {
+                if (cancelled) return;
+                npmoCacheRef.current.set(npmoScopeKey, localNpmos);
+                setNpmoActivities(localNpmos);
+                setNpmoLoadError(error?.message || 'Unable to load NPMO schedules.');
+            } finally {
+                if (!cancelled) setIsNpmoLoading(false);
+            }
+        };
+
+        void loadNpmos();
+        return () => { cancelled = true; };
+    }, [activities, npmoScopeKey, scheduleMode, selectedFundType, selectedTier, selectedYear]);
+
+    const galleryActivityIds = useMemo(
+        () => filteredData.activities.map(activity => activity.id).filter(Number.isFinite),
+        [filteredData.activities]
+    );
+    const gallerySubprojectIds = useMemo(
+        () => filteredData.subprojects.map(subproject => subproject.id).filter(Number.isFinite),
+        [filteredData.subprojects]
+    );
+    const galleryFeedKey = `${galleryActivityIds.slice().sort((a, b) => a - b).join(',')}|${gallerySubprojectIds.slice().sort((a, b) => a - b).join(',')}`;
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!currentUser?.id || (galleryActivityIds.length === 0 && gallerySubprojectIds.length === 0) || !supabase) {
+            setGalleryFeedItems([]);
+            setGalleryFeedError(null);
+            setIsGalleryFeedLoading(false);
+            return () => { cancelled = true; };
+        }
+
+        setIsGalleryFeedLoading(true);
+        setGalleryFeedError(null);
+        listHomepageGalleryFeed(currentUser, {
+            activityIds: galleryActivityIds,
+            subprojectIds: gallerySubprojectIds
+        })
+            .then(items => {
+                if (cancelled) return;
+                setGalleryFeedItems(items);
+            })
+            .catch((error: any) => {
+                if (cancelled) return;
+                setGalleryFeedItems([]);
+                setGalleryFeedError(error?.message || 'Unable to load gallery feed.');
+            })
+            .finally(() => {
+                if (!cancelled) setIsGalleryFeedLoading(false);
+            });
+
+        return () => { cancelled = true; };
+    }, [currentUser, galleryActivityIds, galleryFeedKey, gallerySubprojectIds]);
+
     // ... (Dashboard Calculations and Helper functions remain same)
 
     const dashboardStats = useMemo(() => {
@@ -646,16 +770,18 @@ const Dashboard: React.FC<DashboardProps> = ({
     // ... (allActivities, displayedActivities, pagination logic) ...
 
     const allActivities = useMemo(() => {
+        const activityFeedActivities = scheduleMode === 'NPMO' ? npmoActivities : filteredData.activities;
         const combined: ActivityItem[] = [
-            ...filteredData.subprojects.map(p => ({
+            ...(scheduleMode === 'NPMO' ? [] : filteredData.subprojects.map(p => ({
                 ...p,
                 activityType: 'Subproject' as const,
                 activityDate: p.estimatedCompletionDate || '',
                 activityEndDate: p.estimatedCompletionDate || '',
                 activityOu: p.operatingUnit,
                 activityStatus: p.status,
-            })),
-            ...filteredData.activities.map(a => {
+                activityDescription: p.remarks?.trim() || p.catchUpPlanRemarks?.trim() || '',
+            }))),
+            ...activityFeedActivities.map(a => {
                 const isCompleted = a.status === 'Completed' || !!a.actualDate;
                 const startDate = isCompleted && a.actualDate ? a.actualDate : a.date;
                 const endDate = isCompleted && a.actualDate
@@ -668,6 +794,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     activityEndDate: endDate || startDate || '',
                     activityOu: a.operatingUnit,
                     activityStatus: a.status,
+                    activityDescription: a.description?.trim() || '',
                 };
             }),
         ];
@@ -677,7 +804,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             const dateB = parseLocalDate(b.activityDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
             return dateA - dateB;
         });
-    }, [filteredData]);
+    }, [filteredData, npmoActivities, scheduleMode]);
 
     const displayedActivities = useMemo(() => {
         let items = allActivities;
@@ -693,11 +820,11 @@ const Dashboard: React.FC<DashboardProps> = ({
             items = items.filter(item => activityIntersectsRange(item, bounds.start, bounds.end));
         }
         return items;
-    }, [allActivities, activitiesFilter, activitiesDateView, selectedActivityDate]);
+    }, [allActivities, activitiesFilter, activitiesDateView, scheduleMode, selectedActivityDate]);
 
     useEffect(() => {
         setActivitiesPage(1);
-    }, [activitiesFilter, activitiesDateView, selectedActivityDate, displayedActivities.length]);
+    }, [activitiesFilter, activitiesDateView, displayedActivities.length, scheduleMode, selectedActivityDate]);
     
     const paginatedActivitiesList = useMemo(() => {
         const startIndex = (activitiesPage - 1) * itemsPerPageActivities;
@@ -718,17 +845,6 @@ const Dashboard: React.FC<DashboardProps> = ({
             .sort((left, right) => (parseLocalDate(left.date)?.getTime() || 0) - (parseLocalDate(right.date)?.getTime() || 0))
             .slice(0, 5);
     }, [systemSettings.deadlines]);
-
-    const npmoSchedules = useMemo(() => {
-        const today = startOfLocalDay(new Date());
-        return activities
-            .filter(activity => {
-                const date = parseLocalDate(activity.date);
-                return activity.operatingUnit === 'NPMO' && !!date && date >= today;
-            })
-            .sort((left, right) => (parseLocalDate(left.date)?.getTime() || 0) - (parseLocalDate(right.date)?.getTime() || 0))
-            .slice(0, 5);
-    }, [activities]);
 
     const canManageDeadlines = currentUser?.role !== 'Guest'
         && (hasAccess('System Management', 'view')
@@ -793,6 +909,17 @@ const Dashboard: React.FC<DashboardProps> = ({
     const subprojectsBudgetValue = getBudgetValue(dashboardStats.financials.subprojects, spBudgetView);
     const trainingsBudgetValue = getBudgetValue(dashboardStats.financials.trainings, trBudgetView);
     const selectedYearLabel = selectedYear === 'All' ? 'All fund years' : `FY ${selectedYear}`;
+
+    const openGalleryFeedItem = (item: HomepageGalleryFeedItem) => {
+        if (item.entityType === 'activity') {
+            const activity = filteredData.activities.find(candidate => candidate.id === item.entityId);
+            if (activity) onSelectActivity(activity);
+            return;
+        }
+
+        const subproject = filteredData.subprojects.find(candidate => candidate.id === item.entityId);
+        if (subproject) onSelectSubproject(subproject);
+    };
 
     return (
         <div className="dashboard-page">
@@ -994,14 +1121,13 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <StatCard title="Ancestral Domains Assisted" value={dashboardStats.physical.adsAssisted.actual.toString()} icon={<AdIcon />} supportingText={`of ${dashboardStats.physical.adsAssisted.target} target`} onClick={showAdsAssisted} />
             </div>
 
-            <div className="dashboard-home-grid">
+            <div className="dashboard-home-grid dashboard-home-grid--schedule-map">
             <ContentCard className="dashboard-panel dashboard-panel--schedule">
                 <SectionHeading
-                    title="System Schedule"
-                    helper="Deadlines & NPMO calendar"
+                    title="Upcoming Deadlines"
                     actions={(
                         <PanelActionMenu
-                            label="System Schedule menu"
+                            label="Upcoming deadlines menu"
                             items={[
                                 { label: 'View all activities', onSelect: () => navigateTo('/activities') },
                                 ...(canManageDeadlines
@@ -1013,7 +1139,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                 />
                 <div className="dashboard-schedule-grid">
                     <div>
-                        <h4 className="dashboard-list__heading">Upcoming Deadlines</h4>
                         {upcomingDeadlines.length > 0 ? (
                             <ul className="dashboard-list">
                                 {upcomingDeadlines.map(deadline => (
@@ -1033,40 +1158,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                             </ul>
                         ) : <p className="dashboard-empty">No upcoming deadlines.</p>}
                     </div>
-                    <div>
-                        <h4 className="dashboard-list__heading">NPMO Schedules</h4>
-                        {npmoSchedules.length > 0 ? (
-                            <ul className="dashboard-list dashboard-list--npmo">
-                                {npmoSchedules.map(schedule => (
-                                    <li key={schedule.id}>
-                                        <button
-                                            type="button"
-                                            onClick={() => onSelectActivity(schedule)}
-                                            className="dashboard-list__button dashboard-npmo-row"
-                                            aria-label={`View details for ${schedule.name}`}
-                                        >
-                                            <span className="dashboard-list__name">{schedule.name}</span>
-                                            <span className="dashboard-list__description">
-                                                {[formatFeedDate(schedule.date, schedule.endDate || schedule.date), schedule.location].filter(Boolean).join(' · ')}
-                                            </span>
-                                            {schedule.description && (
-                                                <span className="dashboard-list__description dashboard-list__description--detail">
-                                                    {schedule.description}
-                                                </span>
-                                            )}
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : <p className="dashboard-empty">No active NPMO schedules.</p>}
-                    </div>
                 </div>
             </ContentCard>
 
             <MapCard className="dashboard-panel dashboard-panel--map">
                 <SectionHeading
                     title="4K Map"
-                    helper="Geographic view of program interventions"
                     actions={<div className="dashboard-map-controls" aria-label="Map layers">
                         <span className="dashboard-map-controls__label">Show</span>
                         <label className={`dashboard-check dashboard-check--red ${mapFilters.ipos ? 'is-active' : ''}`}>
@@ -1087,11 +1184,10 @@ const Dashboard: React.FC<DashboardProps> = ({
             </MapCard>
             </div>
 
-            <div className="dashboard-home-grid">
+            <div className="dashboard-home-grid dashboard-home-grid--operational">
             <ContentCard className="dashboard-panel dashboard-panel--calendar">
                 <SectionHeading
                     title="4K Calendar"
-                    helper="Activities and deadlines"
                     actions={(
                         <PanelActionMenu
                             label="4K Calendar menu"
@@ -1119,7 +1215,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <div ref={activitiesPanelRef} className="dashboard-activities-scroll-anchor" />
                 <SectionHeading
                     title="4K Activities"
-                    helper="Field & operational activity feed"
                     actions={<div className="dashboard-activity-header-actions">
                         <div className="dashboard-activity-controls">
                             <select
@@ -1162,6 +1257,24 @@ const Dashboard: React.FC<DashboardProps> = ({
                             </button>
                         </div>
                         </div>
+                        <div className="dashboard-segmented" role="group" aria-label="Activity source">
+                            <button
+                                type="button"
+                                onClick={() => setScheduleMode('OU')}
+                                className={scheduleMode === 'OU' ? 'is-active' : ''}
+                                aria-pressed={scheduleMode === 'OU'}
+                            >
+                                OU
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setScheduleMode('NPMO')}
+                                className={scheduleMode === 'NPMO' ? 'is-active' : ''}
+                                aria-pressed={scheduleMode === 'NPMO'}
+                            >
+                                NPMO
+                            </button>
+                        </div>
                         <PanelActionMenu
                             label="4K Activities menu"
                             items={[
@@ -1180,7 +1293,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </button>
                     </div>
                 )}
-                 {paginatedActivitiesList.length > 0 ? (
+                {scheduleMode === 'NPMO' && npmoLoadError && (
+                    <p className="dashboard-empty dashboard-empty--error" role="status">{npmoLoadError}</p>
+                )}
+                {isNpmoLoading && scheduleMode === 'NPMO' && displayedActivities.length === 0 ? (
+                    <p className="dashboard-empty" role="status">Loading NPMO activities...</p>
+                ) : paginatedActivitiesList.length > 0 ? (
                  <div className="dashboard-activity-feed">
                     {paginatedActivitiesList.map(activity => {
                         const typeCode = activity.activityType === 'Subproject' ? 'SP' : activity.activityType === 'Training' ? 'TR' : 'AC';
@@ -1200,7 +1318,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         <span className="dashboard-activity-card__code">{activityCode}</span>
                                         <StatusIndicator status={activity.activityStatus} compact />
                                     </span>
-                                    <span className="dashboard-activity-card__title">{activity.name}</span>
+                                    <span
+                                        className="dashboard-activity-card__title"
+                                        title={[activity.name, activity.activityDescription].filter(Boolean).join(' · ')}
+                                    >
+                                        {activity.name}{activity.activityDescription ? ` · ${activity.activityDescription}` : ''}
+                                    </span>
                                     <span className="dashboard-activity-card__details">
                                         {activity.activityOu || 'No OU'} · {formatFeedDate(activity.activityDate, activity.activityEndDate)}
                                     </span>
@@ -1246,7 +1369,17 @@ const Dashboard: React.FC<DashboardProps> = ({
                      </div>
                  )}
             </ContentCard>
+
             </div>
+
+            <ContentCard className="dashboard-panel dashboard-panel--gallery-feed">
+                <HomepageGalleryFeed
+                    items={galleryFeedItems}
+                    isLoading={isGalleryFeedLoading}
+                    error={galleryFeedError}
+                    onOpenItem={openGalleryFeedItem}
+                />
+            </ContentCard>
         </div>
     );
 };
