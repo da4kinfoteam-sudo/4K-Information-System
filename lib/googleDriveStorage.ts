@@ -127,6 +127,16 @@ export interface ActivityDriveFile {
     uploaded_at: string;
 }
 
+export interface HomepageGalleryFeedItem {
+    entityType: 'activity' | 'subproject';
+    entityId: number;
+    entityName: string;
+    entityCode?: string | null;
+    operatingUnit?: string | null;
+    activityDate?: string | null;
+    files: DriveMediaFile[];
+}
+
 export const ALLOWED_IPO_DRIVE_FILE_TYPES = [
     'application/pdf',
     'application/msword',
@@ -279,6 +289,30 @@ const readFunctionResult = async <T>(data: T | null, error: any): Promise<T> => 
         throw new Error('Supabase Edge Function returned no data.');
     }
     return data;
+};
+
+const homepageGalleryFeedCache = new Map<string, HomepageGalleryFeedItem[]>();
+
+export const listHomepageGalleryFeed = async (
+    currentUser: User | null,
+    input: { activityIds: number[]; subprojectIds: number[] }
+) => {
+    const activityIds = [...new Set(input.activityIds.filter(Number.isFinite))].sort((a, b) => a - b);
+    const subprojectIds = [...new Set(input.subprojectIds.filter(Number.isFinite))].sort((a, b) => a - b);
+    const cacheKey = `${currentUser?.id ?? 'anonymous'}:${activityIds.join(',')}:${subprojectIds.join(',')}`;
+    const cached = homepageGalleryFeedCache.get(cacheKey);
+    if (cached) return cached;
+
+    const { data, error } = await requireSupabase().functions.invoke<{ items: HomepageGalleryFeedItem[] }>('homepage-gallery-feed', {
+        body: {
+            ...currentUserPayload(currentUser),
+            activity_ids: activityIds,
+            subproject_ids: subprojectIds
+        }
+    });
+    const items = (await readFunctionResult(data, error)).items || [];
+    homepageGalleryFeedCache.set(cacheKey, items);
+    return items;
 };
 
 export const getGoogleDriveStatus = async (currentUser: User | null) => {
