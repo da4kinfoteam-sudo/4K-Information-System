@@ -7,6 +7,8 @@ import {
     HomepageGalleryFeedItem
 } from '../../lib/googleDriveStorage';
 
+const GALLERY_PAGE_SIZE = 6;
+
 interface HomepageGalleryFeedProps {
     items: HomepageGalleryFeedItem[];
     isLoading: boolean;
@@ -23,19 +25,51 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
     );
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [carouselIndex, setCarouselIndex] = useState(0);
+    const [galleryPage, setGalleryPage] = useState(1);
+    const [hideListThumbnails, setHideListThumbnails] = useState(() => (
+        typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches
+    ));
     const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia('(max-width: 760px)');
+        const updateThumbnailVisibility = () => setHideListThumbnails(mediaQuery.matches);
+        updateThumbnailVisibility();
+        mediaQuery.addEventListener('change', updateThumbnailVisibility);
+        return () => mediaQuery.removeEventListener('change', updateThumbnailVisibility);
+    }, []);
 
     useEffect(() => {
         if (!visibleItems.length) {
             setSelectedKey(null);
             setCarouselIndex(0);
+            setGalleryPage(1);
             return;
         }
 
+        const totalPages = Math.max(1, Math.ceil(visibleItems.length / GALLERY_PAGE_SIZE));
+        setGalleryPage(current => Math.min(Math.max(current, 1), totalPages));
         setSelectedKey(current => visibleItems.some(item => itemKey(item) === current) ? current : itemKey(visibleItems[0]));
     }, [visibleItems]);
 
-    const selectedItem = visibleItems.find(item => itemKey(item) === selectedKey) || visibleItems[0];
+    const totalPages = Math.max(1, Math.ceil(visibleItems.length / GALLERY_PAGE_SIZE));
+    const paginatedItems = useMemo(
+        () => visibleItems.slice((galleryPage - 1) * GALLERY_PAGE_SIZE, galleryPage * GALLERY_PAGE_SIZE),
+        [galleryPage, visibleItems]
+    );
+
+    useEffect(() => {
+        if (!paginatedItems.length) return;
+        if (!paginatedItems.some(item => itemKey(item) === selectedKey)) {
+            setSelectedKey(itemKey(paginatedItems[0]));
+            setCarouselIndex(0);
+        }
+    }, [paginatedItems, selectedKey]);
+
+    const selectedItem = paginatedItems.find(item => itemKey(item) === selectedKey)
+        || visibleItems.find(item => itemKey(item) === selectedKey)
+        || paginatedItems[0]
+        || visibleItems[0];
     const selectedFiles = selectedItem?.files || [];
     const selectedFile = selectedFiles[carouselIndex] || selectedFiles[0];
 
@@ -145,29 +179,31 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
                             {isLoading && <span role="status">Refreshing...</span>}
                         </div>
                         <div className="homepage-gallery-feed__list-scroll custom-scrollbar">
-                            {visibleItems.map(item => {
+                            {paginatedItems.map(item => {
                                 const isSelected = itemKey(item) === itemKey(selectedItem);
                                 const firstFile = item.files[0];
                                 return (
                                     <article key={itemKey(item)} className={`homepage-gallery-feed__item${isSelected ? ' is-selected' : ''}`}>
-                                        <button
-                                            type="button"
-                                            className="homepage-gallery-feed__item-select"
-                                            onClick={() => selectItem(item)}
-                                            aria-pressed={isSelected}
-                                        >
-                                            <span className="homepage-gallery-feed__item-thumb">
-                                                {!failedImages.has(firstFile.id) && (
-                                                    <img
-                                                        src={getIpoDriveImageUrl(firstFile, 260)}
-                                                        alt=""
-                                                        loading="lazy"
-                                                        onError={() => markImageFailed(firstFile.id)}
-                                                    />
-                                                )}
-                                                <ImageIcon aria-hidden="true" />
-                                            </span>
-                                        </button>
+                                        {!hideListThumbnails && (
+                                            <button
+                                                type="button"
+                                                className="homepage-gallery-feed__item-select"
+                                                onClick={() => selectItem(item)}
+                                                aria-pressed={isSelected}
+                                            >
+                                                <span className="homepage-gallery-feed__item-thumb">
+                                                    {!failedImages.has(firstFile.id) && (
+                                                        <img
+                                                            src={getIpoDriveImageUrl(firstFile, 260)}
+                                                            alt=""
+                                                            loading="lazy"
+                                                            onError={() => markImageFailed(firstFile.id)}
+                                                        />
+                                                    )}
+                                                    <ImageIcon aria-hidden="true" />
+                                                </span>
+                                            </button>
+                                        )}
                                         <div className="homepage-gallery-feed__item-copy">
                                             <button
                                                 type="button"
@@ -184,11 +220,36 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
                                                     {item.operatingUnit ? ` · ${item.operatingUnit}` : ''}
                                                 </span>
                                                 {item.activityDate && <time dateTime={item.activityDate}>{new Date(item.activityDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</time>}
+                                                {firstFile.caption && <span className="homepage-gallery-feed__item-caption" title={firstFile.caption}>{firstFile.caption}</span>}
                                             </button>
                                         </div>
                                     </article>
                                 );
                             })}
+                        </div>
+                        <div className="homepage-gallery-feed__pagination" aria-label="Gallery feed pagination">
+                            <span className="homepage-gallery-feed__pagination-summary">
+                                Showing {visibleItems.length === 0 ? 0 : (galleryPage - 1) * GALLERY_PAGE_SIZE + 1}–{Math.min(galleryPage * GALLERY_PAGE_SIZE, visibleItems.length)} of {visibleItems.length} items
+                            </span>
+                            <div className="homepage-gallery-feed__pagination-controls">
+                                <button
+                                    type="button"
+                                    onClick={() => setGalleryPage(current => Math.max(1, current - 1))}
+                                    disabled={galleryPage <= 1}
+                                    aria-label="Previous gallery page"
+                                >
+                                    <ChevronLeft aria-hidden="true" />
+                                </button>
+                                <span aria-live="polite">{galleryPage} / {totalPages}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setGalleryPage(current => Math.min(totalPages, current + 1))}
+                                    disabled={galleryPage >= totalPages}
+                                    aria-label="Next gallery page"
+                                >
+                                    <ChevronRight aria-hidden="true" />
+                                </button>
+                            </div>
                         </div>
                     </section>
                 </div>

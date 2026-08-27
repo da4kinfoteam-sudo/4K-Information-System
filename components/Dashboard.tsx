@@ -1163,7 +1163,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             <MapCard className="dashboard-panel dashboard-panel--map">
                 <SectionHeading
-                    title="4K Map"
+                    title="Map of Interventions"
                     actions={<div className="dashboard-map-controls" aria-label="Map layers">
                         <span className="dashboard-map-controls__label">Show</span>
                         <label className={`dashboard-check dashboard-check--red ${mapFilters.ipos ? 'is-active' : ''}`}>
@@ -1187,7 +1187,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             <div className="dashboard-home-grid dashboard-home-grid--operational">
             <ContentCard className="dashboard-panel dashboard-panel--calendar">
                 <SectionHeading
-                    title="4K Calendar"
+                    title="Calendar of Activities"
                     actions={(
                         <PanelActionMenu
                             label="4K Calendar menu"
@@ -1214,7 +1214,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             <ContentCard className="dashboard-panel dashboard-panel--activities">
                 <div ref={activitiesPanelRef} className="dashboard-activities-scroll-anchor" />
                 <SectionHeading
-                    title="4K Activities"
+                    title="List of Activities"
                     actions={<div className="dashboard-activity-header-actions">
                         <div className="dashboard-activity-controls">
                             <select
@@ -1322,7 +1322,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         className="dashboard-activity-card__title"
                                         title={[activity.name, activity.activityDescription].filter(Boolean).join(' · ')}
                                     >
-                                        {activity.name}{activity.activityDescription ? ` · ${activity.activityDescription}` : ''}
+                                        <span>{activity.name}</span>
+                                        {activity.activityDescription && (
+                                            <span className="dashboard-activity-card__description"> · {activity.activityDescription}</span>
+                                        )}
                                     </span>
                                     <span className="dashboard-activity-card__details">
                                         {activity.activityOu || 'No OU'} · {formatFeedDate(activity.activityDate, activity.activityEndDate)}
