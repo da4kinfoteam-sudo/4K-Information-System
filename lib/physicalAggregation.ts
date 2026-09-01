@@ -46,12 +46,6 @@ const matchesSelectedYear = (value: string | number | undefined, selectedYear: Y
     return value?.toString() === selectedYear;
 };
 
-const getDateYear = (date?: string) => {
-    if (!date) return undefined;
-    const parsed = new Date(date);
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed.getFullYear().toString();
-};
-
 const isApproved = (record: ScopedRecord, includeUnapproved?: boolean) => {
     if (includeUnapproved) return true;
     return !record.workflow_status || record.workflow_status === 'APPROVED';
@@ -72,11 +66,13 @@ const isTargetRecord = (record: ScopedRecord, filters: PhysicalAggregationFilter
     return matchesSelectedYear(getRecordYear(record), filters.year);
 };
 
-const isActualRecord = (record: ScopedRecord, actualDate: string | undefined, filters: PhysicalAggregationFilters) => {
+const isActualRecord = (record: ScopedRecord, filters: PhysicalAggregationFilters) => {
     if (!matchesBaseFilters(record, filters)) return false;
     if (record.status === 'Cancelled') return false;
-    if (filters.year === 'All') return true;
-    return matchesSelectedYear(getRecordYear(record), filters.year) && getDateYear(actualDate) === filters.year;
+    // Homepage physical cards use Fund Year as the record cohort. The actual
+    // date remains validated by the completion predicates, but a later
+    // calendar-year accomplishment still belongs to its funded record.
+    return matchesSelectedYear(getRecordYear(record), filters.year);
 };
 
 const hasCompletedSubproject = (subproject: Subproject) => subproject.status === 'Completed' && !!subproject.actualCompletionDate;
@@ -115,13 +111,13 @@ export const aggregateHomepagePhysicalStats = (
 ): HomepagePhysicalStats => {
     const targetSubprojects = (data.subprojects || []).filter(subproject => isTargetRecord(subproject, filters));
     const actualSubprojects = (data.subprojects || []).filter(subproject =>
-        hasCompletedSubproject(subproject) && isActualRecord(subproject, subproject.actualCompletionDate, filters)
+        hasCompletedSubproject(subproject) && isActualRecord(subproject, filters)
     );
 
     const trainings = (data.activities || []).filter(activity => activity.type === 'Training');
     const targetTrainings = trainings.filter(training => isTargetRecord(training, filters));
     const actualTrainings = trainings.filter(training =>
-        hasCompletedActivity(training) && isActualRecord(training, training.actualDate, filters)
+        hasCompletedActivity(training) && isActualRecord(training, filters)
     );
 
     const targetIposWithSp = new Set<string>();
