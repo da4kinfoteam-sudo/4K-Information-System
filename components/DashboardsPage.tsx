@@ -44,7 +44,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const dcfFilters = useDcfScopeFilters({
         storageKey: 'dashboards_dcf_scope',
         moduleName: 'Dashboards',
-        onDataScopeChange
+        onDataScopeChange: activeTab === 'IPO Level of Development' ? undefined : onDataScopeChange
     });
     const {
         selectedYear,
@@ -190,7 +190,9 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             <div className="data-list-header">
                 <h2 className="data-list-title">Strategic Dashboard</h2>
             </div>
-            <DcfScopeFilterPanel idPrefix="dashboard-dcf" filters={dcfFilters} />
+            {activeTab !== 'IPO Level of Development' && (
+                <DcfScopeFilterPanel idPrefix="dashboard-dcf" filters={dcfFilters} />
+            )}
 
             <div className="dashboard-tab-content">
                 {activeTab === 'Physical' && (
@@ -236,7 +238,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                         onSelectAssessment={props.onSelectGadAssessment}
                     />
                 )}
-                {activeTab === 'IPO Level of Development' && <IPOLevelDashboard ipos={filteredData.ipos} selectedYear={selectedYear} onSelectLodIpo={props.onSelectLodIpo} />}
+                {activeTab === 'IPO Level of Development' && <IPOLevelDashboard onSelectLodIpo={props.onSelectLodIpo} />}
                 {activeTab === 'Nutrition' && <NutritionDashboard />}
                 {activeTab === 'Farm Productivity and Income' && (
                     <FarmProductivityDashboard
