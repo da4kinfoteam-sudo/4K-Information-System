@@ -1,5 +1,5 @@
 // Author: 4K
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle,
     Award,
@@ -34,15 +34,14 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
-import { IPO, LodAnswer, LodAssessment, LodChoice, LodLevelConfig, LodQuestion, LodQuestionnaireVersion, LodSection } from '../../constants';
+import { IPO, LodAnswer, LodAssessment, LodChoice, LodLevelConfig, LodQuestion, LodQuestionnaireVersion, LodSection, ouToRegionMap } from '../../constants';
 import { supabase } from '../../supabaseClient';
+import { useAuth } from '../../contexts/AuthContext';
 import { parseLocation } from '../LocationPicker';
 import { getLodEffectiveState } from '../../lib/lodScoring';
 import { subscribeToLodDataChanges } from '../../lib/lodDataSync';
 
 interface IPOLevelDashboardProps {
-    ipos: IPO[];
-    selectedYear: string;
     onSelectLodIpo?: (ipo: IPO, year?: number) => void;
 }
 
@@ -96,6 +95,7 @@ interface LodDashboardRow {
 }
 
 interface LodDashboardData {
+    ipos: IPO[];
     assessments: LodAssessment[];
     answers: LodAnswer[];
     questions: LodQuestion[];
@@ -106,6 +106,7 @@ interface LodDashboardData {
 }
 
 const EMPTY_DATA: LodDashboardData = {
+    ipos: [],
     assessments: [],
     answers: [],
     questions: [],
@@ -126,6 +127,115 @@ const LEVEL_COLORS: Record<number, string> = {
 const FOR_ASSESSMENT_COLOR = '#94a3b8';
 const INCOMPLETE_COLOR = '#f59e0b';
 const DROPPED_COLOR = '#64748b';
+
+const LOD_DASHBOARD_PAGE_SIZE = 500;
+const LOD_DASHBOARD_ID_BATCH_SIZE = 100;
+const LOD_DASHBOARD_IPO_FIELDS = 'id,name,location,region';
+const LOD_DASHBOARD_ASSESSMENT_FIELDS = 'id,ipo_id,year,total_score,computed_level,manual_level,manual_override_reason,is_carried_over,is_dropped,is_complete,answered_question_count,required_question_count,questionnaire_version_id,carried_over_from_assessment_id,carried_over_from_year,carried_over_level,carried_over_total_score,assessed_by,assessor_name,updated_at';
+const LOD_DASHBOARD_ANSWER_FIELDS = 'id,assessment_id,question_id,choice_id,points_earned,remarks,actual_value,total_value,specific_answer_value,updated_at';
+const LOD_DASHBOARD_REFERENCE_FIELDS: Record<string, string> = {
+    lod_questions: 'id,section_id,text,code,description,weight,order,is_calculation_mode,actual_label,total_label,is_specific_answer_mode,specific_answer_label,created_at,is_active',
+    lod_choices: 'id,question_id,text,points,order,created_at,is_active',
+    lod_sections: 'id,title,code,order,weight,created_at,is_active',
+    lod_level_configs: 'id,level,min_score,max_score,updated_at',
+};
+
+const chunk = <T,>(items: T[], size: number) => Array.from(
+    { length: Math.ceil(items.length / size) },
+    (_, index) => items.slice(index * size, (index + 1) * size)
+);
+
+const fetchPagedLodIpos = async (region?: string): Promise<IPO[]> => {
+    if (!supabase) throw new Error('LOD data is unavailable because the database connection is not ready.');
+
+    const rows: IPO[] = [];
+    let offset = 0;
+    while (true) {
+        let query = supabase.from('ipos')
+            .select(LOD_DASHBOARD_IPO_FIELDS)
+            .order('id', { ascending: true });
+        if (region) query = query.eq('region', region);
+        const result = await query.range(offset, offset + LOD_DASHBOARD_PAGE_SIZE - 1);
+        if (result.error) throw result.error;
+
+        const page = (result.data || []) as IPO[];
+        rows.push(...page);
+        if (page.length < LOD_DASHBOARD_PAGE_SIZE) break;
+        offset += LOD_DASHBOARD_PAGE_SIZE;
+    }
+
+    return rows;
+};
+
+const fetchPagedLodAssessments = async (visibleIpoIds: number[]): Promise<LodAssessment[]> => {
+    if (!supabase) throw new Error('LOD data is unavailable because the database connection is not ready.');
+
+    const assessmentsById = new Map<number, LodAssessment>();
+    for (const ipoBatch of chunk(visibleIpoIds, LOD_DASHBOARD_ID_BATCH_SIZE)) {
+        let offset = 0;
+        while (true) {
+            const result = await supabase.from('lod_assessments')
+                .select(LOD_DASHBOARD_ASSESSMENT_FIELDS)
+                .in('ipo_id', ipoBatch)
+                .order('id', { ascending: true })
+                .range(offset, offset + LOD_DASHBOARD_PAGE_SIZE - 1);
+            if (result.error) throw result.error;
+
+            const page = (result.data || []) as LodAssessment[];
+            page.forEach(assessment => assessmentsById.set(Number(assessment.id), assessment));
+            if (page.length < LOD_DASHBOARD_PAGE_SIZE) break;
+            offset += LOD_DASHBOARD_PAGE_SIZE;
+        }
+    }
+
+    return Array.from(assessmentsById.values()).sort((left, right) => Number(left.id) - Number(right.id));
+};
+
+const fetchPagedLodAnswers = async (assessmentIds: number[]): Promise<LodAnswer[]> => {
+    if (!supabase || assessmentIds.length === 0) return [];
+
+    const answersById = new Map<number, LodAnswer>();
+    for (const assessmentBatch of chunk(assessmentIds, LOD_DASHBOARD_ID_BATCH_SIZE)) {
+        let offset = 0;
+        while (true) {
+            const result = await supabase.from('lod_answers')
+                .select(LOD_DASHBOARD_ANSWER_FIELDS)
+                .in('assessment_id', assessmentBatch)
+                .order('id', { ascending: true })
+                .range(offset, offset + LOD_DASHBOARD_PAGE_SIZE - 1);
+            if (result.error) throw result.error;
+
+            const page = (result.data || []) as LodAnswer[];
+            page.forEach(answer => answersById.set(Number(answer.id), answer));
+            if (page.length < LOD_DASHBOARD_PAGE_SIZE) break;
+            offset += LOD_DASHBOARD_PAGE_SIZE;
+        }
+    }
+
+    return Array.from(answersById.values());
+};
+
+const fetchPagedLodReferenceRows = async (tableName: string, fields: string, orderColumns: Array<{ column: string; ascending: boolean }> = [{ column: 'id', ascending: true }]) => {
+    if (!supabase) throw new Error('LOD data is unavailable because the database connection is not ready.');
+
+    const rows: any[] = [];
+    let offset = 0;
+    while (true) {
+        let query = supabase.from(tableName).select(fields);
+        orderColumns.forEach(order => {
+            query = query.order(order.column, { ascending: order.ascending });
+        });
+        const result = await query.range(offset, offset + LOD_DASHBOARD_PAGE_SIZE - 1);
+        if (result.error) throw result.error;
+
+        const page = result.data || [];
+        rows.push(...page);
+        if (page.length < LOD_DASHBOARD_PAGE_SIZE) break;
+        offset += LOD_DASHBOARD_PAGE_SIZE;
+    }
+
+    return rows;
+};
 
 const STATUS_COLORS: Record<ProgressionStatus, string> = {
     Improved: '#16a34a',
@@ -302,11 +412,14 @@ const buildSparklinePoints = (history: { year: number; level: number }[]) => {
 
 const getInsightToneClass = (status: 'green' | 'blue' | 'orange' | 'red' | 'gray') => `lod-insight lod-insight--${status}`;
 
-const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYear, onSelectLodIpo }) => {
+const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo }) => {
+    const { currentUser, getVisibilityScope } = useAuth();
+    const visibilityScope = getVisibilityScope('Level of Development');
+    const ownRegion = currentUser?.operatingUnit ? ouToRegionMap[currentUser.operatingUnit] : '';
     const [data, setData] = useState<LodDashboardData>(EMPTY_DATA);
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
-    const [yearFilter, setYearFilter] = useState(selectedYear || new Date().getFullYear().toString());
+    const [yearFilter, setYearFilter] = useState(new Date().getFullYear().toString());
     const [regionFilter, setRegionFilter] = useState('All');
     const [provinceFilter, setProvinceFilter] = useState('All');
     const [statusFilter, setStatusFilter] = useState('All');
@@ -318,10 +431,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     const [filtersTouched, setFiltersTouched] = useState(false);
     const [selectedGapSection, setSelectedGapSection] = useState<SectionGapScore | null>(null);
     const [isCompactChartViewport, setIsCompactChartViewport] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760);
-
-    useEffect(() => {
-        setYearFilter(selectedYear || new Date().getFullYear().toString());
-    }, [selectedYear]);
+    const loadSequence = useRef(0);
 
     useEffect(() => {
         const handleResize = () => {
@@ -339,51 +449,73 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
 
     useEffect(() => {
         const fetchDashboardData = async () => {
-            if (!supabase) {
-                setData(EMPTY_DATA);
-                setLoading(false);
+            const sequence = ++loadSequence.current;
+            if (!supabase || !currentUser) {
+                if (sequence === loadSequence.current) {
+                    setFetchError('LOD data is unavailable because the database or user session is not ready.');
+                    setLoading(false);
+                }
                 return;
             }
 
             setLoading(true);
             setFetchError(null);
 
-            const [
-                assessmentsResult,
-                answersResult,
-                questionsResult,
-                choicesResult,
-                sectionsResult,
-                levelConfigsResult,
-                versionsResult,
-            ] = await Promise.all([
-                supabase.from('lod_assessments').select('*'),
-                supabase.from('lod_answers').select('*'),
-                supabase.from('lod_questions').select('*'),
-                supabase.from('lod_choices').select('*'),
-                supabase.from('lod_sections').select('*').order('order', { ascending: true }),
-                supabase.from('lod_level_configs').select('*').order('level', { ascending: true }),
-                supabase.from('lod_questionnaire_versions').select('*').order('version_number', { ascending: false }),
-            ]);
+            try {
+                if (visibilityScope === 'Own OU' && !ownRegion) {
+                    throw new Error('Your operating unit is not mapped to an IPO region.');
+                }
+                const visibleIpos = await fetchPagedLodIpos(visibilityScope === 'Own OU' ? ownRegion : undefined);
+                const visibleIpoIds = visibleIpos.map(ipo => Number(ipo.id)).filter(Number.isFinite);
+                const [assessments, questions, choices, sections, levelConfigs, versions] = await Promise.all([
+                    fetchPagedLodAssessments(visibleIpoIds),
+                    fetchPagedLodReferenceRows('lod_questions', LOD_DASHBOARD_REFERENCE_FIELDS.lod_questions),
+                    fetchPagedLodReferenceRows('lod_choices', LOD_DASHBOARD_REFERENCE_FIELDS.lod_choices),
+                    fetchPagedLodReferenceRows('lod_sections', LOD_DASHBOARD_REFERENCE_FIELDS.lod_sections, [{ column: 'order', ascending: true }, { column: 'id', ascending: true }]),
+                    fetchPagedLodReferenceRows('lod_level_configs', LOD_DASHBOARD_REFERENCE_FIELDS.lod_level_configs, [{ column: 'level', ascending: true }, { column: 'id', ascending: true }]),
+                    fetchPagedLodReferenceRows('lod_questionnaire_versions', 'id,version_number,effective_year,label,config,created_by,created_by_name,created_at', [{ column: 'version_number', ascending: false }, { column: 'id', ascending: false }]),
+                ]);
 
-            const firstError = assessmentsResult.error || answersResult.error || questionsResult.error || choicesResult.error || sectionsResult.error || levelConfigsResult.error || versionsResult.error;
-            if (firstError) {
-                console.error('Error fetching LOD dashboard data:', firstError);
-                setFetchError(firstError.message || 'Unable to load LOD dashboard data.');
-                setData(EMPTY_DATA);
-            } else {
-                setData({
-                    assessments: assessmentsResult.data || [],
-                    answers: answersResult.data || [],
-                    questions: (questionsResult.data || []).filter(question => question.is_active !== false),
-                    choices: (choicesResult.data || []).filter(choice => choice.is_active !== false),
-                    sections: (sectionsResult.data || []).filter(section => section.is_active !== false).sort((a, b) => (a.order || 0) - (b.order || 0)),
-                    levelConfigs: levelConfigsResult.data || [],
-                    versions: versionsResult.data || [],
+                const targetYear = yearFilter === 'All' ? null : Number(yearFilter);
+                const assessmentsByIpo = new Map<number, LodAssessment[]>();
+                assessments.forEach(assessment => {
+                    const list = assessmentsByIpo.get(Number(assessment.ipo_id)) || [];
+                    list.push(assessment);
+                    assessmentsByIpo.set(Number(assessment.ipo_id), list);
                 });
-            }
+                assessmentsByIpo.forEach(list => list.sort((left, right) => Number(right.year) - Number(left.year) || Number(right.id) - Number(left.id)));
 
-            setLoading(false);
+                const requiredAnswerAssessmentIds = new Set<number>();
+                assessmentsByIpo.forEach(ipoAssessments => {
+                    const currentAssessment = targetYear
+                        ? ipoAssessments.find(assessment => Number(assessment.year) === targetYear) || null
+                        : ipoAssessments[0] || null;
+                    if (!currentAssessment) return;
+                    requiredAnswerAssessmentIds.add(Number(currentAssessment.id));
+                    const previousAssessment = ipoAssessments.find(assessment => Number(assessment.year) < Number(currentAssessment.year));
+                    if (previousAssessment) requiredAnswerAssessmentIds.add(Number(previousAssessment.id));
+                });
+
+                const answers = await fetchPagedLodAnswers(Array.from(requiredAnswerAssessmentIds));
+                if (sequence !== loadSequence.current) return;
+
+                setData({
+                    ipos: visibleIpos,
+                    assessments,
+                    answers,
+                    questions: questions.filter(question => question.is_active !== false) as LodQuestion[],
+                    choices: choices.filter(choice => choice.is_active !== false) as LodChoice[],
+                    sections: sections.filter(section => section.is_active !== false).sort((a, b) => (a.order || 0) - (b.order || 0)) as LodSection[],
+                    levelConfigs: levelConfigs as LodLevelConfig[],
+                    versions: versions as LodQuestionnaireVersion[],
+                });
+            } catch (error: any) {
+                if (sequence !== loadSequence.current) return;
+                console.error('Error fetching LOD dashboard data:', error);
+                setFetchError(error?.message || 'Unable to load LOD dashboard data.');
+            } finally {
+                if (sequence === loadSequence.current) setLoading(false);
+            }
         };
 
         fetchDashboardData();
@@ -394,10 +526,18 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             unsubscribe();
             window.removeEventListener('focus', refreshOnFocus);
         };
-    }, []);
+    }, [currentUser, ownRegion, visibilityScope, yearFilter]);
+
+    useEffect(() => {
+        if (loading || yearFilter === 'All' || data.assessments.length === 0) return;
+        const availableYears = Array.from(new Set<number>(data.assessments.map(assessment => Number(assessment.year)).filter((year): year is number => Number.isFinite(year))));
+        if (availableYears.length > 0 && !availableYears.includes(Number(yearFilter))) {
+            setYearFilter(String(Math.max(...availableYears)));
+        }
+    }, [data.assessments, loading, yearFilter]);
 
     const model = useMemo(() => {
-        const visibleIpoIds = new Set((ipos || []).map(ipo => Number(ipo.id)));
+        const visibleIpoIds = new Set(data.ipos.map(ipo => Number(ipo.id)));
         const visibleAssessments = data.assessments.filter(assessment => visibleIpoIds.has(Number(assessment.ipo_id)));
         const availableYears = Array.from(
             new Set(visibleAssessments.map(assessment => Number(assessment.year)).filter(year => Number.isFinite(year)))
@@ -433,7 +573,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
         });
         assessmentYearsByIpo.forEach(list => list.sort((a, b) => Number(b.year) - Number(a.year)));
 
-        const rows = (ipos || []).map(ipo => {
+        const rows = data.ipos.map(ipo => {
             const ipoAssessments = assessmentYearsByIpo.get(Number(ipo.id)) || [];
             const currentAssessment = targetYear
                 ? ipoAssessments.find(assessment => Number(assessment.year) === targetYear) || null
@@ -521,7 +661,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             answersByAssessmentQuestion,
             sections,
         };
-    }, [data, ipos, yearFilter]);
+    }, [data, yearFilter]);
 
     const regionOptions = useMemo(() => {
         return Array.from(new Set(model.rows.map(row => row.region).filter(Boolean))).sort();
@@ -915,7 +1055,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     const pageCount = Math.max(1, Math.ceil(searchedRows.length / itemsPerPage));
 
     const handleResetFilters = () => {
-        setYearFilter(selectedYear || new Date().getFullYear().toString());
+        setYearFilter(new Date().getFullYear().toString());
         setRegionFilter('All');
         setProvinceFilter('All');
         setStatusFilter('All');
@@ -1058,11 +1198,13 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
         levelFilter === 'All' ? 'All Levels' : LEVEL_LABELS[Number(levelFilter)] || 'All Levels',
     ];
 
-    if (loading) {
+    const hasLoadedData = data.ipos.length > 0 || data.assessments.length > 0;
+
+    if (loading && !hasLoadedData) {
         return <div className="dashboard-empty dashboard-empty--center">Loading LOD dashboard data...</div>;
     }
 
-    if (fetchError) {
+    if (fetchError && !hasLoadedData) {
         return (
             <div className="dashboard-panel">
                 <p className="dashboard-empty dashboard-empty--center">{fetchError}</p>
@@ -1072,6 +1214,11 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
 
     return (
         <div className="lod-dashboard dashboard-view animate-fadeIn">
+            {fetchError && (
+                <div className="dashboard-panel dashboard-panel--warning" role="status">
+                    {fetchError} Showing the last successfully loaded LOD data.
+                </div>
+            )}
             <section className="lod-dashboard-hero" aria-labelledby="lod-dashboard-title">
                 <div>
                     <p className="lod-dashboard-eyebrow">IPO Level of Development</p>
