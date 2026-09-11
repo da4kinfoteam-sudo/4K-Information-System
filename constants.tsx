@@ -559,7 +559,7 @@ export interface MarketingPartner extends BaseEntity {
     location: string;
     region: string;
     commodityNeeds: CommodityNeed[]; 
-    buyerType: 'Private Company' | 'Government';
+    buyerType: 'Private Company' | 'Government' | 'Community';
     paymentMethods: string[]; 
     linkedIpoNames: string[]; 
     remarks?: string;

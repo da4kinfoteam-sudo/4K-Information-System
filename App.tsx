@@ -46,7 +46,7 @@ import { supabase } from './supabaseClient'; // Import supabase client
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DcfPolicyProvider } from './contexts/DcfPolicyContext';
 import { useDcfPolicyGuard } from './hooks/useDcfPolicyGuard';
-import { DataScope, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
+import { DataScope, fetchMarketingDatabasePartners, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
 import { clearUserCache, getScopeCacheMeta, readScopedCache, writeScopedCache } from './lib/localScopedCache';
 import { normalizeStaffingExpenses } from './lib/staffingExpenseIdentity';
 import {
@@ -103,6 +103,14 @@ const parseAppRoute = (fullPath: string) => {
         params: new URLSearchParams(queryPart),
     };
 };
+
+const MARKETING_ROUTE_PATHS = [
+    '/marketing-database',
+    '/marketing-profile-detail',
+    '/marketing-profile-edit',
+    '/marketing-linkage-edit',
+    '/marketing-linkage-detail',
+] as const;
 
 const getRouteId = (params: URLSearchParams): number | null => {
     const rawId = params.get('id');
@@ -224,6 +232,16 @@ const AppContent: React.FC = () => {
     const [subprojectWorkflowIpos, setSubprojectWorkflowIpos] = useState<IPO[]>([]);
     const [activities, setActivities, activitiesSync] = useSupabaseTable<Activity>('activities', sampleActivities, scopedTableOptions);
     const [marketingPartners, setMarketingPartners, marketingPartnersSync] = useSupabaseTable<MarketingPartner>('marketing_partners', sampleMarketingPartners, scopedTableOptions);
+    const [marketingDatabasePartners, setMarketingDatabasePartners] = useState<MarketingPartner[]>(supabase ? [] : sampleMarketingPartners);
+    const [isMarketingDatabaseLoading, setIsMarketingDatabaseLoading] = useState(false);
+    const [marketingDatabaseError, setMarketingDatabaseError] = useState<string | null>(null);
+    const [hasLoadedMarketingDatabase, setHasLoadedMarketingDatabase] = useState(!supabase);
+    const marketingDatabaseLoadKeyRef = useRef<string | null>(null);
+    const [marketingLinkageIpos, setMarketingLinkageIpos] = useState<IPO[]>(supabase ? [] : sampleIPOs);
+    const [isMarketingLinkageIposLoading, setIsMarketingLinkageIposLoading] = useState(false);
+    const [marketingLinkageIpoError, setMarketingLinkageIpoError] = useState<string | null>(null);
+    const marketingLinkageIpoLoadKeyRef = useRef<string | null>(null);
+    const isMarketingRoute = (MARKETING_ROUTE_PATHS as readonly string[]).includes(routePath);
     
     // Program Management States - loaded at startup and refreshed manually
     const [officeReqs, setOfficeReqs, officeReqsSync] = useSupabaseTable<OfficeRequirement>('office_requirements', sampleOfficeRequirements, scopedTableOptions);
@@ -474,10 +492,11 @@ const AppContent: React.FC = () => {
                 : (currentUser?.operatingUnit || overrides.operatingUnit || 'All'),
             tier: overrides.tier ?? 'Tier 1',
             fundType: overrides.fundType ?? 'Current',
+            skipMarketingPartners: overrides.skipMarketingPartners ?? isMarketingRoute,
             canViewAllOus,
             requestedBy: currentUser?.id ?? null
         };
-    }, [currentUser, getVisibilityScope]);
+    }, [currentUser, getVisibilityScope, isMarketingRoute]);
 
     const applyScopedData = useCallback((data: Awaited<ReturnType<typeof loadScopedAppData>>) => {
         replaceSubprojects(data.subprojects);
@@ -584,16 +603,71 @@ const AppContent: React.FC = () => {
         }
     }, [applyScopedData, buildDefaultDataScope]);
 
+    const loadMarketingDatabaseData = useCallback(async (force = false) => {
+        if (!currentUser || !hasAccess('Marketing Database', 'view')) return;
+
+        const loadKey = String(currentUser.id);
+        if (!force && marketingDatabaseLoadKeyRef.current === loadKey) return;
+
+        marketingDatabaseLoadKeyRef.current = loadKey;
+        setIsMarketingDatabaseLoading(true);
+        setMarketingDatabaseError(null);
+        setHasLoadedMarketingDatabase(false);
+        try {
+            const data = await fetchMarketingDatabasePartners();
+            setMarketingDatabasePartners(data as MarketingPartner[]);
+            setHasLoadedMarketingDatabase(true);
+        } catch (error: any) {
+            marketingDatabaseLoadKeyRef.current = null;
+            setHasLoadedMarketingDatabase(true);
+            setMarketingDatabaseError(error?.message || 'Unable to load the Marketing Database.');
+            console.error('Marketing Database refresh failed:', error);
+        } finally {
+            setIsMarketingDatabaseLoading(false);
+        }
+    }, [currentUser, hasAccess]);
+
+    const loadMarketingLinkageIpos = useCallback(async (force = false) => {
+        if (!currentUser || !hasAccess('Marketing Database', 'view')) return;
+
+        const visibilityScope = getVisibilityScope('Marketing Database');
+        const region = currentUser.operatingUnit ? ouToRegionMap[currentUser.operatingUnit] : null;
+        const loadKey = `${currentUser.id}:${visibilityScope}:${region || ''}`;
+        if (!force && marketingLinkageIpoLoadKeyRef.current === loadKey) return;
+
+        marketingLinkageIpoLoadKeyRef.current = loadKey;
+        setIsMarketingLinkageIposLoading(true);
+        setMarketingLinkageIpoError(null);
+        try {
+            const data = await fetchWorkflowIpos({
+                canViewAllOperatingUnits: visibilityScope === 'All',
+                operatingUnit: currentUser.operatingUnit,
+            });
+            setMarketingLinkageIpos(data);
+        } catch (error: any) {
+            marketingLinkageIpoLoadKeyRef.current = null;
+            setMarketingLinkageIpoError(error?.message || 'Unable to load IPO choices.');
+            console.error('Marketing linkage IPO lookup failed:', error);
+        } finally {
+            setIsMarketingLinkageIposLoading(false);
+        }
+    }, [currentUser, getVisibilityScope, hasAccess]);
+
     const refreshAllData = useCallback(async () => {
-        const currentScope = activeDataScopeRef.current || {};
+        const currentScope = {
+            ...(activeDataScopeRef.current || {}),
+            skipMarketingPartners: isMarketingRoute,
+        };
         await Promise.all([
             ensureDataScope(currentScope, true),
+            isMarketingRoute ? loadMarketingDatabaseData(true) : Promise.resolve(),
+            isMarketingRoute ? loadMarketingLinkageIpos(true) : Promise.resolve(),
             refreshUsersList(),
             refreshPermissions(),
             refreshUser()
         ]);
         window.dispatchEvent(new CustomEvent('app-data-refreshed'));
-    }, [ensureDataScope, refreshPermissions, refreshUser, refreshUsersList]);
+    }, [ensureDataScope, isMarketingRoute, loadMarketingDatabaseData, refreshPermissions, refreshUser, refreshUsersList]);
 
     const clearLocalCache = useCallback(async () => {
         if (!currentUser?.id) return;
@@ -607,6 +681,12 @@ const AppContent: React.FC = () => {
         if (!isAuthReady) return;
         ensureDataScope();
     }, [ensureDataScope, isAuthReady]);
+
+    useEffect(() => {
+        if (!isAuthReady || !currentUser || !isMarketingRoute) return;
+        void loadMarketingDatabaseData();
+        void loadMarketingLinkageIpos();
+    }, [currentUser, isAuthReady, isMarketingRoute, loadMarketingDatabaseData, loadMarketingLinkageIpos]);
 
     // Selection States
     const [selectedSubproject, setSelectedSubproject] = useState<Subproject | null>(null);
@@ -636,6 +716,28 @@ const AppContent: React.FC = () => {
     const [activityEditMode, setActivityEditMode] = useState<'create' | 'details' | 'expenses' | 'accomplishment'>('create');
     const [subprojectDetailMode, setSubprojectDetailMode] = useState<'none' | 'details' | 'commodity' | 'budget' | 'accomplishment'>('none');
 
+    const handleMarketingPartnerUpdated = useCallback((updatedPartner: MarketingPartner) => {
+        setMarketingDatabasePartners(previous => {
+            const exists = previous.some(partner => Number(partner.id) === Number(updatedPartner.id));
+            return exists
+                ? previous.map(partner => Number(partner.id) === Number(updatedPartner.id) ? updatedPartner : partner)
+                : [updatedPartner, ...previous];
+        });
+        // Keep already-loaded scoped consumers current without adding global partners
+        // to their dataset or widening their Supabase query.
+        setMarketingPartners(previous => previous.map(partner => (
+            Number(partner.id) === Number(updatedPartner.id) ? updatedPartner : partner
+        )));
+        setSelectedMarketingPartner(updatedPartner);
+    }, []);
+
+    const handleMarketingPartnersDeleted = useCallback((deletedIds: Array<number | string>) => {
+        const ids = new Set(deletedIds.map(id => String(id)));
+        setMarketingDatabasePartners(previous => previous.filter(partner => !ids.has(String(partner.id))));
+        setMarketingPartners(previous => previous.filter(partner => !ids.has(String(partner.id))));
+        setSelectedMarketingPartner(previous => previous && ids.has(String(previous.id)) ? null : previous);
+    }, []);
+
     useEffect(() => {
         const routeId = getRouteId(routeParams);
         if (routePath === '/ipo-detail' && routeId !== null) {
@@ -644,7 +746,7 @@ const AppContent: React.FC = () => {
         }
 
         if (['/marketing-profile-detail', '/marketing-profile-edit', '/marketing-linkage-edit', '/marketing-linkage-detail'].includes(routePath) && routeId !== null) {
-            const routePartner = marketingPartners.find(partner => Number(partner.id) === routeId) || null;
+            const routePartner = marketingDatabasePartners.find(partner => Number(partner.id) === routeId) || null;
             if (routePartner && Number(selectedMarketingPartner?.id) !== Number(routePartner.id)) setSelectedMarketingPartner(routePartner);
             const linkageKey = routeParams.get('linkageKey');
             if (linkageKey !== null && String(selectedMarketingLinkageKey) !== linkageKey) setSelectedMarketingLinkageKey(linkageKey);
@@ -679,7 +781,7 @@ const AppContent: React.FC = () => {
         activityEditMode,
         activityMonitoringReports,
         ipos,
-        marketingPartners,
+        marketingDatabasePartners,
         routeParams,
         routePath,
         selectedIpo?.id,
@@ -699,11 +801,6 @@ const AppContent: React.FC = () => {
                 case '/program-management/staffing-detail': return { table: 'staffing_requirements' as const, module: 'Program Management', items: staffingReqs, select: setSelectedStaffingReq };
                 case '/program-management/other-expense-detail': return { table: 'other_program_expenses' as const, module: 'Program Management', items: otherProgramExpenses, select: setSelectedOtherExpense };
                 case '/ipo-detail': return { table: 'ipos' as const, module: 'IPO Management', items: ipos, select: setSelectedIpo };
-                case '/marketing-profile-detail':
-                case '/marketing-profile-edit':
-                case '/marketing-linkage-edit':
-                case '/marketing-linkage-detail':
-                    return { table: 'marketing_partners' as const, module: 'Marketing Database', items: marketingPartners, select: setSelectedMarketingPartner };
                 case '/activity-edit':
                     return routeParams.get('action')
                         ? { table: 'activities' as const, module: 'Activities', items: activities, select: setSelectedActivity }
@@ -738,7 +835,7 @@ const AppContent: React.FC = () => {
             if (!cancelled) setIsDirectRouteLookupLoading(false);
         });
         return () => { cancelled = true; };
-    }, [activities, currentUser, getVisibilityScope, hasAccess, ipos, marketingPartners, officeReqs, otherProgramExpenses, routeParams, routePath, staffingReqs, subprojects]);
+    }, [activities, currentUser, getVisibilityScope, hasAccess, ipos, marketingDatabasePartners, officeReqs, otherProgramExpenses, routeParams, routePath, staffingReqs, subprojects]);
 
     useEffect(() => {
         if (routePath !== '/activity-monitoring-report' || !currentUser) return;
@@ -878,7 +975,7 @@ const AppContent: React.FC = () => {
             return items.find(candidate => candidate.id === routeId) || null;
         };
         const activeMarketingPartner = routeId !== null
-            ? marketingPartners.find(partner => Number(partner.id) === routeId) || selectedMarketingPartner
+            ? marketingDatabasePartners.find(partner => Number(partner.id) === routeId) || selectedMarketingPartner
             : selectedMarketingPartner;
         const activeLinkageKey = routeParams.get('linkageKey') ?? selectedMarketingLinkageKey;
         const selectedLinkage = activeMarketingPartner?.marketingLinkages?.find((linkage, index) => {
@@ -968,7 +1065,7 @@ const AppContent: React.FC = () => {
         visibleStaffingReqs,
         visibleSubprojects,
         ipos,
-        marketingPartners,
+        marketingDatabasePartners,
     ]);
 
     const returnContext = useMemo(() => resolveAppReturnContext(routeParams), [routeParams]);
@@ -1476,6 +1573,8 @@ const AppContent: React.FC = () => {
     const renderPage = () => {
         const checkAccess = (module: string) => hasAccess(module, 'view');
         const denied = <AccessDenied onBackToHome={() => navigateTo('/')} />;
+        const marketingIpoVisibilityScope = currentUser ? getVisibilityScope('Marketing Database') : 'Own OU';
+        const marketingIpoRegion = currentUser?.operatingUnit ? ouToRegionMap[currentUser.operatingUnit] : null;
 
         // Phase 6: Guard clauses for module-level access
         if (isDashboardPagePath(routePath) && !checkAccess('Dashboards')) return denied;
@@ -2121,25 +2220,29 @@ const AppContent: React.FC = () => {
             // NEW RESOURCE ROUTES
             case '/marketing-database':
                 return <MarketingDatabase 
-                            partners={marketingPartners}
-                            setPartners={setMarketingPartners}
+                            partners={marketingDatabasePartners}
+                            setPartners={setMarketingDatabasePartners}
                             onSelectPartner={handleSelectMarketingPartner}
                             commodityCategories={derivedCommodityCategories}
+                            isLoading={isMarketingDatabaseLoading}
+                            loadError={marketingDatabaseError}
+                            onPartnerUpdated={handleMarketingPartnerUpdated}
+                            onPartnersDeleted={handleMarketingPartnersDeleted}
                         />;
             case '/marketing-profile-detail': {
                 const routePartnerId = getRouteId(routeParams);
                 const routePartner = routePartnerId !== null
                     ? (Number(selectedMarketingPartner?.id) === routePartnerId
                         ? selectedMarketingPartner
-                        : marketingPartners.find(partner => Number(partner.id) === routePartnerId) || null)
+                        : marketingDatabasePartners.find(partner => Number(partner.id) === routePartnerId) || null)
                     : selectedMarketingPartner;
                 if (!routePartner) {
-                    if (routePartnerId !== null && (isRouteDataLoading || isDirectRouteLookupLoading)) return <LoadingState label="Loading marketing partner..." />;
-                    return <DetailRouteFallback title={routePartnerId === null ? 'No marketing partner selected' : 'Marketing partner not found'} message={routePartnerId === null ? 'Open a partner from the Marketing Database.' : 'This marketing partner is unavailable or outside your visibility scope.'} actionLabel="Back to Marketing Database" onAction={() => navigateTo('/marketing-database')} />;
+                    if (isMarketingDatabaseLoading || !hasLoadedMarketingDatabase) return <LoadingState label="Loading marketing partner..." />;
+                    return <DetailRouteFallback title={routePartnerId === null ? 'No marketing partner selected' : 'Marketing partner not found'} message={routePartnerId === null ? 'Open a partner from the Marketing Database.' : marketingDatabaseError || 'This marketing partner is unavailable.'} actionLabel="Back to Marketing Database" onAction={() => navigateTo('/marketing-database')} />;
                 }
                 return <MarketProfileDetail 
                             partner={routePartner}
-                            ipos={ipos}
+                            ipos={marketingLinkageIpos}
                             onEditDetails={() => {
                                 navigateTo(buildContextualRecordPath('/marketing-profile-edit', routePartner.id));
                             }}
@@ -2156,26 +2259,23 @@ const AppContent: React.FC = () => {
             case '/marketing-profile-edit': {
                 const routePartnerId = getRouteId(routeParams);
                 const routePartner = routePartnerId !== null
-                    ? (Number(selectedMarketingPartner?.id) === routePartnerId ? selectedMarketingPartner : marketingPartners.find(partner => Number(partner.id) === routePartnerId) || null)
+                    ? (Number(selectedMarketingPartner?.id) === routePartnerId ? selectedMarketingPartner : marketingDatabasePartners.find(partner => Number(partner.id) === routePartnerId) || null)
                     : selectedMarketingPartner;
                 if (!routePartner) {
-                    if (routePartnerId !== null && (isRouteDataLoading || isDirectRouteLookupLoading)) return <LoadingState label="Loading marketing partner..." />;
-                    return <DetailRouteFallback title="Marketing partner unavailable" message="The selected marketing partner was not found or is outside your visibility scope." actionLabel="Back to Marketing Database" onAction={() => navigateTo('/marketing-database')} />;
+                    if (isMarketingDatabaseLoading || !hasLoadedMarketingDatabase) return <LoadingState label="Loading marketing partner..." />;
+                    return <DetailRouteFallback title="Marketing partner unavailable" message={marketingDatabaseError || 'The selected marketing partner was not found.'} actionLabel="Back to Marketing Database" onAction={() => navigateTo('/marketing-database')} />;
                 }
                 return <MarketProfileEdit 
                             partner={routePartner}
                             onBack={() => navigateTo(buildContextualRecordPath('/marketing-profile-detail', routePartner.id))}
-                            onUpdatePartner={(updated) => {
-                                setMarketingPartners(prev => prev.map(p => p.id === updated.id ? updated : p));
-                                setSelectedMarketingPartner(updated);
-                            }}
+                            onUpdatePartner={handleMarketingPartnerUpdated}
                             commodityCategories={derivedCommodityCategories}
                         />;
             }
             case '/marketing-linkage-edit': {
                 const routePartnerId = getRouteId(routeParams);
                 const routePartner = routePartnerId !== null
-                    ? (Number(selectedMarketingPartner?.id) === routePartnerId ? selectedMarketingPartner : marketingPartners.find(partner => Number(partner.id) === routePartnerId) || null)
+                    ? (Number(selectedMarketingPartner?.id) === routePartnerId ? selectedMarketingPartner : marketingDatabasePartners.find(partner => Number(partner.id) === routePartnerId) || null)
                     : selectedMarketingPartner;
                 if (!routePartner) {
                     if (routePartnerId !== null && (isRouteDataLoading || isDirectRouteLookupLoading)) return <LoadingState label="Loading marketing partner..." />;
@@ -2183,23 +2283,24 @@ const AppContent: React.FC = () => {
                 }
                 return <MarketLinkageEdit 
                             partner={routePartner}
-                            ipos={ipos}
+                            ipos={marketingLinkageIpos}
+                            canViewAllIpos={marketingIpoVisibilityScope === 'All'}
+                            allowedIpoRegion={marketingIpoRegion}
+                            isLoadingIpos={isMarketingLinkageIposLoading}
+                            ipoLoadError={marketingLinkageIpoError}
                             onBack={() => navigateTo(buildContextualRecordPath('/marketing-profile-detail', routePartner.id))}
-                            onUpdatePartner={(updated) => {
-                                setMarketingPartners(prev => prev.map(p => p.id === updated.id ? updated : p));
-                                setSelectedMarketingPartner(updated);
-                            }}
+                            onUpdatePartner={handleMarketingPartnerUpdated}
                         />;
             }
             case '/marketing-linkage-detail': {
                 const routePartnerId = getRouteId(routeParams);
                 const routePartner = routePartnerId !== null
-                    ? (Number(selectedMarketingPartner?.id) === routePartnerId ? selectedMarketingPartner : marketingPartners.find(partner => Number(partner.id) === routePartnerId) || null)
+                    ? (Number(selectedMarketingPartner?.id) === routePartnerId ? selectedMarketingPartner : marketingDatabasePartners.find(partner => Number(partner.id) === routePartnerId) || null)
                     : selectedMarketingPartner;
                 const linkageKey = routeParams.get('linkageKey') ?? selectedMarketingLinkageKey;
                 if (!routePartner) {
-                    if (routePartnerId !== null && (isRouteDataLoading || isDirectRouteLookupLoading)) return <LoadingState label="Loading market linkage..." />;
-                    return <DetailRouteFallback title="Marketing partner unavailable" message="The parent marketing partner was not found or is outside your visibility scope." actionLabel="Back to Marketing Database" onAction={() => navigateTo('/marketing-database')} />;
+                    if (isMarketingDatabaseLoading || !hasLoadedMarketingDatabase) return <LoadingState label="Loading market linkage..." />;
+                    return <DetailRouteFallback title="Marketing partner unavailable" message={marketingDatabaseError || 'The parent marketing partner was not found.'} actionLabel="Back to Marketing Database" onAction={() => navigateTo('/marketing-database')} />;
                 }
                 if (linkageKey === null || linkageKey === undefined || !(routePartner.marketingLinkages || []).some((linkage, index) => String(linkage.id ?? index) === String(linkageKey))) {
                     return <DetailRouteFallback title="Market linkage not found" message="The selected linkage is unavailable for this marketing partner." actionLabel="Back to Marketing Partner" onAction={() => navigateTo(buildContextualRecordPath('/marketing-profile-detail', routePartner.id))} />;
@@ -2207,12 +2308,13 @@ const AppContent: React.FC = () => {
                 return <MarketLinkageDetail
                             partner={routePartner}
                             linkageKey={linkageKey}
-                            ipos={ipos}
+                            ipos={marketingLinkageIpos}
+                            canViewAllIpos={marketingIpoVisibilityScope === 'All'}
+                            allowedIpoRegion={marketingIpoRegion}
+                            isLoadingIpos={isMarketingLinkageIposLoading}
+                            ipoLoadError={marketingLinkageIpoError}
                             onBack={() => navigateTo(buildContextualRecordPath('/marketing-profile-detail', routePartner.id))}
-                            onUpdatePartner={(updated) => {
-                                setMarketingPartners(prev => prev.map(p => p.id === updated.id ? updated : p));
-                                setSelectedMarketingPartner(updated);
-                            }}
+                            onUpdatePartner={handleMarketingPartnerUpdated}
                         />;
             }
             case '/level-of-development':

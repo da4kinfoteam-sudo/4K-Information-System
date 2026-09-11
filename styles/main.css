@@ -23111,6 +23111,42 @@ button.bar1-drilldown-card:focus-visible {
   color: var(--status-warning);
 }
 
+.market-linkage-table-wrap {
+  min-width: 0;
+}
+
+.market-linkage-table-scroll {
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  max-width: 100%;
+}
+
+.market-linkage-table {
+  min-width: 1180px;
+  table-layout: auto;
+}
+
+.market-linkage-table th,
+.market-linkage-table td {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-linkage-table th {
+  background: var(--app-surface-muted);
+}
+
+.market-linkage-table tr.data-table__row--interactive {
+  cursor: pointer;
+}
+
+.market-linkage-table tr.data-table__row--interactive:hover td,
+.market-linkage-table tr.data-table__row--interactive:focus-visible td {
+  background: color-mix(in srgb, var(--brand-primary) 6%, var(--app-surface));
+}
+
 .market-month-cell {
   align-items: center;
   background: var(--app-surface);

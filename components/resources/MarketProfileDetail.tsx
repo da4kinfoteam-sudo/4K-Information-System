@@ -205,51 +205,75 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                 </div>
                             </div>
                             {marketingLinkageItems.length > 0 ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {linkagePagination.paginatedData.map(({ link, index }) => {
-                                        const linkSales = calculateMarketLinkageSales(link);
-                                        return (
-                                        <button
-                                            type="button"
-                                            key={link.id ?? index}
-                                            onClick={() => onSelectLinkage(link.id ?? index)}
-                                            className="market-link-card"
-                                            title={`Open market linkage details for ${link.ipoName}`}
-                                        >
-                                            <div className="flex justify-between items-start">
-                                                <h4 className="market-link-card__title">{link.ipoName}</h4>
-                                                <span className={`status-badge status-badge--compact ${link.negotiationStatus === 'Contract Signed' ? 'status-badge--approved' : 'status-badge--pending'}`}>
-                                                    {link.negotiationStatus}
-                                                </span>
-                                            </div>
-                                            <div className="market-link-card__grid">
-                                                <div><p className="market-link-card__label">Commodity Sold</p><p className={link.commodityName ? 'market-link-card__value' : 'market-link-card__value is-missing'}>{getLinkageCommodityLabel(link)}</p></div>
-                                                <div><p className="market-link-card__label">Qty Agreement</p><p className="market-link-card__value">{formatNumber(linkSales.quantity)} {linkSales.unitOfMeasure} ({link.agreedQuantityTimeframe})</p></div>
-                                                <div><p className="market-link-card__label">Agreed Price</p><p className="market-link-card__value">{formatCurrency(linkSales.pricePerUnit)}/{linkSales.unitOfMeasure}</p></div>
-                                                <div><p className="market-link-card__label">Sales Value</p><p className="market-link-card__value">{formatCurrency(linkSales.salesValue)}</p></div>
-                                                <div><p className="market-link-card__label">Agreement Type</p><p className="market-link-card__value">{link.agreementType}</p></div>
-                                                <div><p className="market-link-card__label">Effective Date</p><p className="market-link-card__value">{link.agreementDate ? new Date(link.agreementDate).toLocaleDateString() : 'N/A'}</p></div>
-                                            </div>
-                                            {link.testBuyConducted && (
-                                                <div className="market-link-card__note">
-                                                    <p className="market-link-card__label">Test Buy Completed</p>
-                                                    <p className="market-link-card__copy">"{link.testBuyFeedback || 'No feedback provided.'}"</p>
-                                                </div>
-                                            )}
-                                            <p className="table-link">Open details</p>
-                                        </button>
-                                        );
-                                    })}
-                                    <div className="md:col-span-2">
-                                        <PaginationControls
-                                            currentPage={linkagePagination.currentPage}
-                                            totalPages={linkagePagination.totalPages}
-                                            onPageChange={linkagePagination.setCurrentPage}
-                                            itemsPerPage={linkagePagination.itemsPerPage}
-                                            onItemsPerPageChange={linkagePagination.setItemsPerPage}
-                                            totalItems={marketingLinkageItems.length}
-                                        />
+                                <div className="market-linkage-table-wrap">
+                                    <div className="data-table-scroll market-linkage-table-scroll">
+                                        <table className="data-table market-linkage-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>IPO</th>
+                                                    <th>Region</th>
+                                                    <th>Commodity</th>
+                                                    <th>Status</th>
+                                                    <th>Quantity</th>
+                                                    <th>Agreed Price</th>
+                                                    <th>Sales Value</th>
+                                                    <th>Agreement</th>
+                                                    <th>Effective Date</th>
+                                                    <th>Test Buy</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {linkagePagination.paginatedData.map(({ link, index }) => {
+                                                    const linkSales = calculateMarketLinkageSales(link);
+                                                    const testBuySummary = link.testBuyConducted
+                                                        ? [
+                                                            'Conducted',
+                                                            link.testBuyDate ? new Date(link.testBuyDate).toLocaleDateString() : '',
+                                                            link.testBuyQuantity ? `${formatNumber(link.testBuyQuantity)} ${linkSales.unitOfMeasure}` : '',
+                                                            link.testBuyFeedback || '',
+                                                        ].filter(Boolean).join(' · ')
+                                                        : 'Not recorded';
+                                                    const linkageLabel = `Open market linkage details for ${link.ipoName}`;
+                                                    return (
+                                                        <tr
+                                                            key={link.id ?? index}
+                                                            className="data-table__row--interactive"
+                                                            role="button"
+                                                            tabIndex={0}
+                                                            aria-label={linkageLabel}
+                                                            title={linkageLabel}
+                                                            onClick={() => onSelectLinkage(link.id ?? index)}
+                                                            onKeyDown={event => {
+                                                                if (event.key === 'Enter' || event.key === ' ') {
+                                                                    event.preventDefault();
+                                                                    onSelectLinkage(link.id ?? index);
+                                                                }
+                                                            }}
+                                                        >
+                                                            <td className="data-table__cell--primary data-table__cell--nowrap">{link.ipoName || 'Unassigned'}</td>
+                                                            <td className="data-table__cell--muted data-table__cell--nowrap">{link.region || 'Unassigned'}</td>
+                                                            <td className={`data-table__cell--nowrap ${link.commodityName ? '' : 'data-table__cell--soft'}`} title={getLinkageCommodityLabel(link)}>{getLinkageCommodityLabel(link)}</td>
+                                                            <td className="data-table__cell--nowrap"><span className={`status-badge status-badge--compact ${link.negotiationStatus === 'Contract Signed' ? 'status-badge--approved' : 'status-badge--pending'}`}>{link.negotiationStatus}</span></td>
+                                                            <td className="data-table__cell--nowrap">{formatNumber(linkSales.quantity)} {linkSales.unitOfMeasure} ({link.agreedQuantityTimeframe})</td>
+                                                            <td className="data-table__cell--nowrap">{formatCurrency(linkSales.pricePerUnit)}/{linkSales.unitOfMeasure}</td>
+                                                            <td className="data-table__cell--nowrap">{formatCurrency(linkSales.salesValue)}</td>
+                                                            <td className="data-table__cell--nowrap">{link.agreementType}</td>
+                                                            <td className="data-table__cell--nowrap">{link.agreementDate ? new Date(link.agreementDate).toLocaleDateString() : 'N/A'}</td>
+                                                            <td className="data-table__cell--nowrap" title={testBuySummary}>{testBuySummary}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
                                     </div>
+                                    <PaginationControls
+                                        currentPage={linkagePagination.currentPage}
+                                        totalPages={linkagePagination.totalPages}
+                                        onPageChange={linkagePagination.setCurrentPage}
+                                        itemsPerPage={linkagePagination.itemsPerPage}
+                                        onItemsPerPageChange={linkagePagination.setItemsPerPage}
+                                        totalItems={marketingLinkageItems.length}
+                                    />
                                 </div>
                             ) : (
                                 <div className="detail-empty">
