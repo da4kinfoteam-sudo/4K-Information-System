@@ -8,6 +8,10 @@ import { supabase } from '../../supabaseClient';
 interface MarketLinkageEditProps {
     partner: MarketingPartner;
     ipos: IPO[];
+    canViewAllIpos?: boolean;
+    allowedIpoRegion?: string | null;
+    isLoadingIpos?: boolean;
+    ipoLoadError?: string | null;
     onBack: () => void;
     onUpdatePartner: (partner: MarketingPartner) => void;
 }
@@ -43,7 +47,16 @@ const getLinkedIpoNames = (linkages: MarketLinkage[]) => (
     Array.from(new Set(linkages.map(link => link.ipoName).filter(Boolean)))
 );
 
-const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, onBack, onUpdatePartner }) => {
+const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({
+    partner,
+    ipos,
+    canViewAllIpos = false,
+    allowedIpoRegion = null,
+    isLoadingIpos = false,
+    ipoLoadError = null,
+    onBack,
+    onUpdatePartner,
+}) => {
     const { currentUser } = useAuth();
     const [tempLinkage, setTempLinkage] = useState<MarketLinkage>(createBlankLinkage);
     const [isSaving, setIsSaving] = useState(false);
@@ -54,6 +67,14 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
         if (!tempLinkage.region) return [];
         return ipos.filter(i => i.region === tempLinkage.region).sort((a, b) => a.name.localeCompare(b.name));
     }, [tempLinkage.region, ipos]);
+
+    const availableRegions = useMemo(() => (
+        canViewAllIpos
+            ? philippineRegions
+            : allowedIpoRegion
+                ? [allowedIpoRegion]
+                : []
+    ), [allowedIpoRegion, canViewAllIpos]);
 
     const handleCommoditySoldChange = (commodityNeedId: string) => {
         const selectedNeed = commodityNeeds.find(need => String(need.id) === commodityNeedId);
@@ -73,6 +94,10 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
         }
         if (!tempLinkage.region || !tempLinkage.ipoName) {
             alert('Region and IPO are required.');
+            return;
+        }
+        if (!canViewAllIpos && tempLinkage.region !== allowedIpoRegion) {
+            alert('You can only link an IPO within your permitted operating-unit region.');
             return;
         }
         if (!tempLinkage.commodityNeedId || !tempLinkage.commodityName) {
@@ -136,18 +161,22 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
                             Add company commodity needs first before creating market linkages.
                         </div>
                     )}
+                    {ipoLoadError && <div className="notice notice--warning">{ipoLoadError}</div>}
+                    {!canViewAllIpos && !allowedIpoRegion && (
+                        <div className="notice notice--warning">No operating-unit region is available for IPO selection.</div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="form-label form-label--compact">Region</label>
-                            <select value={tempLinkage.region} onChange={e => setTempLinkage({ ...tempLinkage, region: e.target.value, ipoName: '' })} className={commonInputClasses}>
+                            <select value={tempLinkage.region} onChange={e => setTempLinkage({ ...tempLinkage, region: e.target.value, ipoName: '' })} className={commonInputClasses} disabled={isLoadingIpos || availableRegions.length === 0}>
                                 <option value="">Select Region</option>
-                                {philippineRegions.map(region => <option key={region} value={region}>{region}</option>)}
+                                {availableRegions.map(region => <option key={region} value={region}>{region}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="form-label form-label--compact">IPO</label>
-                            <select value={tempLinkage.ipoName} onChange={e => setTempLinkage({ ...tempLinkage, ipoName: e.target.value })} disabled={!tempLinkage.region} className={commonInputClasses}>
-                                <option value="">Select IPO</option>
+                            <select value={tempLinkage.ipoName} onChange={e => setTempLinkage({ ...tempLinkage, ipoName: e.target.value })} disabled={!tempLinkage.region || isLoadingIpos} className={commonInputClasses}>
+                                <option value="">{isLoadingIpos ? 'Loading IPOs...' : 'Select IPO'}</option>
                                 {iposInLinkageRegion.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}
                             </select>
                         </div>

@@ -11,6 +11,10 @@ interface MarketLinkageDetailProps {
     partner: MarketingPartner;
     linkageKey: string | number;
     ipos: IPO[];
+    canViewAllIpos?: boolean;
+    allowedIpoRegion?: string | null;
+    isLoadingIpos?: boolean;
+    ipoLoadError?: string | null;
     onBack: () => void;
     onUpdatePartner: (partner: MarketingPartner) => void;
 }
@@ -51,7 +55,17 @@ const DetailBlock = ({ label, value }: { label: string; value: React.ReactNode }
     </div>
 );
 
-const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({ partner, linkageKey, ipos, onBack, onUpdatePartner }) => {
+const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({
+    partner,
+    linkageKey,
+    ipos,
+    canViewAllIpos = false,
+    allowedIpoRegion = null,
+    isLoadingIpos = false,
+    ipoLoadError = null,
+    onBack,
+    onUpdatePartner,
+}) => {
     const { currentUser } = useAuth();
     const { canEdit, canDelete } = useUserAccess('Marketing Database');
     const linkages = partner.marketingLinkages || [];
@@ -74,6 +88,18 @@ const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({ partner, link
         if (!draft?.region) return [];
         return ipos.filter(i => i.region === draft.region).sort((a, b) => a.name.localeCompare(b.name));
     }, [draft?.region, ipos]);
+
+    const availableRegions = useMemo(() => {
+        const scopedRegions = canViewAllIpos
+            ? [...philippineRegions]
+            : (allowedIpoRegion ? [allowedIpoRegion] : []);
+        if (draft?.region && !scopedRegions.includes(draft.region)) scopedRegions.push(draft.region);
+        return scopedRegions;
+    }, [allowedIpoRegion, canViewAllIpos, draft?.region]);
+
+    const existingIpoIsNotInLookup = Boolean(
+        draft?.ipoName && !iposInLinkageRegion.some(ipo => ipo.name === draft.ipoName)
+    );
 
     const sales = calculateMarketLinkageSales(draft || linkage || ({} as MarketLinkage));
 
@@ -102,6 +128,16 @@ const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({ partner, link
         if (!draft || linkageIndex < 0) return;
         if (!draft.region || !draft.ipoName) {
             alert('Region and IPO are required.');
+            return;
+        }
+        const isExistingUnscopedIpoUnchanged = Boolean(
+            linkage
+            && !canViewAllIpos
+            && draft.region === linkage.region
+            && draft.ipoName === linkage.ipoName
+        );
+        if (!canViewAllIpos && draft.region !== allowedIpoRegion && !isExistingUnscopedIpoUnchanged) {
+            alert('You can only link an IPO within your permitted operating-unit region.');
             return;
         }
         if (!draft.commodityNeedId || !draft.commodityName) {
@@ -235,15 +271,18 @@ const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({ partner, link
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div>
                                 <label className="form-label form-label--compact">Region</label>
-                                <select value={draft.region} onChange={e => setDraft({ ...draft, region: e.target.value, ipoName: '' })} className={commonInputClasses}>
+                                <select value={draft.region} onChange={e => setDraft({ ...draft, region: e.target.value, ipoName: '' })} className={commonInputClasses} disabled={isLoadingIpos}>
                                     <option value="">Select Region</option>
-                                    {philippineRegions.map(region => <option key={region} value={region}>{region}</option>)}
+                                    {availableRegions.map(region => <option key={region} value={region}>{region}</option>)}
                                 </select>
                             </div>
                             <div>
                                 <label className="form-label form-label--compact">IPO</label>
-                                <select value={draft.ipoName} onChange={e => setDraft({ ...draft, ipoName: e.target.value })} disabled={!draft.region} className={commonInputClasses}>
-                                    <option value="">Select IPO</option>
+                                <select value={draft.ipoName} onChange={e => setDraft({ ...draft, ipoName: e.target.value })} disabled={!draft.region || isLoadingIpos} className={commonInputClasses}>
+                                    <option value="">{isLoadingIpos ? 'Loading IPOs...' : 'Select IPO'}</option>
+                                    {existingIpoIsNotInLookup && draft.ipoName && (
+                                        <option value={draft.ipoName}>{draft.ipoName} (existing linkage)</option>
+                                    )}
                                     {iposInLinkageRegion.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}
                                 </select>
                             </div>
@@ -332,6 +371,7 @@ const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({ partner, link
                         </div>
                     </form>
                 )}
+                {isEditing && ipoLoadError && <div className="notice notice--warning">{ipoLoadError}</div>}
             </section>
 
             {isDeleteModalOpen && (

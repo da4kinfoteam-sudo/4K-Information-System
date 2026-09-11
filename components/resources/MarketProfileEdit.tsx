@@ -13,7 +13,7 @@ interface MarketProfileEditProps {
     commodityCategories: { [key: string]: string[] };
 }
 
-const BUYER_TYPES = ['Private Company', 'Government'];
+const BUYER_TYPES = ['Private Company', 'Government', 'Community'] as const;
 const PAYMENT_METHODS = ['Bank Transfer', 'Cash', 'Cash on Delivery', 'Voucher'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

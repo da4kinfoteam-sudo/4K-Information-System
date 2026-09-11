@@ -9,11 +9,11 @@ import LocationPicker, { parseLocation } from '../LocationPicker';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { supabase } from '../../supabaseClient';
 import { summarizeMarketPartnerSales } from '../../lib/marketSalesAggregation';
-import { ConfirmDialog, DataTablePagination } from '../ui/enterprise';
+import { ConfirmDialog, DataTablePagination, LoadingState } from '../ui/enterprise';
 
 declare const XLSX: any;
 
-const BUYER_TYPES = ['Private Company', 'Government'];
+const BUYER_TYPES = ['Private Company', 'Government', 'Community'] as const;
 const PAYMENT_METHODS = ['Bank Transfer', 'Cash', 'Cash on Delivery', 'Voucher'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -52,9 +52,22 @@ interface MarketingDatabaseProps {
     setPartners: React.Dispatch<React.SetStateAction<MarketingPartner[]>>;
     onSelectPartner: (partner: MarketingPartner) => void;
     commodityCategories: { [key: string]: string[] };
+    isLoading?: boolean;
+    loadError?: string | null;
+    onPartnerUpdated?: (partner: MarketingPartner) => void;
+    onPartnersDeleted?: (ids: Array<number | string>) => void;
 }
 
-const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPartners, onSelectPartner, commodityCategories }) => {
+const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({
+    partners,
+    setPartners,
+    onSelectPartner,
+    commodityCategories,
+    isLoading = false,
+    loadError = null,
+    onPartnerUpdated,
+    onPartnersDeleted,
+}) => {
     const { currentUser } = useAuth();
     const { canEdit, canDelete } = useUserAccess('Marketing Database');
     
@@ -114,12 +127,12 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
         if (searchTerm) {
             const low = searchTerm.toLowerCase();
             list = list.filter(p => 
-                p.companyName.toLowerCase().includes(low) ||
-                p.ownerName.toLowerCase().includes(low) ||
-                p.commodityNeeds.some(c => c.name.toLowerCase().includes(low))
+                String(p.companyName || '').toLowerCase().includes(low) ||
+                String(p.ownerName || '').toLowerCase().includes(low) ||
+                (p.commodityNeeds || []).some(c => String(c.name || '').toLowerCase().includes(low))
             );
         }
-        return list.sort((a, b) => a.companyName.localeCompare(b.companyName));
+        return list.sort((a, b) => String(a.companyName || '').localeCompare(String(b.companyName || '')));
     }, [partners, regionFilter, searchTerm]);
 
     const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination(filteredPartners, [regionFilter, searchTerm]);
@@ -220,6 +233,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
             if (error) return alert(error.message);
         }
         setPartners(prev => prev.filter(p => !selectedIds.includes(p.id)));
+        onPartnersDeleted?.(selectedIds);
         resetSelection();
         setIsMultiDeleteModalOpen(false);
     };
@@ -231,6 +245,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
             if (error) return alert(error.message);
         }
         setPartners(prev => prev.filter(p => p.id !== deletePartner.id));
+        onPartnersDeleted?.([deletePartner.id]);
         setDeletePartner(null);
     };
 
@@ -259,13 +274,19 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
             try {
                 const { data, error } = await supabase.from('marketing_partners').insert([newPartnerPayload]).select().single();
                 if (error) throw error;
-                if (data) setPartners(prev => [data, ...prev]);
+                if (data) {
+                    const savedPartner = data as MarketingPartner;
+                    setPartners(prev => [savedPartner, ...prev]);
+                    onPartnerUpdated?.(savedPartner);
+                }
             } catch (err: any) {
                 alert("Failed to save: " + err.message);
                 return;
             }
         } else {
-            setPartners(prev => [{ ...newPartnerPayload, id: Date.now() } as MarketingPartner, ...prev]);
+            const savedPartner = { ...newPartnerPayload, id: Date.now() } as MarketingPartner;
+            setPartners(prev => [savedPartner, ...prev]);
+            onPartnerUpdated?.(savedPartner);
         }
         
         setView('list');
@@ -311,7 +332,9 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                         email: String(row.email || ''),
                         region,
                         location: String(row.location || ''),
-                        buyerType: row.buyerType || 'Private Company',
+                        buyerType: (BUYER_TYPES as readonly string[]).includes(String(row.buyerType || '').trim())
+                            ? String(row.buyerType).trim() as MarketingPartner['buyerType']
+                            : 'Private Company',
                         paymentMethods: row.paymentMethods ? row.paymentMethods.split(';').map((p:string) => p.trim()) : [],
                         commodityNeeds: row.commodityNeeds ? JSON.parse(row.commodityNeeds) : [],
                         linkedIpoNames: [],
@@ -325,9 +348,15 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                 if (supabase) {
                     const { data, error } = await supabase.from('marketing_partners').insert(newPartners).select();
                     if (error) throw error;
-                    if (data) setPartners(prev => [...(data as MarketingPartner[]), ...prev]);
+                    if (data) {
+                        const savedPartners = data as MarketingPartner[];
+                        setPartners(prev => [...savedPartners, ...prev]);
+                        savedPartners.forEach(partner => onPartnerUpdated?.(partner));
+                    }
                 } else {
-                    setPartners(prev => [...newPartners.map((p, i) => ({ ...p, id: Date.now() + i } as MarketingPartner)), ...prev]);
+                    const savedPartners = newPartners.map((p, i) => ({ ...p, id: Date.now() + i } as MarketingPartner));
+                    setPartners(prev => [...savedPartners, ...prev]);
+                    savedPartners.forEach(partner => onPartnerUpdated?.(partner));
                 }
                 alert(`Imported ${newPartners.length} partners.`);
             } catch (err: any) { alert("Import failed: " + err.message); } finally { setIsUploading(false); if (e.target) e.target.value = ''; }
@@ -363,10 +392,16 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
             if (error) {
                 alert('Failed to approve: ' + error.message);
             } else {
+                const updatedPartner = partners.find(partner => partner.id === id);
+                const approvedPartner = updatedPartner ? { ...updatedPartner, workflow_status: 'APPROVED' } : null;
                 setPartners(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+                if (approvedPartner) onPartnerUpdated?.(approvedPartner);
             }
         } else {
+            const updatedPartner = partners.find(partner => partner.id === id);
+            const approvedPartner = updatedPartner ? { ...updatedPartner, workflow_status: 'APPROVED' } : null;
             setPartners(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+            if (approvedPartner) onPartnerUpdated?.(approvedPartner);
         }
     };
 
@@ -383,10 +418,20 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
             if (error) {
                 alert('Failed to reject: ' + error.message);
             } else {
+                const updatedPartner = partners.find(partner => partner.id === id);
+                const rejectedPartner = updatedPartner
+                    ? { ...updatedPartner, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : updatedPartner.remarks }
+                    : null;
                 setPartners(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+                if (rejectedPartner) onPartnerUpdated?.(rejectedPartner);
             }
         } else {
+            const updatedPartner = partners.find(partner => partner.id === id);
+            const rejectedPartner = updatedPartner
+                ? { ...updatedPartner, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : updatedPartner.remarks }
+                : null;
             setPartners(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+            if (rejectedPartner) onPartnerUpdated?.(rejectedPartner);
         }
     };
 
@@ -520,6 +565,12 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                     )}
                 </div>
             </div>
+
+            {loadError && <div className="notice notice--warning">{loadError} Showing the records currently available in this session.</div>}
+
+            {isLoading && partners.length === 0 ? (
+                <LoadingState title="Loading Marketing Database" message="Loading all permitted marketing partners." />
+            ) : (
 
             <div className="data-table-card">
                 <div className="data-table-toolbar">
@@ -670,6 +721,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                     aria-label="Marketing partners pagination"
                 />
             </div>
+            )}
         </div>
     );
 };

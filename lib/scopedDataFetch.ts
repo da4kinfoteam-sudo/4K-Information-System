@@ -31,6 +31,7 @@ export interface DataScope {
   year: string | number;
   operatingUnit: string;
   operatingUnits?: string[];
+  skipMarketingPartners?: boolean;
   tier: string;
   fundType: string;
   canViewAllOus: boolean;
@@ -107,6 +108,7 @@ export const getDataScopeKey = (scope: DataScope) => [
   normalizeOperatingUnitList(scope.operatingUnits)?.join(',') ?? 'legacy-ou',
   scope.tier || 'All',
   scope.fundType || 'All',
+  scope.skipMarketingPartners ? 'skip-marketing' : 'with-marketing',
   scope.canViewAllOus ? 'all-ou' : 'own-ou',
   scope.requestedBy || 'anonymous',
 ].join('|');
@@ -261,6 +263,7 @@ async function enrichScopedIpos(baseIpos: any[], sources: IpoReferenceSources) {
 }
 
 async function fetchScopedMarketingPartners(scope: DataScope) {
+  if (scope.skipMarketingPartners) return [];
   if (!supabase) return [];
   const scopedOus = getScopedOperatingUnits(scope);
   if (scopedOus && scopedOus.length === 0) return [];
@@ -270,6 +273,22 @@ async function fetchScopedMarketingPartners(scope: DataScope) {
     if (targetRegions.length === 0) return [];
     query = query.in('region', targetRegions);
   }
+  return fetchQuery(query);
+}
+
+/**
+ * Marketing Database is intentionally global for users who can view the module.
+ * Keep this loader separate from the DCF/dashboard scope so an OU or fund-year
+ * filter cannot hide a partner from the shared partner directory.
+ */
+export async function fetchMarketingDatabasePartners(): Promise<any[]> {
+  if (!supabase) return sampleMarketingPartners;
+
+  const query = supabase
+    .from('marketing_partners')
+    .select('id,uid,companyName,ownerName,contactNumber,email,location,region,commodityNeeds,buyerType,paymentMethods,linkedIpoNames,remarks,encodedBy,history,marketingLinkages,workflow_status,created_at,updated_at')
+    .order('id', { ascending: true });
+
   return fetchQuery(query);
 }
 
@@ -480,7 +499,7 @@ function loadLocalSeedScopedData(scope: DataScope): ScopedAppData {
   const subprojects = applyLocalCommonScope(sampleSubprojects, normalizedScope, 'fundingYear');
   const baseIpos = applyLocalIpoScope(normalizedScope);
   const activities = applyLocalCommonScope(sampleActivities, normalizedScope, 'fundingYear');
-  const marketingPartners = sampleMarketingPartners;
+  const marketingPartners = scope.skipMarketingPartners ? [] : sampleMarketingPartners;
   const officeReqs = applyLocalCommonScope(sampleOfficeRequirements, normalizedScope, 'fundYear');
   const staffingReqs = applyLocalCommonScope(sampleStaffingRequirements, normalizedScope, 'fundYear');
   const otherProgramExpenses = applyLocalCommonScope(sampleOtherProgramExpenses, normalizedScope, 'fundYear');
@@ -554,7 +573,7 @@ export async function loadScopedAppData(scope: DataScope): Promise<ScopedAppData
     fetchScopedBusinessTable('subprojects', normalizedScope, 'fundingYear'),
     fetchScopedIpos(normalizedScope),
     fetchScopedBusinessTable('activities', normalizedScope, 'fundingYear'),
-    fetchScopedMarketingPartners(normalizedScope),
+    normalizedScope.skipMarketingPartners ? Promise.resolve([]) : fetchScopedMarketingPartners(normalizedScope),
     fetchScopedBusinessTable('office_requirements', normalizedScope, 'fundYear'),
     fetchScopedBusinessTable('staffing_requirements', normalizedScope, 'fundYear'),
     fetchScopedBusinessTable('other_program_expenses', normalizedScope, 'fundYear'),
