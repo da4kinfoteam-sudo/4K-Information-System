@@ -244,6 +244,7 @@ interface DataTablePaginationProps extends Omit<ElementProps, 'onChange'> {
     totalPages: number;
     totalItems: number;
     itemsPerPage: number;
+    compact?: boolean;
     onPageChange: (page: number) => void;
     onItemsPerPageChange: (size: number) => void;
     pageSizeOptions?: number[];
@@ -254,6 +255,7 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({
     totalPages,
     totalItems,
     itemsPerPage,
+    compact = false,
     onPageChange,
     onItemsPerPageChange,
     pageSizeOptions = [10, 20, 50, 100],
@@ -265,7 +267,7 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({
     const safeTotalPages = Math.max(totalPages, 1);
 
     return (
-        <nav className={cn('data-table-pagination', className)} aria-label="Table pagination" {...props}>
+        <nav className={cn('data-table-pagination', compact && 'data-table-pagination--compact', className)} aria-label="Table pagination" {...props}>
             <label className="data-table-pagination__page-size">
                 <span>Show</span>
                 <select
@@ -279,7 +281,7 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({
             </label>
             <div className="data-table-pagination__status">
                 <span className="data-table-pagination__full-range">
-                    Showing {firstItem} to {lastItem} of {totalItems} entries
+                    {compact ? `${firstItem}–${lastItem} of ${totalItems}` : `Showing ${firstItem} to ${lastItem} of ${totalItems} entries`}
                 </span>
                 <span className="data-table-pagination__compact-range" aria-hidden="true">
                     {firstItem}–{lastItem} of {totalItems}
