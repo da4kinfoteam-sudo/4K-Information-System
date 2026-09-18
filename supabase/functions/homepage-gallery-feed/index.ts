@@ -3,6 +3,7 @@ import {
   errorResponse,
   handleOptions,
   jsonResponse,
+  operatingUnitFromRegion,
   requireUser
 } from "../_shared/googleDrive.ts";
 
@@ -11,6 +12,7 @@ type EntityRow = {
   name: string;
   uid?: string | null;
   operatingUnit?: string | null;
+  region?: string | null;
   activityDate?: string | null;
   workflow_status?: string | null;
 };
@@ -33,6 +35,7 @@ type DriveRow = {
   uploaded_at: string;
   activity_id?: number | null;
   subproject_id?: number | null;
+  ipo_id?: number | null;
 };
 
 const IMAGE_EXTENSIONS = /\.(gif|jpe?g|png|webp)$/i;
@@ -76,7 +79,7 @@ const canSeeAllOus = async (user: { role?: string | null; visibility_scope?: str
 };
 
 const queryEntities = async (
-  table: "activities" | "subprojects",
+  table: "activities" | "subprojects" | "ipos",
   ids: number[],
   allOus: boolean,
   operatingUnit: string | null | undefined
@@ -84,22 +87,30 @@ const queryEntities = async (
   if (!ids.length) return [] as EntityRow[];
   const select = table === "activities"
     ? "id,name,uid,operatingUnit,date,workflow_status"
-    : "id,name,uid,operatingUnit,estimatedCompletionDate,workflow_status";
+    : table === "subprojects"
+      ? "id,name,uid,operatingUnit,estimatedCompletionDate,workflow_status"
+      : "id,name,region,workflow_status";
   const rows: EntityRow[] = [];
 
   for (const idChunk of chunks(ids, 500)) {
     const { data, error } = await adminClient().from(table).select(select).in("id", idChunk);
     if (error) throw new Error(error.message);
     (data || []).forEach((row: Record<string, unknown>) => {
-      if (!isApproved(row) || (!allOus && operatingUnit && row.operatingUnit !== operatingUnit)) return;
+      const rowOperatingUnit = table === "ipos"
+        ? operatingUnitFromRegion(row.region ? String(row.region) : null)
+        : (row.operatingUnit ? String(row.operatingUnit) : null);
+      if (!isApproved(row) || (!allOus && operatingUnit && rowOperatingUnit !== operatingUnit)) return;
       rows.push({
         id: Number(row.id),
         name: String(row.name || "Untitled item"),
         uid: row.uid ? String(row.uid) : null,
-        operatingUnit: row.operatingUnit ? String(row.operatingUnit) : null,
+        operatingUnit: rowOperatingUnit,
+        region: row.region ? String(row.region) : null,
         activityDate: table === "activities"
           ? (row.date ? String(row.date) : null)
-          : (row.estimatedCompletionDate ? String(row.estimatedCompletionDate) : null),
+          : table === "subprojects"
+            ? (row.estimatedCompletionDate ? String(row.estimatedCompletionDate) : null)
+            : null,
         workflow_status: row.workflow_status ? String(row.workflow_status) : null
       });
     });
@@ -108,7 +119,11 @@ const queryEntities = async (
   return rows;
 };
 
-const queryFiles = async (table: "activity_drive_files" | "subproject_drive_files", foreignKey: "activity_id" | "subproject_id", ids: number[]) => {
+const queryFiles = async (
+  table: "activity_drive_files" | "subproject_drive_files" | "ipo_drive_files",
+  foreignKey: "activity_id" | "subproject_id" | "ipo_id",
+  ids: number[]
+) => {
   if (!ids.length) return [] as DriveRow[];
   const rows: DriveRow[] = [];
 
@@ -130,7 +145,7 @@ const queryFiles = async (table: "activity_drive_files" | "subproject_drive_file
     });
   }
 
-  return rows;
+  return rows.sort((left, right) => new Date(right.uploaded_at).getTime() - new Date(left.uploaded_at).getTime());
 };
 
 const toMediaFile = (row: DriveRow) => ({
@@ -160,15 +175,18 @@ Deno.serve(async (request) => {
     const user = await requireUser(body.user_id);
     const activityIds = normalizeIds(body.activity_ids);
     const subprojectIds = normalizeIds(body.subproject_ids);
+    const ipoIds = normalizeIds(body.ipo_ids);
     const allOus = await canSeeAllOus(user);
 
-    const [activityRows, subprojectRows] = await Promise.all([
+    const [activityRows, subprojectRows, ipoRows] = await Promise.all([
       queryEntities("activities", activityIds, allOus, user.operatingUnit),
-      queryEntities("subprojects", subprojectIds, allOus, user.operatingUnit)
+      queryEntities("subprojects", subprojectIds, allOus, user.operatingUnit),
+      queryEntities("ipos", ipoIds, allOus, user.operatingUnit)
     ]);
-    const [activityFiles, subprojectFiles] = await Promise.all([
+    const [activityFiles, subprojectFiles, ipoFiles] = await Promise.all([
       queryFiles("activity_drive_files", "activity_id", activityRows.map(row => row.id)),
-      queryFiles("subproject_drive_files", "subproject_id", subprojectRows.map(row => row.id))
+      queryFiles("subproject_drive_files", "subproject_id", subprojectRows.map(row => row.id)),
+      queryFiles("ipo_drive_files", "ipo_id", ipoRows.map(row => row.id))
     ]);
 
     const items = [
@@ -189,6 +207,16 @@ Deno.serve(async (request) => {
         operatingUnit: row.operatingUnit ?? null,
         activityDate: row.activityDate ?? null,
         files: subprojectFiles.filter(file => file.subproject_id === row.id).map(toMediaFile)
+      })),
+      ...ipoRows.map(row => ({
+        entityType: "ipo" as const,
+        entityId: row.id,
+        entityName: row.name,
+        entityCode: row.uid ?? null,
+        operatingUnit: row.operatingUnit ?? null,
+        region: row.region ?? null,
+        activityDate: null,
+        files: ipoFiles.filter(file => file.ipo_id === row.id).map(toMediaFile)
       }))
     ]
       .filter(item => item.files.length > 0)

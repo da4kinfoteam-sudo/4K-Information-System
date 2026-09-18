@@ -393,6 +393,7 @@ interface DashboardProps {
     otherProgramExpenses: OtherProgramExpense[];
     onSelectSubproject: (subproject: Subproject) => void;
     onSelectActivity: (activity: Activity) => void;
+    onSelectIpo: (ipo: IPO) => void;
     navigateTo: (page: string) => void;
     externalFilters?: { region?: string; year?: string; search?: string } | null;
     onDataScopeChange?: (scope: Partial<DataScope>) => void;
@@ -401,7 +402,7 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ 
     subprojects, ipos, activities, systemSettings,
     officeReqs, staffingReqs, otherProgramExpenses,
-    onSelectSubproject, onSelectActivity, navigateTo, externalFilters, onDataScopeChange
+    onSelectSubproject, onSelectActivity, onSelectIpo, navigateTo, externalFilters, onDataScopeChange
 }) => {
     const { currentUser, getVisibilityScope, hasAccess } = useAuth();
     
@@ -699,11 +700,29 @@ const Dashboard: React.FC<DashboardProps> = ({
         () => filteredData.subprojects.map(subproject => subproject.id).filter(Number.isFinite),
         [filteredData.subprojects]
     );
-    const galleryFeedKey = `${galleryActivityIds.slice().sort((a, b) => a - b).join(',')}|${gallerySubprojectIds.slice().sort((a, b) => a - b).join(',')}`;
+    const galleryIpos = useMemo(() => {
+        const targetRegion = selectedOu === 'All'
+            ? null
+            : ouToRegionMap[selectedOu];
+        const lockedRegion = isLockedToOwnOu && currentUser?.operatingUnit
+            ? ouToRegionMap[currentUser.operatingUnit]
+            : null;
+
+        return ipos.filter(ipo => {
+            if (ipo.workflow_status && ipo.workflow_status !== 'APPROVED') return false;
+            const region = lockedRegion || targetRegion;
+            return !region || ipo.region === region;
+        });
+    }, [currentUser?.operatingUnit, ipos, isLockedToOwnOu, selectedOu]);
+    const galleryIpoIds = useMemo(
+        () => galleryIpos.map(ipo => ipo.id).filter(Number.isFinite),
+        [galleryIpos]
+    );
+    const galleryFeedKey = `${galleryActivityIds.slice().sort((a, b) => a - b).join(',')}|${gallerySubprojectIds.slice().sort((a, b) => a - b).join(',')}|${galleryIpoIds.slice().sort((a, b) => a - b).join(',')}`;
 
     useEffect(() => {
         let cancelled = false;
-        if (!currentUser?.id || (galleryActivityIds.length === 0 && gallerySubprojectIds.length === 0) || !supabase) {
+        if (!currentUser?.id || (galleryActivityIds.length === 0 && gallerySubprojectIds.length === 0 && galleryIpoIds.length === 0) || !supabase) {
             setGalleryFeedItems([]);
             setGalleryFeedError(null);
             setIsGalleryFeedLoading(false);
@@ -714,7 +733,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         setGalleryFeedError(null);
         listHomepageGalleryFeed(currentUser, {
             activityIds: galleryActivityIds,
-            subprojectIds: gallerySubprojectIds
+            subprojectIds: gallerySubprojectIds,
+            ipoIds: galleryIpoIds
         })
             .then(items => {
                 if (cancelled) return;
@@ -730,7 +750,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             });
 
         return () => { cancelled = true; };
-    }, [currentUser, galleryActivityIds, galleryFeedKey, gallerySubprojectIds]);
+    }, [currentUser, galleryActivityIds, galleryFeedKey, galleryIpoIds, gallerySubprojectIds]);
 
     // ... (Dashboard Calculations and Helper functions remain same)
 
@@ -914,6 +934,12 @@ const Dashboard: React.FC<DashboardProps> = ({
         if (item.entityType === 'activity') {
             const activity = filteredData.activities.find(candidate => candidate.id === item.entityId);
             if (activity) onSelectActivity(activity);
+            return;
+        }
+
+        if (item.entityType === 'ipo') {
+            const ipo = galleryIpos.find(candidate => candidate.id === item.entityId);
+            if (ipo) onSelectIpo(ipo);
             return;
         }
 

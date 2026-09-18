@@ -1697,6 +1697,7 @@ const AppContent: React.FC = () => {
                             otherProgramExpenses={visibleOtherExpenses}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
+                            onSelectIpo={handleSelectIpo}
                             navigateTo={navigateTo}
                             // @ts-ignore
                             externalFilters={externalFilters}
