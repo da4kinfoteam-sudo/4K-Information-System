@@ -128,11 +128,12 @@ export interface ActivityDriveFile {
 }
 
 export interface HomepageGalleryFeedItem {
-    entityType: 'activity' | 'subproject';
+    entityType: 'activity' | 'subproject' | 'ipo';
     entityId: number;
     entityName: string;
     entityCode?: string | null;
     operatingUnit?: string | null;
+    region?: string | null;
     activityDate?: string | null;
     files: DriveMediaFile[];
 }
@@ -295,11 +296,12 @@ const homepageGalleryFeedCache = new Map<string, HomepageGalleryFeedItem[]>();
 
 export const listHomepageGalleryFeed = async (
     currentUser: User | null,
-    input: { activityIds: number[]; subprojectIds: number[] }
+    input: { activityIds: number[]; subprojectIds: number[]; ipoIds: number[] }
 ) => {
     const activityIds = [...new Set(input.activityIds.filter(Number.isFinite))].sort((a, b) => a - b);
     const subprojectIds = [...new Set(input.subprojectIds.filter(Number.isFinite))].sort((a, b) => a - b);
-    const cacheKey = `${currentUser?.id ?? 'anonymous'}:${activityIds.join(',')}:${subprojectIds.join(',')}`;
+    const ipoIds = [...new Set(input.ipoIds.filter(Number.isFinite))].sort((a, b) => a - b);
+    const cacheKey = `${currentUser?.id ?? 'anonymous'}:${activityIds.join(',')}:${subprojectIds.join(',')}:${ipoIds.join(',')}`;
     const cached = homepageGalleryFeedCache.get(cacheKey);
     if (cached) return cached;
 
@@ -307,7 +309,8 @@ export const listHomepageGalleryFeed = async (
         body: {
             ...currentUserPayload(currentUser),
             activity_ids: activityIds,
-            subproject_ids: subprojectIds
+            subproject_ids: subprojectIds,
+            ipo_ids: ipoIds
         }
     });
     const items = (await readFunctionResult(data, error)).items || [];

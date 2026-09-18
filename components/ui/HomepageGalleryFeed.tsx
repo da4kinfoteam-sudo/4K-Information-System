@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, ExternalLink, Image as ImageIcon } from 'lucide-react';
-import { SectionHeading } from './enterprise';
+import { DataTablePagination, SectionHeading } from './enterprise';
 import {
     getDriveFileDisplayName,
     getIpoDriveImageUrl,
@@ -18,6 +18,12 @@ interface HomepageGalleryFeedProps {
 
 const itemKey = (item: HomepageGalleryFeedItem) => `${item.entityType}-${item.entityId}`;
 
+const getUploadYear = (uploadedAt?: string | null) => {
+    if (!uploadedAt) return null;
+    const date = new Date(uploadedAt);
+    return Number.isNaN(date.getTime()) ? null : date.getFullYear();
+};
+
 export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items, isLoading, error, onOpenItem }) => {
     const visibleItems = useMemo(
         () => items.filter(item => item.files.length > 0),
@@ -26,6 +32,7 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [carouselIndex, setCarouselIndex] = useState(0);
     const [galleryPage, setGalleryPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(GALLERY_PAGE_SIZE);
     const [hideListThumbnails, setHideListThumbnails] = useState(() => (
         typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches
     ));
@@ -47,15 +54,14 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
             return;
         }
 
-        const totalPages = Math.max(1, Math.ceil(visibleItems.length / GALLERY_PAGE_SIZE));
-        setGalleryPage(current => Math.min(Math.max(current, 1), totalPages));
+        setGalleryPage(1);
         setSelectedKey(current => visibleItems.some(item => itemKey(item) === current) ? current : itemKey(visibleItems[0]));
     }, [visibleItems]);
 
-    const totalPages = Math.max(1, Math.ceil(visibleItems.length / GALLERY_PAGE_SIZE));
+    const totalPages = Math.max(1, Math.ceil(visibleItems.length / itemsPerPage));
     const paginatedItems = useMemo(
-        () => visibleItems.slice((galleryPage - 1) * GALLERY_PAGE_SIZE, galleryPage * GALLERY_PAGE_SIZE),
-        [galleryPage, visibleItems]
+        () => visibleItems.slice((galleryPage - 1) * itemsPerPage, galleryPage * itemsPerPage),
+        [galleryPage, itemsPerPage, visibleItems]
     );
 
     useEffect(() => {
@@ -174,10 +180,11 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
                     </section>
 
                     <section className="homepage-gallery-feed__list" aria-label="Items with gallery images">
-                        <div className="homepage-gallery-feed__list-header">
-                            <span>{visibleItems.length} item{visibleItems.length === 1 ? '' : 's'}</span>
-                            {isLoading && <span role="status">Refreshing...</span>}
-                        </div>
+                        {isLoading && (
+                            <div className="homepage-gallery-feed__list-header">
+                                <span role="status">Refreshing...</span>
+                            </div>
+                        )}
                         <div className="homepage-gallery-feed__list-scroll custom-scrollbar">
                             {paginatedItems.map(item => {
                                 const isSelected = itemKey(item) === itemKey(selectedItem);
@@ -215,42 +222,45 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
                                                 <ExternalLink aria-hidden="true" />
                                             </button>
                                             <button type="button" className="homepage-gallery-feed__item-details" onClick={() => selectItem(item)}>
-                                                <span className="homepage-gallery-feed__item-meta">
-                                                    {item.entityType === 'subproject' ? 'Subproject' : 'Activity'} · {item.files.length} image{item.files.length === 1 ? '' : 's'}
-                                                    {item.operatingUnit ? ` · ${item.operatingUnit}` : ''}
-                                                </span>
-                                                {item.activityDate && <time dateTime={item.activityDate}>{new Date(item.activityDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</time>}
-                                                {firstFile.caption && <span className="homepage-gallery-feed__item-caption" title={firstFile.caption}>{firstFile.caption}</span>}
+                                                {item.entityType === 'ipo' ? (
+                                                    <>
+                                                        <span className="homepage-gallery-feed__item-meta">
+                                                            IPO{item.region ? ` · ${item.region}` : ''}
+                                                        </span>
+                                                        {getUploadYear(firstFile.uploaded_at) && (
+                                                            <time dateTime={firstFile.uploaded_at}>{getUploadYear(firstFile.uploaded_at)}</time>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span className="homepage-gallery-feed__item-meta">
+                                                            {item.entityType === 'subproject' ? 'Subproject' : 'Activity'} · {item.files.length} image{item.files.length === 1 ? '' : 's'}
+                                                            {item.operatingUnit ? ` · ${item.operatingUnit}` : ''}
+                                                        </span>
+                                                        {item.activityDate && <time dateTime={item.activityDate}>{new Date(item.activityDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</time>}
+                                                        {firstFile.caption && <span className="homepage-gallery-feed__item-caption" title={firstFile.caption}>{firstFile.caption}</span>}
+                                                    </>
+                                                )}
                                             </button>
                                         </div>
                                     </article>
                                 );
                             })}
                         </div>
-                        <div className="homepage-gallery-feed__pagination" aria-label="Gallery feed pagination">
-                            <span className="homepage-gallery-feed__pagination-summary">
-                                Showing {visibleItems.length === 0 ? 0 : (galleryPage - 1) * GALLERY_PAGE_SIZE + 1}–{Math.min(galleryPage * GALLERY_PAGE_SIZE, visibleItems.length)} of {visibleItems.length} items
-                            </span>
-                            <div className="homepage-gallery-feed__pagination-controls">
-                                <button
-                                    type="button"
-                                    onClick={() => setGalleryPage(current => Math.max(1, current - 1))}
-                                    disabled={galleryPage <= 1}
-                                    aria-label="Previous gallery page"
-                                >
-                                    <ChevronLeft aria-hidden="true" />
-                                </button>
-                                <span aria-live="polite">{galleryPage} / {totalPages}</span>
-                                <button
-                                    type="button"
-                                    onClick={() => setGalleryPage(current => Math.min(totalPages, current + 1))}
-                                    disabled={galleryPage >= totalPages}
-                                    aria-label="Next gallery page"
-                                >
-                                    <ChevronRight aria-hidden="true" />
-                                </button>
-                            </div>
-                        </div>
+                        <DataTablePagination
+                            className="homepage-gallery-feed__pagination"
+                            aria-label="Gallery feed pagination"
+                            currentPage={galleryPage}
+                            totalPages={totalPages}
+                            totalItems={visibleItems.length}
+                            itemsPerPage={itemsPerPage}
+                            pageSizeOptions={[6, 10, 20, 50]}
+                            onPageChange={setGalleryPage}
+                            onItemsPerPageChange={size => {
+                                setItemsPerPage(size);
+                                setGalleryPage(1);
+                            }}
+                        />
                     </section>
                 </div>
             )}

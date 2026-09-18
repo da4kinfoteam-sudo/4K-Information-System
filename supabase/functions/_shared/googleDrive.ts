@@ -344,7 +344,7 @@ function normalizeRegionName(inputRegion?: string | null) {
   return REGION_ALIASES[trimmed] || trimmed;
 }
 
-function operatingUnitFromRegion(region?: string | null) {
+export function operatingUnitFromRegion(region?: string | null) {
   const normalizedRegion = normalizeRegionName(region);
   return REGION_TO_OPERATING_UNIT[normalizedRegion] || normalizedRegion || "Unassigned Operating Unit";
 }
