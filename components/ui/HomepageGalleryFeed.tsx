@@ -197,6 +197,7 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
                                                 className="homepage-gallery-feed__item-select"
                                                 onClick={() => selectItem(item)}
                                                 aria-pressed={isSelected}
+                                                aria-label={`Preview gallery images for ${item.entityName}`}
                                             >
                                                 <span className="homepage-gallery-feed__item-thumb">
                                                     {!failedImages.has(firstFile.id) && (
@@ -218,13 +219,21 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
                                                 onClick={() => onOpenItem(item)}
                                                 title={`View ${item.entityName}`}
                                             >
-                                                {item.entityName}
+                                                <span className="homepage-gallery-feed__item-name-label">{item.entityName}</span>
                                                 <ExternalLink aria-hidden="true" />
                                             </button>
-                                            <button type="button" className="homepage-gallery-feed__item-details" onClick={() => selectItem(item)}>
+                                            <button
+                                                type="button"
+                                                className="homepage-gallery-feed__item-details"
+                                                onClick={() => selectItem(item)}
+                                                aria-label={`Select gallery images for ${item.entityName}`}
+                                            >
                                                 {item.entityType === 'ipo' ? (
                                                     <>
-                                                        <span className="homepage-gallery-feed__item-meta">
+                                                        <span
+                                                            className="homepage-gallery-feed__item-meta"
+                                                            title={`IPO${item.region ? ` · ${item.region}` : ''}`}
+                                                        >
                                                             IPO{item.region ? ` · ${item.region}` : ''}
                                                         </span>
                                                         {getUploadYear(firstFile.uploaded_at) && (
@@ -233,7 +242,10 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <span className="homepage-gallery-feed__item-meta">
+                                                        <span
+                                                            className="homepage-gallery-feed__item-meta"
+                                                            title={`${item.entityType === 'subproject' ? 'Subproject' : 'Activity'} · ${item.files.length} image${item.files.length === 1 ? '' : 's'}${item.operatingUnit ? ` · ${item.operatingUnit}` : ''}`}
+                                                        >
                                                             {item.entityType === 'subproject' ? 'Subproject' : 'Activity'} · {item.files.length} image{item.files.length === 1 ? '' : 's'}
                                                             {item.operatingUnit ? ` · ${item.operatingUnit}` : ''}
                                                         </span>
@@ -254,6 +266,7 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
                             totalPages={totalPages}
                             totalItems={visibleItems.length}
                             itemsPerPage={itemsPerPage}
+                            compact
                             pageSizeOptions={[6, 10, 20, 50]}
                             onPageChange={setGalleryPage}
                             onItemsPerPageChange={size => {
