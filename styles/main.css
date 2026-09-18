@@ -26942,13 +26942,12 @@ button.lod-table-state:hover {
 }
 
 .dashboard-page .homepage-gallery-feed__list {
+  align-self: start;
   background: var(--app-surface);
   border: 1px solid var(--app-border);
   border-radius: var(--radius-sm);
   display: flex;
   flex-direction: column;
-  height: clamp(22rem, 58vh, 30rem);
-  max-height: clamp(22rem, 58vh, 30rem);
   min-height: 0;
   overflow: hidden;
 }
@@ -26959,6 +26958,8 @@ button.lod-table-state:hover {
 }
 
 .dashboard-page .homepage-gallery-feed__list-scroll {
+  flex: 0 1 auto;
+  max-height: clamp(18rem, 50vh, 28rem);
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -27126,7 +27127,7 @@ button.lod-table-state:hover {
   color: var(--app-text-muted);
   display: block;
   font-size: 0.625rem;
-  font-style: italic;
+  font-style: normal;
   line-height: 1.25;
   min-width: 0;
   overflow: hidden;
@@ -27170,14 +27171,8 @@ button.lod-table-state:hover {
     min-height: 12rem;
   }
 
-  .dashboard-page .homepage-gallery-feed__list {
-    height: 24rem;
-    max-height: 24rem;
-    min-height: 0;
-  }
-
   .dashboard-page .homepage-gallery-feed__list-scroll {
-    max-height: none;
+    max-height: 16rem;
   }
 
   .dashboard-page .homepage-gallery-feed__item-copy {
@@ -27207,8 +27202,4 @@ button.lod-table-state:hover {
     margin-left: auto;
   }
 
-  .dashboard-page .homepage-gallery-feed__list {
-    height: 22rem;
-    max-height: 22rem;
-  }
 }
