@@ -132,6 +132,8 @@ export interface HomepageGalleryFeedItem {
     entityId: number;
     entityName: string;
     entityCode?: string | null;
+    description?: string | null;
+    location?: string | null;
     operatingUnit?: string | null;
     region?: string | null;
     activityDate?: string | null;

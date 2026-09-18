@@ -7,7 +7,8 @@ import {
     HomepageGalleryFeedItem
 } from '../../lib/googleDriveStorage';
 
-const GALLERY_PAGE_SIZE = 6;
+const GALLERY_PAGE_SIZE = 10;
+const GALLERY_PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 interface HomepageGalleryFeedProps {
     items: HomepageGalleryFeedItem[];
@@ -189,6 +190,9 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
                             {paginatedItems.map(item => {
                                 const isSelected = itemKey(item) === itemKey(selectedItem);
                                 const firstFile = item.files[0];
+                                const contextText = item.entityType === 'ipo'
+                                    ? item.location?.trim()
+                                    : item.description?.trim();
                                 return (
                                     <article key={itemKey(item)} className={`homepage-gallery-feed__item${isSelected ? ' is-selected' : ''}`}>
                                         {!hideListThumbnails && (
@@ -222,6 +226,14 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
                                                 <span className="homepage-gallery-feed__item-name-label">{item.entityName}</span>
                                                 <ExternalLink aria-hidden="true" />
                                             </button>
+                                            {contextText && (
+                                                <span
+                                                    className="homepage-gallery-feed__item-context"
+                                                    title={contextText}
+                                                >
+                                                    {contextText}
+                                                </span>
+                                            )}
                                             <button
                                                 type="button"
                                                 className="homepage-gallery-feed__item-details"
@@ -267,7 +279,7 @@ export const HomepageGalleryFeed: React.FC<HomepageGalleryFeedProps> = ({ items,
                             totalItems={visibleItems.length}
                             itemsPerPage={itemsPerPage}
                             compact
-                            pageSizeOptions={[6, 10, 20, 50]}
+                            pageSizeOptions={GALLERY_PAGE_SIZE_OPTIONS}
                             onPageChange={setGalleryPage}
                             onItemsPerPageChange={size => {
                                 setItemsPerPage(size);

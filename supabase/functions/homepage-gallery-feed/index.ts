@@ -11,6 +11,9 @@ type EntityRow = {
   id: number;
   name: string;
   uid?: string | null;
+  description?: string | null;
+  remarks?: string | null;
+  location?: string | null;
   operatingUnit?: string | null;
   region?: string | null;
   activityDate?: string | null;
@@ -86,10 +89,10 @@ const queryEntities = async (
 ) => {
   if (!ids.length) return [] as EntityRow[];
   const select = table === "activities"
-    ? "id,name,uid,operatingUnit,date,workflow_status"
+    ? "id,name,uid,operatingUnit,date,description,workflow_status"
     : table === "subprojects"
-      ? "id,name,uid,operatingUnit,estimatedCompletionDate,workflow_status"
-      : "id,name,region,workflow_status";
+      ? "id,name,uid,operatingUnit,remarks,estimatedCompletionDate,workflow_status"
+      : "id,name,location,region,workflow_status";
   const rows: EntityRow[] = [];
 
   for (const idChunk of chunks(ids, 500)) {
@@ -106,6 +109,12 @@ const queryEntities = async (
         uid: row.uid ? String(row.uid) : null,
         operatingUnit: rowOperatingUnit,
         region: row.region ? String(row.region) : null,
+        description: table === "activities"
+          ? (row.description ? String(row.description) : null)
+          : table === "subprojects"
+            ? (row.remarks ? String(row.remarks) : null)
+            : null,
+        location: table === "ipos" && row.location ? String(row.location) : null,
         activityDate: table === "activities"
           ? (row.date ? String(row.date) : null)
           : table === "subprojects"
@@ -195,6 +204,7 @@ Deno.serve(async (request) => {
         entityId: row.id,
         entityName: row.name,
         entityCode: row.uid ?? null,
+        description: row.description ?? null,
         operatingUnit: row.operatingUnit ?? null,
         activityDate: row.activityDate ?? null,
         files: activityFiles.filter(file => file.activity_id === row.id).map(toMediaFile)
@@ -204,6 +214,7 @@ Deno.serve(async (request) => {
         entityId: row.id,
         entityName: row.name,
         entityCode: row.uid ?? null,
+        description: row.description ?? null,
         operatingUnit: row.operatingUnit ?? null,
         activityDate: row.activityDate ?? null,
         files: subprojectFiles.filter(file => file.subproject_id === row.id).map(toMediaFile)
@@ -213,6 +224,7 @@ Deno.serve(async (request) => {
         entityId: row.id,
         entityName: row.name,
         entityCode: row.uid ?? null,
+        location: row.location ?? null,
         operatingUnit: row.operatingUnit ?? null,
         region: row.region ?? null,
         activityDate: null,
