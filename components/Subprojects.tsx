@@ -74,6 +74,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Subprojects');
     const { getDeleteDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const canChooseOperatingUnit = currentUser?.role === 'Super Admin' || (canEdit && canViewAll);
 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [subprojectToDelete, setSubprojectToDelete] = useState<Subproject | null>(null);
@@ -192,6 +193,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             packageType: getUnique('packageType'),
             fundingYear: filterYears,
             fundType: getUnique('fundType'),
+            fundSource: getUnique('fundSource'),
             tier: getUnique('tier'),
             estimatedCompletionDate: getUnique('estimatedCompletionDate'),
             actualCompletionDate: getUnique('actualCompletionDate')
@@ -580,6 +582,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     const columnFilterFields = [
         { key: 'name', label: 'Subproject Name', values: uniqueValues.name },
         { key: 'indigenousPeopleOrganization', label: 'IPO', values: uniqueValues.indigenousPeopleOrganization },
+        { key: 'fundSource', label: 'Fund Source', values: uniqueValues.fundSource },
         { key: 'status', label: 'Status', values: uniqueValues.status }
     ];
 
@@ -609,7 +612,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                         {canEdit && <>
                             <button onClick={downloadSubprojectsTemplate} className="btn btn-secondary"><FileSpreadsheet aria-hidden="true" /> Template</button>
                             <label htmlFor="subproject-upload" className={`btn btn-secondary ${isUploading ? 'is-disabled' : 'cursor-pointer'}`}><Upload aria-hidden="true" /> {isUploading ? 'Uploading...' : 'Import'}</label>
-                            <input id="subproject-upload" type="file" className="hidden" onChange={(e) => handleSubprojectsUpload(e, subprojects, setSubprojects, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
+                            <input id="subproject-upload" type="file" className="hidden" onChange={(e) => handleSubprojectsUpload(e, subprojects, setSubprojects, ipos, logAction, setIsUploading, uacsCodes, currentUser, canChooseOperatingUnit)} accept=".xlsx, .xls" disabled={isUploading} />
                             <button onClick={() => handleToggleMode('clone')} className="btn btn-secondary" aria-label="Clone multiple subprojects"><DuplicateIcon /> Clone</button>
                             <button onClick={() => handleToggleMode('delete')} className="btn btn-secondary" aria-label="Delete multiple subprojects"><TrashIcon /> Delete</button>
                         </>}
@@ -626,6 +629,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                             <SortableTableHeader label="IPO" columnKey="indigenousPeopleOrganization" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Fund Year" columnKey="fundingYear" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="Fund Source" columnKey="fundSource" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Commodity Target" columnKey="commodityTarget" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Budget" columnKey="totalBudget" sortConfig={sortConfig} onSort={handleSort} />
@@ -652,7 +656,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                     <td className="data-table__cell--primary"><TruncatedTableCell value={s.name || 'Unnamed Subproject'} /></td>
                                     <td><TruncatedTableCell value={s.operatingUnit} /></td>
                                     <td><TruncatedTableCell value={s.indigenousPeopleOrganization} /></td>
-                                    <td>{s.fundingYear || '—'}</td><td>{s.fundType || '—'}</td><td>{s.tier || '—'}</td>
+                                    <td>{s.fundingYear || '—'}</td><td>{s.fundType || '—'}</td><td>{s.fundSource || '—'}</td><td>{s.tier || '—'}</td>
                                     <td><TruncatedTableCell value={commodities} /></td>
                                     <td className="data-table__cell--numeric">{formatCurrency(budget)}</td>
                                     <td><span className={getStatusBadge(s.status)}>{s.status || 'Unknown'}</span></td>
@@ -660,7 +664,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                     <td><div className="data-table__actions">{getWorkflowStatusBadge(s.workflow_status)}{s.workflow_status === 'PENDING' && canApprove(currentUser?.role) && <><button onClick={(e) => handleApprove(s.id, e)} className="action-mini action-mini--approve" aria-label={`Approve ${s.name}`}><Check aria-hidden="true" /></button><button onClick={(e) => handleReject(s.id, e)} className="action-mini action-mini--reject" aria-label={`Reject ${s.name}`}><X aria-hidden="true" /></button></>}</div></td>
                                 </tr>;
                             })}
-                            {paginatedSubprojects.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 13 : 12}>No subprojects match the current filters.</td></tr>}
+                            {paginatedSubprojects.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 14 : 13}>No subprojects match the current filters.</td></tr>}
                         </tbody>
                     </table>
                 </div>

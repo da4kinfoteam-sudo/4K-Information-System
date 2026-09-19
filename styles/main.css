@@ -8738,6 +8738,46 @@ button.bar1-drilldown-card:focus-visible {
   table-layout: fixed;
 }
 
+/* Subproject classification fields stay compact without inheriting the
+   broader four-column layout used by unrelated forms. */
+.subproject-edit-page .subproject-funding-grid {
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.subproject-edit-page .subproject-edit-content {
+  min-width: 0;
+}
+
+.subproject-edit-page .subproject-funding-grid > * {
+  min-width: 0;
+}
+
+.subproject-edit-page .subproject-adjustment-checks {
+  border-top: 1px solid var(--app-border);
+  gap: 0.75rem 1.5rem;
+  justify-content: flex-start;
+  padding-top: 0.75rem;
+}
+
+.subproject-edit-page .subproject-funding-grid select,
+.subproject-edit-page .subproject-funding-grid input {
+  min-width: 0;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .subproject-edit-page .subproject-funding-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .subproject-edit-page .subproject-funding-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 .physical-accomplishment-table col.pac-width-particulars {
   width: var(--pac-particulars-width);
 }

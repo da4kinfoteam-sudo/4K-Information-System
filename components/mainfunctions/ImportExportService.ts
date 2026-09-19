@@ -2,7 +2,7 @@
 import React from 'react';
 import { 
     Subproject, Activity, IPO, Commodity, OfficeRequirement, StaffingRequirement, OtherProgramExpense,
-    SubprojectDetail, ActivityExpense, fundTypes, tiers, objectTypes, ObjectType, philippineRegions, operatingUnits, Tier, FundType
+    SubprojectDetail, ActivityExpense, fundTypes, fundSources, tiers, objectTypes, ObjectType, philippineRegions, operatingUnits, Tier, FundType, FundSource
 } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { supabase } from '../../supabaseClient';
@@ -91,6 +91,12 @@ export const resolveTier = (input: string | number | undefined): Tier | undefine
     return undefined;
 };
 
+export const resolveFundSource = (input: string | number | undefined): FundSource | undefined => {
+    if (input === undefined || input === null || String(input).trim() === '') return undefined;
+    const normalized = String(input).trim().toLowerCase();
+    return fundSources.find(source => source.toLowerCase() === normalized);
+};
+
 // Helper to parse various date/month formats to YYYY-MM-01
 const parseMonthToDate = (input: any): string => {
     if (!input) return '';
@@ -133,6 +139,7 @@ export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
         Status: s.status,
         'Fund Year': s.fundingYear,
         'Fund Type': s.fundType,
+        'Fund Source': s.fundSource ?? '',
         'Tier': s.tier,
         Budget: calculateTotalBudget(s.details),
         'End Date': s.estimatedCompletionDate,
@@ -150,7 +157,7 @@ export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
 export const downloadSubprojectsTemplate = () => {
     const headers = [
         'uid', 'name', 'indigenousPeopleOrganization', 'status', 'packageType', 
-        'estimatedCompletionDate', 'actualCompletionDate', 'actualMaleBeneficiaries', 'actualFemaleBeneficiaries', 'actualFourPsBeneficiaries', 'fundingYear', 'fundType', 'tier', 'operatingUnit', 'remarks',
+        'estimatedCompletionDate', 'actualCompletionDate', 'actualMaleBeneficiaries', 'actualFemaleBeneficiaries', 'actualFourPsBeneficiaries', 'fundingYear', 'fundType', 'fundSource', 'tier', 'operatingUnit', 'remarks',
         'detail_type', 'detail_particulars', 'detail_deliveryDate', 'detail_unitOfMeasure', 'detail_pricePerUnit', 'detail_numberOfUnits', 
         'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth'
     ];
@@ -169,6 +176,7 @@ export const downloadSubprojectsTemplate = () => {
             actualFourPsBeneficiaries: '',
             fundingYear: 2024,
             fundType: 'Current',
+            fundSource: '4K Fund',
             tier: 'Tier 1',
             operatingUnit: 'RPMO 4A',
             remarks: 'Sample upload with multiple items',
@@ -198,6 +206,7 @@ export const downloadSubprojectsTemplate = () => {
         ["actualFourPsBeneficiaries", "Optional nonnegative whole number. Leave blank when not reported."],
         ["fundingYear", "Year (e.g., 2024)"],
         ["fundType", "Current, Continuing, or Insertion"],
+        ["fundSource", "4K Fund, High Value Crops, Corn, Rice, Organic, or Livestock. New records default to 4K Fund."],
         ["tier", "Tier 1 or Tier 2"],
         ["operatingUnit", "e.g., RPMO 4A. If specified, this takes precedence over your current account's OU."],
         ["remarks", "Optional remarks"],
@@ -230,7 +239,8 @@ export const handleSubprojectsUpload = (
     logAction: (action: string, details: string, ipoName?: string) => void,
     setIsUploading: (val: boolean) => void,
     uacsCodes: any,
-    currentUser: any
+    currentUser: any,
+    canChooseOperatingUnit = false
 ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -252,10 +262,20 @@ export const handleSubprojectsUpload = (
             // Track existing UIDs to prevent duplicates
             const existingUids = new Set(subprojects.map(s => s.uid));
             let skippedCount = 0;
+            const invalidFundSourceRows: string[] = [];
 
             jsonData.forEach((row: any, index: number) => {
                 const uid = String(row.uid || '').trim();
                 if (!uid) return; 
+
+                const rawFundSource = row.fundSource === undefined || row.fundSource === null
+                    ? ''
+                    : String(row.fundSource).trim();
+                const fundSource = rawFundSource ? resolveFundSource(rawFundSource) : '4K Fund';
+                if (rawFundSource && !fundSource) {
+                    invalidFundSourceRows.push(`row ${index + 2}: ${rawFundSource}`);
+                    return;
+                }
                 
                 // Skip rows that belong to already existing subprojects
                 if (existingUids.has(uid)) {
@@ -273,9 +293,11 @@ export const handleSubprojectsUpload = (
                     const matchedIpo = ipos.find(i => i.name === ipoName);
                     const locationString = matchedIpo ? matchedIpo.location : '';
 
-                    // Prioritize row.operatingUnit from Excel with resolution
+                    // Only All-OU editors may assign the OU supplied by the workbook.
                     const rawOU = row.operatingUnit ? String(row.operatingUnit) : undefined;
-                    const operatingUnit = rawOU ? resolveOperatingUnit(rawOU) : (currentUser?.operatingUnit || '');
+                    const operatingUnit = canChooseOperatingUnit && rawOU
+                        ? resolveOperatingUnit(rawOU)
+                        : (currentUser?.operatingUnit || '');
 
                     groupedData.set(uid, {
                         id: maxId, // Only for offline use, stripped before Supabase insert
@@ -294,6 +316,7 @@ export const handleSubprojectsUpload = (
                         actualFourPsBeneficiaries: row.actualFourPsBeneficiaries === '' || row.actualFourPsBeneficiaries == null ? null : Math.max(0, Math.trunc(Number(row.actualFourPsBeneficiaries))),
                         fundingYear: Number(row.fundingYear),
                         fundType: row.fundType,
+                        fundSource,
                         tier: resolveTier(row.tier),
                         operatingUnit: operatingUnit,
                         encodedBy: currentUser?.fullName || 'System Upload',
@@ -351,6 +374,11 @@ export const handleSubprojectsUpload = (
                     });
                 }
             });
+
+            if (invalidFundSourceRows.length > 0) {
+                alert(`Import cancelled. Unsupported Fund Source values were found: ${invalidFundSourceRows.join(', ')}. Use only 4K Fund, High Value Crops, Corn, Rice, Organic, or Livestock.`);
+                return;
+            }
 
             const newSubprojects = Array.from(groupedData.values());
 

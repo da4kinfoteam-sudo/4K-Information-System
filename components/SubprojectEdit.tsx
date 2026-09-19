@@ -2,7 +2,7 @@
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Info, Pencil, Trash2 } from 'lucide-react';
 import { MonthYearPicker } from './ui/MonthYearPicker';
-import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, philippineRegions, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock } from '../constants';
+import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, fundSources, tiers, SubprojectCommodity, philippineRegions, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock } from '../constants';
 import LocationPicker from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
@@ -62,6 +62,7 @@ const defaultFormData: Subproject = {
     lng: 0,
     fundingYear: new Date().getFullYear(),
     fundType: 'Current',
+    fundSource: '4K Fund',
     tier: 'Tier 1',
     operatingUnit: '',
     encodedBy: ''
@@ -85,7 +86,7 @@ const formatMonthYear = (dateString?: string) => {
 const SubprojectEdit: React.FC<SubprojectEditProps> = ({ 
     subproject, ipos, setIpos, onBack, onUpdateSubproject, uacsCodes, particularTypes, commodityCategories, refCommodities, refLivestock
 }): React.ReactNode => {
-    const { currentUser, hasAccess } = useAuth();
+    const { currentUser, hasAccess, getVisibilityScope } = useAuth();
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
     const { getStatusDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
@@ -107,16 +108,27 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     const [confirmBudgetItemDate, setConfirmBudgetItemDate] = useState<{field: 'deliveryDate' | 'obligationMonth', dateStr: string} | null>(null);
     const [budgetItemErrorFields, setBudgetItemErrorFields] = useState<string[]>([]);
 
+    const canChooseOperatingUnit = currentUser?.role === 'Super Admin'
+        || (hasAccess('Subprojects', 'edit') && getVisibilityScope('Subprojects') === 'All');
+    const effectiveOperatingUnit = canChooseOperatingUnit
+        ? formData.operatingUnit
+        : (currentUser?.operatingUnit || '');
+    const effectiveRegion = canChooseOperatingUnit
+        ? selectedRegion
+        : (ouToRegionMap[currentUser?.operatingUnit || ''] || selectedRegion);
+
     const validationErrors = useMemo(() => {
         const errors: string[] = [];
         if (!formData.name?.trim()) errors.push('name');
+        if (!effectiveOperatingUnit) errors.push('operatingUnit');
         if (!formData.indigenousPeopleOrganization) errors.push('indigenousPeopleOrganization');
         if (!formData.status) errors.push('status');
+        if (!formData.fundSource) errors.push('fundSource');
         if (!formData.estimatedCompletionDate) errors.push('estimatedCompletionDate');
         if (!formData.details || formData.details.length === 0) errors.push('details');
         if (!formData.subprojectCommodities || formData.subprojectCommodities.length === 0) errors.push('commodities');
         return errors;
-    }, [formData]);
+    }, [effectiveOperatingUnit, formData]);
 
     useEffect(() => {
         if (subproject) {
@@ -136,12 +148,13 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     }, [subproject, ipos, currentUser]);
 
     const filteredIpos = useMemo(() => {
-        if (!selectedRegion) return [];
-        return ipos.filter(ipo => ipo.region === selectedRegion).sort((a, b) => a.name.localeCompare(b.name));
-    }, [ipos, selectedRegion]);
+        if (!effectiveRegion) return [];
+        return ipos.filter(ipo => ipo.region === effectiveRegion).sort((a, b) => a.name.localeCompare(b.name));
+    }, [effectiveRegion, ipos]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>): void => {
         const { name, value } = e.target;
+        if (name === 'operatingUnit' && !canChooseOperatingUnit) return;
         setMissingFields(prev => prev.filter(f => f !== name));
         setFormData(prev => {
             const newData = { ...prev, [name]: value };
@@ -511,6 +524,17 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             if (!allowed) return;
         }
 
+        if (!effectiveOperatingUnit) {
+            setMissingFields(prev => Array.from(new Set([...prev, 'operatingUnit'])));
+            alert('Operating Unit is required before saving the Subproject.');
+            setActiveTab('details');
+            return;
+        }
+        if (!canChooseOperatingUnit && subproject && subproject.operatingUnit !== effectiveOperatingUnit) {
+            alert('You can only edit Subprojects assigned to your Operating Unit.');
+            return;
+        }
+
         if (isNew && validationErrors.length > 0) {
             setMissingFields(validationErrors);
             alert("Please fill in all required fields before saving.");
@@ -544,6 +568,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
 
         const payload: any = {
             ...formData,
+            operatingUnit: effectiveOperatingUnit,
             ipo_id: resolvedIpoId,
             physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
             updated_at: timestamp
@@ -632,7 +657,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     );
 
     return (
-        <div className="form-card form-page animate-fadeIn">
+        <div className="form-card form-page subproject-edit-page animate-fadeIn">
             <div className="detail-header">
                 <h3 className="detail-title">{subproject ? 'Edit Subproject' : 'Add New Subproject'}</h3>
             </div>
@@ -645,27 +670,27 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                         {!subproject && <TabButton name="summary" label="Summary" />}
                     </nav>
                 </div>
-                <div className="min-h-[400px]">
+                <div className="subproject-edit-content">
                     {activeTab === 'details' && (
                          <div className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className="form-label">Subproject Name <span className="form-required">*</span></label><input type="text" name="name" value={formData.name} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('name') ? 'form-control--invalid' : ''}`} required /></div>
                                 <div>
-                                    <label className="form-label">Operating Unit</label>
+                                    <label className="form-label">Operating Unit <span className="form-required">*</span></label>
                                     <select 
                                         name="operatingUnit" 
                                         value={formData.operatingUnit || ''} 
                                         onChange={handleInputChange} 
-                                        className={commonInputClasses} 
-                                        disabled={currentUser?.role !== 'Administrator'}
-                                        title={currentUser?.role !== 'Administrator' ? "Only Administrators can edit the Operating Unit" : ""}
+                                        className={`${commonInputClasses} ${missingFields.includes('operatingUnit') ? 'form-control--invalid' : ''}`}
+                                        disabled={!canChooseOperatingUnit}
+                                        title={!canChooseOperatingUnit ? "Operating Unit is locked to your assigned OU" : undefined}
                                     >
                                         <option value="">Select Operating Unit</option>
                                         {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
                                     </select>
                                 </div>
-                                <div><label className="form-label">Region <span className="form-required">*</span></label><select value={selectedRegion} onChange={(e) => { setSelectedRegion(e.target.value); setFormData(prev => ({...prev, indigenousPeopleOrganization: ''})); }} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') && !selectedRegion ? 'form-control--invalid' : ''}`}><option value="">Select Region</option>{philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-                                <div><label className="form-label">Indigenous People Organization <span className="form-required">*</span></label><select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') ? 'form-control--invalid' : ''}`} disabled={!selectedRegion} required><option value="">Select IPO</option>{filteredIpos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}</select></div>
+                                <div><label className="form-label">Region <span className="form-required">*</span></label><select value={effectiveRegion} onChange={(e) => { if (!canChooseOperatingUnit) return; setSelectedRegion(e.target.value); setFormData(prev => ({...prev, indigenousPeopleOrganization: ''})); }} disabled={!canChooseOperatingUnit} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') && !effectiveRegion ? 'form-control--invalid' : ''}`}><option value="">Select Region</option>{philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                                <div><label className="form-label">Indigenous People Organization <span className="form-required">*</span></label><select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') ? 'form-control--invalid' : ''}`} disabled={!effectiveRegion} required><option value="">Select IPO</option>{filteredIpos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}</select></div>
                                 <div><label className="form-label">Status <span className="form-required">*</span></label><select name="status" value={formData.status} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('status') ? 'form-control--invalid' : ''}`}><option value="Proposed">Proposed</option><option value="Ongoing">Ongoing</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select></div>
                                 <div><label className="form-label">Package</label><select name="packageType" value={formData.packageType} onChange={handleInputChange} className={commonInputClasses}>{Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                             </div>
@@ -691,11 +716,13 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                     )}
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="form-grid form-grid--four subproject-funding-grid">
                                 <div><label className="form-label">Fund Year</label><input type="number" name="fundingYear" value={formData.fundingYear} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 <div><label className="form-label">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                 <div><label className="form-label">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div className="form-check-group">
+                                <div><label className="form-label">Fund Source <span className="form-required">*</span></label><select name="fundSource" value={formData.fundSource || ''} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('fundSource') ? 'form-control--invalid' : ''}`}><option value="">Select Fund Source</option>{fundSources.map(source => <option key={source} value={source}>{source}</option>)}</select></div>
+                            </div>
+                            <div className="form-check-group subproject-adjustment-checks">
                                     <label className="form-check">
                                         <input type="checkbox" checked={formData.isRealignment || false} onChange={e => setFormData(prev => ({ ...prev, isRealignment: e.target.checked, isSavings: e.target.checked ? false : prev.isSavings }))} className="form-checkbox" />
                                         <span>Realignment</span>
@@ -704,7 +731,6 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                         <input type="checkbox" checked={formData.isSavings || false} onChange={e => setFormData(prev => ({ ...prev, isSavings: e.target.checked, isRealignment: e.target.checked ? false : prev.isRealignment }))} className="form-checkbox" />
                                         <span>Savings</span>
                                     </label>
-                                </div>
                             </div>
                             {isMonthTargetOverdue(formData.estimatedCompletionDate) && formData.status !== 'Completed' && (
                                 <div className="notice notice--danger form-stack">
@@ -1077,6 +1103,8 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                         {validationErrors.map(field => (
                                             <li key={field}>
                                                 {field === 'indigenousPeopleOrganization' ? 'IPO' : 
+                                                 field === 'operatingUnit' ? 'Operating Unit' :
+                                                 field === 'fundSource' ? 'Fund Source' :
                                                  field === 'details' ? 'Budget Items (at least one required)' :
                                                  field === 'commodities' ? 'Commodities (at least one required)' :
                                                  field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
@@ -1120,9 +1148,10 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                             {formData.estimatedCompletionDate ? formatMonthYear(formData.estimatedCompletionDate) : 'Missing Date'}
                                         </span>
                                         
-                                        <span className="form-summary-label">Fund Year:</span> <span className="form-summary-value">{formData.fundingYear}</span>
-                                        <span className="form-summary-label">Fund Type:</span> <span className="form-summary-value">{formData.fundType}</span>
-                                        <span className="form-summary-label">Tier:</span> <span className="form-summary-value">{formData.tier}</span>
+                                         <span className="form-summary-label">Fund Year:</span> <span className="form-summary-value">{formData.fundingYear}</span>
+                                         <span className="form-summary-label">Fund Type:</span> <span className="form-summary-value">{formData.fundType}</span>
+                                         <span className="form-summary-label">Tier:</span> <span className="form-summary-value">{formData.tier}</span>
+                                         <span className="form-summary-label">Fund Source:</span> <span className={`form-summary-value ${!formData.fundSource ? 'is-missing' : ''}`}>{formData.fundSource || 'Missing Fund Source'}</span>
                                     </div>
                                 </div>
 
