@@ -122,12 +122,14 @@ export const useDcfScopeFilters = ({ storageKey, moduleName, onDataScopeChange, 
 interface DcfScopeFilterPanelProps {
     idPrefix: string;
     filters: ReturnType<typeof useDcfScopeFilters>;
+    onBeforeApply?: () => boolean;
+    onBeforeReset?: () => boolean;
 }
 
 /** @deprecated Scope filters are now permanently visible. */
 export const DcfScopeFilterToggle: React.FC<DcfScopeFilterPanelProps> = () => null;
 
-export const DcfScopeFilterPanel: React.FC<DcfScopeFilterPanelProps> = ({ idPrefix, filters }) => (
+export const DcfScopeFilterPanel: React.FC<DcfScopeFilterPanelProps> = ({ idPrefix, filters, onBeforeApply, onBeforeReset }) => (
     <section id={`${idPrefix}-filter-panel`} className="major-filter-bar" aria-label="Data scope filters">
         <div className="major-filter-bar__fields">
             <div className="major-filter-field">
@@ -166,8 +168,14 @@ export const DcfScopeFilterPanel: React.FC<DcfScopeFilterPanelProps> = ({ idPref
             </div>
         </div>
         <div className="major-filter-bar__actions">
-            <button type="button" className="btn btn-secondary" onClick={filters.reset} disabled={filters.isDefault && !filters.hasPendingChanges}>Reset</button>
-            <button type="button" className="btn btn-primary" onClick={filters.apply} disabled={!filters.hasPendingChanges}>Apply</button>
+            <button type="button" className="btn btn-secondary" onClick={() => {
+                if (onBeforeReset && !onBeforeReset()) return;
+                filters.reset();
+            }} disabled={filters.isDefault && !filters.hasPendingChanges}>Reset</button>
+            <button type="button" className="btn btn-primary" onClick={() => {
+                if (onBeforeApply && !onBeforeApply()) return;
+                filters.apply();
+            }} disabled={!filters.hasPendingChanges}>Apply</button>
         </div>
     </section>
 );

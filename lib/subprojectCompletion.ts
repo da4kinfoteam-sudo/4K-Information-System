@@ -1,4 +1,5 @@
 import { SubprojectDetail } from '../constants';
+import { isActiveSubprojectDetail as isActiveAdjustedSubprojectDetail } from './subprojectItemAdjustments';
 
 export interface SubprojectCompletionRollup {
     details: SubprojectDetail[];
@@ -17,7 +18,7 @@ const getDateTime = (value?: string | null) => {
     return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY;
 };
 
-export const isActiveSubprojectDeliveryDetail = (detail: SubprojectDetail) => !detail.isCancelled;
+export const isActiveSubprojectDeliveryDetail = (detail: SubprojectDetail) => isActiveAdjustedSubprojectDetail(detail);
 
 export const normalizeSubprojectCompletionDetails = (details: SubprojectDetail[]) => (
     (details || []).map(detail => {

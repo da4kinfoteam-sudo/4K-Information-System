@@ -72,6 +72,7 @@ export type FinancialLine = {
     isCancelled?: boolean;
     isRealignment?: boolean;
     isSavings?: boolean;
+    isSuperseded?: boolean;
     originalPlannedAmount?: number;
     originalPricePerUnit?: number;
     originalNumberOfUnits?: number;

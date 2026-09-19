@@ -15,6 +15,7 @@ import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 import { ConfirmDialog, DataTablePagination, SortableTableHeader } from './ui/enterprise';
 import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from './ui/MajorDataTable';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
+import { isActiveSubprojectDetail } from '../lib/subprojectItemAdjustments';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -52,6 +53,12 @@ const calculateTotalBudget = (details: SubprojectDetail[]) => {
         (total, item) => total + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)),
         0
     );
+};
+
+const calculateCompletionRate = (details: SubprojectDetail[]) => {
+    const activeDetails = details.filter(isActiveSubprojectDetail);
+    if (activeDetails.length === 0) return 0;
+    return Math.round((activeDetails.filter(detail => detail.actualDeliveryDate).length / activeDetails.length) * 100);
 };
 
 const commonInputClasses = "form-control";
@@ -214,9 +221,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 const getDisbursed = (s: Subproject) => (s.details || []).reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
                 const getRate = (s: Subproject) => {
                     const details = s.details || [];
-                    const total = details.length;
-                    const comp = details.filter(d => d.actualDeliveryDate).length;
-                    return total > 0 ? (comp / total) * 100 : 0;
+                    return calculateCompletionRate(details);
                 };
                 const getCommodities = (s: Subproject) => s.subprojectCommodities?.map(c => c.name || '').join(', ') || '';
 
@@ -632,7 +637,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                             {paginatedSubprojects.map(s => {
                                 const details = s.details || [];
                                 const budget = calculateTotalBudget(details);
-                                const completionRate = details.length ? Math.round((details.filter(detail => detail.actualDeliveryDate).length / details.length) * 100) : 0;
+                                const completionRate = calculateCompletionRate(details);
                                 const commodities = s.subprojectCommodities?.map(commodity => `${commodity.name} (${commodity.area} ${commodity.typeName === 'Livestock' ? 'heads' : 'ha'})`).join(', ') || 'N/A';
                                 return <tr
                                     key={s.id}

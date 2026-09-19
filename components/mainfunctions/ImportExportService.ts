@@ -10,6 +10,7 @@ import { parseOfficeRequirementRow } from '../program_management/OfficeRequireme
 import { parseStaffingRequirementRow } from '../program_management/StaffingRequirementsTab';
 import { parseOtherExpenseRow } from '../program_management/OtherExpensesTab';
 import { normalizeImportedCommodity } from '../../lib/commodityProfile';
+import { isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 
 declare const XLSX: any;
 
@@ -121,7 +122,7 @@ const parseMonthToDate = (input: any): string => {
 
 export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
     const calculateTotalBudget = (details: SubprojectDetail[]) => {
-        return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+        return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item) ? 0 : item.pricePerUnit * item.numberOfUnits), 0);
     };
 
     const data = subprojects.map(s => ({

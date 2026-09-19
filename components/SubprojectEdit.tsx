@@ -13,6 +13,7 @@ import { supabase } from '../supabaseClient';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
 import { isMonthTargetOverdue } from '../lib/dateStatus';
 import { ConfirmDialog } from './ui/enterprise';
+import { isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 
 interface SubprojectEditProps {
     subproject?: Subproject;
@@ -67,7 +68,7 @@ const defaultFormData: Subproject = {
 };
 
 const calculateTotalBudget = (details: SubprojectDetail[]) => {
-    return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+    return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item) ? 0 : item.pricePerUnit * item.numberOfUnits), 0);
 };
 
 const formatCurrency = (amount: number) => {
@@ -170,6 +171,8 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                 // Sync details if fundingYear changes
                 if (newData.details) {
                     newData.details = newData.details.map(d => {
+                        // Keep superseded originals unchanged for auditability.
+                        if (d.isSuperseded) return d;
                         const updateDate = (dateStr?: string) => {
                             if (!dateStr) return dateStr;
                             const parts = dateStr.split('-');
@@ -356,13 +359,15 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
 
     const handleEditDetail = (id: number): void => {
         const d = formData.details.find(d => d.id === id);
-        if (d) {
+        if (d && !d.isSuperseded) {
             setCurrentDetail(d);
             setEditingDetailId(id);
         }
     };
 
     const handleRemoveDetail = (id: number): void => {
+        const detail = formData.details.find(d => d.id === id);
+        if (detail?.isSuperseded) return;
         setFormData(prev => ({ ...prev, details: prev.details.filter(d => d.id !== id) }));
         if (editingDetailId === id) {
             setEditingDetailId(null);
@@ -954,10 +959,10 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                     <div className="form-record-card__actions">
                                         <span className="form-record-card__total">{formatCurrency(Number(d.numberOfUnits) * Number(d.pricePerUnit))}</span>
                                         <div className="form-action-row">
-                                            <button type="button" onClick={() => handleEditDetail(d.id)} className="table-action table-action--primary" aria-label="Edit budget item">
+                                            <button type="button" onClick={() => handleEditDetail(d.id)} disabled={!!d.isSuperseded} className="table-action table-action--primary" aria-label={d.isSuperseded ? 'Replaced item is read-only' : 'Edit budget item'}>
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                             </button>
-                                            <button type="button" onClick={() => handleRemoveDetail(d.id)} className="table-action table-action--danger" aria-label="Remove budget item">&times;</button>
+                                            <button type="button" onClick={() => handleRemoveDetail(d.id)} disabled={!!d.isSuperseded} className="table-action table-action--danger" aria-label={d.isSuperseded ? 'Replaced item is read-only' : 'Remove budget item'}>&times;</button>
                                         </div>
                                     </div>
                                 </div>

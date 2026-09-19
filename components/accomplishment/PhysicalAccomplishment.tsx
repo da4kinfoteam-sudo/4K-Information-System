@@ -1,7 +1,7 @@
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronDown, SlidersHorizontal } from 'lucide-react';
-import { Subproject, Activity, OfficeRequirement, StaffingRequirement, operatingUnits, tiers, fundTypes, filterYears } from '../../constants';
+import { ChevronDown, ChevronRight, Search, Undo2, X } from 'lucide-react';
+import { Subproject, Activity, OfficeRequirement, StaffingRequirement } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { useUserAccess } from '../mainfunctions/TableHooks';
@@ -13,6 +13,7 @@ import { resolveSubprojectCompletionRollup } from '../../lib/subprojectCompletio
 import { isMonthTargetOverdue } from '../../lib/dateStatus';
 import type { DataScope } from '../../lib/scopedDataFetch';
 import { ConfirmDialog, LoadingState } from '../ui/enterprise';
+import { DcfScopeFilterPanel, type DcfScopeFilterValue, useDcfScopeFilters } from '../ui/DcfScopeFilters';
 
 interface Props {
     subprojects: Subproject[];
@@ -56,9 +57,6 @@ interface PhysicalItem {
     actualQty: number;
     actualMale?: number;
     actualFemale?: number;
-    actualMaleBeneficiaries?: number | null;
-    actualFemaleBeneficiaries?: number | null;
-    actualFourPsBeneficiaries?: number | null;
     isCompleted?: boolean;
 
     // Meta
@@ -67,6 +65,7 @@ interface PhysicalItem {
     status: string;
     recordTag?: PhysicalTag;
     lineTag?: string | null;
+    isSuperseded?: boolean;
     targetExcluded?: boolean;
     catchUpPlanRemarks?: string;
     dueStatus?: 'Completed' | 'Overdue' | 'On Track' | 'Not Started';
@@ -75,7 +74,11 @@ interface PhysicalItem {
 }
 
 type PhysicalTag = 'Cancelled' | 'Realignment' | 'Savings' | null;
-type PhysicalSortMode = 'default' | 'target-date-asc' | 'target-date-desc' | 'due-status';
+type PhysicalCategory = 'All Particulars' | 'Subprojects' | 'Activities' | 'Staffing' | 'Office';
+
+const physicalCategories: PhysicalCategory[] = ['All Particulars', 'Subprojects', 'Activities', 'Staffing', 'Office'];
+const physicalGroupKeys = ['Subprojects', 'Activities', 'Staffing Requirements', 'Office Requirements'] as const;
+type PhysicalGroupKey = typeof physicalGroupKeys[number];
 
 const commonInputClasses = "form-control form-control--compact";
 const physicalNumberFormatter = new Intl.NumberFormat('en-PH', { maximumFractionDigits: 2 });
@@ -118,37 +121,6 @@ const getPhysicalRecordTag = (record?: { status?: string; isRealignment?: boolea
 const isPhysicalRecordExcludedFromTargets = (record?: { status?: string; isRealignment?: boolean; isSavings?: boolean } | null) =>
     !!getPhysicalRecordTag(record);
 
-const getSortableTargetDate = (item: PhysicalItem) => {
-    const date = getDateOnly(item.targetDateStart);
-    return date ? date.getTime() : Number.MAX_SAFE_INTEGER;
-};
-
-const dueStatusSortOrder: Record<NonNullable<PhysicalItem['dueStatus']>, number> = {
-    'Overdue': 0,
-    'On Track': 1,
-    'Not Started': 2,
-    'Completed': 3,
-};
-
-const sortPhysicalItems = (items: PhysicalItem[], sortMode: PhysicalSortMode) => {
-    const sorted = [...items];
-    if (sortMode === 'default') return sorted;
-
-    sorted.sort((a, b) => {
-        if (sortMode === 'target-date-asc') {
-            return getSortableTargetDate(a) - getSortableTargetDate(b) || a.name.localeCompare(b.name);
-        }
-        if (sortMode === 'target-date-desc') {
-            return getSortableTargetDate(b) - getSortableTargetDate(a) || a.name.localeCompare(b.name);
-        }
-        const aStatus = dueStatusSortOrder[a.dueStatus || 'Not Started'];
-        const bStatus = dueStatusSortOrder[b.dueStatus || 'Not Started'];
-        return aStatus - bStatus || getSortableTargetDate(a) - getSortableTargetDate(b) || a.name.localeCompare(b.name);
-    });
-
-    return sorted;
-};
-
 const PhysicalAccomplishment: React.FC<Props> = ({
     subprojects, setSubprojects,
     activities, setActivities,
@@ -159,19 +131,37 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     onDataScopeChange
 }) => {
     const { currentUser } = useAuth();
-    const { canEdit, canViewAll } = useUserAccess('Accomplishment - Physical');
+    const { canEdit } = useUserAccess('Accomplishment - Physical');
     const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
-    const defaultYear = new Date().getFullYear();
-
-    // Filters (Persistent)
-    const [selectedYear, setSelectedYear] = useLocalStorageState<number | null>('phys_selectedYear', defaultYear);
-    const [selectedOu, setSelectedOu] = useLocalStorageState<string>('phys_selectedOu', 'All');
-    const [selectedTier, setSelectedTier] = useLocalStorageState<string>('phys_selectedTier', 'Tier 1');
-    const [selectedFundType, setSelectedFundType] = useLocalStorageState<string>('phys_selectedFundType', 'Current');
-    const [filtersOpen, setFiltersOpen] = useState(false);
+    const defaultYear = new Date().getFullYear().toString();
+    const legacyScope = useMemo<Partial<DcfScopeFilterValue>>(() => {
+        const read = (key: string) => {
+            try {
+                const value = localStorage.getItem(key);
+                return value ? JSON.parse(value) : undefined;
+            } catch {
+                return undefined;
+            }
+        };
+        const storedYear = read('phys_selectedYear');
+        return {
+            selectedYear: storedYear ? String(storedYear) : defaultYear,
+            selectedOu: read('phys_selectedOu'),
+            selectedTier: read('phys_selectedTier'),
+            selectedFundType: read('phys_selectedFundType')
+        };
+    }, [defaultYear]);
+    const dcfFilters = useDcfScopeFilters({
+        storageKey: 'physical_accomplishment_dcf_scope',
+        moduleName: 'Accomplishment - Physical',
+        onDataScopeChange,
+        initialApplied: legacyScope
+    });
+    const { selectedYear, selectedOu, selectedTier, selectedFundType } = dcfFilters.value;
     const [isLoading, setIsLoading] = useState(false);
     const [focusedNumberInputs, setFocusedNumberInputs] = useState<Set<string>>(new Set());
-    const [sortMode, setSortMode] = useLocalStorageState<PhysicalSortMode>('phys_sortMode', 'default');
+    const [category, setCategory] = useState<PhysicalCategory>('All Particulars');
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Local Data State
     const [items, setItems] = useState<PhysicalItem[]>([]);
@@ -185,8 +175,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     const [monthLockMessage, setMonthLockMessage] = useState('');
     
     // Expansion State
-    const [expandedGroups, setExpandedGroups] = useLocalStorageState<string[]>('phys_expandedGroups', ['Subprojects', 'Activities', 'Program Management']);
-    const [expandedSubgroups, setExpandedSubgroups] = useLocalStorageState<string[]>('phys_expandedSubgroups', ['Staffing Requirements', 'Office Requirements']);
+    const [expandedGroups, setExpandedGroups] = useLocalStorageState<string[]>('phys_expandedGroups', [...physicalGroupKeys]);
     const [expandedParents, setExpandedParents] = useLocalStorageState<string[]>('phys_expandedParents', []);
 
     const getPolicySubjectForPhysicalItem = (item: PhysicalItem) => (
@@ -260,44 +249,20 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         return true;
     };
 
-    // Init defaults and OU lock
+    // Keep the shared scope-filter surface aligned with Financial ACF.
     useEffect(() => {
-        if (!selectedYear) {
-            setSelectedYear(defaultYear);
-        }
-        if (!canViewAll && currentUser?.operatingUnit) {
-            setSelectedOu(currentUser.operatingUnit);
-        }
-    }, [currentUser, canViewAll, defaultYear, selectedYear, setSelectedOu, setSelectedYear]);
-
-    useEffect(() => {
-        onDataScopeChange?.({
-            year: selectedYear || defaultYear,
-            operatingUnit: selectedOu,
-            tier: selectedTier,
-            fundType: selectedFundType,
-            canViewAllOus: canViewAll,
-            requestedBy: currentUser?.id ?? null
+        setExpandedGroups(previous => {
+            const next = previous.filter(group => group !== 'Program Management');
+            physicalGroupKeys.forEach(group => {
+                if (!next.includes(group)) next.push(group);
+            });
+            return next;
         });
-    }, [canViewAll, currentUser?.id, defaultYear, onDataScopeChange, selectedFundType, selectedOu, selectedTier, selectedYear]);
-
-    const availableYears = useMemo(() => {
-        const years = new Set<string>(filterYears);
-        [
-            ...subprojects.map(item => item.fundingYear),
-            ...activities.map(item => item.fundingYear),
-            ...staffingReqs.map(item => item.fundYear),
-            ...officeReqs.map(item => item.fundYear),
-            defaultYear
-        ].forEach(year => {
-            if (year) years.add(year.toString());
-        });
-        return Array.from(years).sort((a, b) => Number(b) - Number(a));
-    }, [activities, defaultYear, officeReqs, staffingReqs, subprojects]);
+    }, [setExpandedGroups]);
 
     const matchesSelectedFilters = (item: any) => {
         const y = item.fundingYear || item.fundYear;
-        if (y !== (selectedYear || defaultYear)) return false;
+        if (selectedYear !== 'All' && String(y ?? '') !== String(selectedYear)) return false;
         if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
         if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
         if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
@@ -329,7 +294,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             buildCard('Staffing Requirement', scopedStaffing.length, scopedStaffing.filter(item => !!item.actualObligationDate || item.hiringStatus === 'Filled').length),
             buildCard('Office Requirement', scopedOffice.length, scopedOffice.filter(item => !!item.actualObligationDate || item.status === 'Completed').length)
         ];
-    }, [activities, defaultYear, officeReqs, selectedFundType, selectedOu, selectedTier, selectedYear, staffingReqs, subprojects]);
+    }, [activities, officeReqs, selectedFundType, selectedOu, selectedTier, selectedYear, staffingReqs, subprojects]);
 
     // --- 1. Load Data ---
     useEffect(() => {
@@ -361,10 +326,11 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         actualQty: d.actualNumberOfUnits || 0,
                         isCompleted,
                         isParent: false,
-                        isLocked: false, // Individual items editable
+                        isLocked: false,
                         status: sp.status,
                         recordTag: parentRecordTag,
                         lineTag: getBudgetLineTag(d),
+                        isSuperseded: !!d.isSuperseded,
                         targetExcluded: parentTargetExcluded || isBudgetLineExcludedFromTargets(d),
                         ...getPhysicalDueStatus(d.deliveryDate, isCompleted)
                     };
@@ -381,9 +347,6 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     unitOfMeasure: 'Project',
                     actualDateStart: sp.actualCompletionDate || '',
                     actualQty: 0,
-                    actualMaleBeneficiaries: sp.actualMaleBeneficiaries ?? null,
-                    actualFemaleBeneficiaries: sp.actualFemaleBeneficiaries ?? null,
-                    actualFourPsBeneficiaries: sp.actualFourPsBeneficiaries ?? null,
                     isParent: true,
                     isLocked: false,
                     status: sp.status,
@@ -507,18 +470,47 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, activities, staffingReqs, officeReqs]);
 
     // --- 2. Grouping for Display ---
-    const groupedDisplay = useMemo(() => {
-        return {
-            'Subprojects': sortPhysicalItems(items.filter(i => i.sourceType === 'Subproject'), sortMode),
-            'Activities': sortPhysicalItems(items.filter(i => i.sourceType === 'Activity'), sortMode),
-            'Staffing Requirements': sortPhysicalItems(items.filter(i => i.sourceType === 'Staffing'), sortMode),
-            'Office Requirements': sortPhysicalItems(items.filter(i => i.sourceType === 'Office'), sortMode),
-            'Program Management': sortPhysicalItems([
-                ...items.filter(i => i.sourceType === 'Staffing'),
-                ...items.filter(i => i.sourceType === 'Office')
-            ], sortMode)
-        };
-    }, [items, sortMode]);
+    const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+
+    const filterPhysicalTree = (nodes: PhysicalItem[]): PhysicalItem[] => nodes.flatMap(node => {
+        const nodeMatches = !normalizedSearchQuery || [node.name, node.subName]
+            .filter(Boolean)
+            .some(value => String(value).toLowerCase().includes(normalizedSearchQuery));
+        const filteredChildren = node.children
+            ? (nodeMatches ? node.children : filterPhysicalTree(node.children))
+            : undefined;
+        if (!normalizedSearchQuery || nodeMatches || filteredChildren?.length) {
+            return [{ ...node, ...(node.children ? { children: filteredChildren } : {}) }];
+        }
+        return [];
+    });
+
+    const groupedDisplay = useMemo(() => ({
+        'Subprojects': filterPhysicalTree(items.filter(i => i.sourceType === 'Subproject')),
+        'Activities': filterPhysicalTree(items.filter(i => i.sourceType === 'Activity')),
+        'Staffing Requirements': filterPhysicalTree(items.filter(i => i.sourceType === 'Staffing')),
+        'Office Requirements': filterPhysicalTree(items.filter(i => i.sourceType === 'Office'))
+    }), [items, normalizedSearchQuery]);
+
+    const visibleGroupKeys = useMemo<PhysicalGroupKey[]>(() => {
+        if (category === 'Subprojects') return ['Subprojects'];
+        if (category === 'Activities') return ['Activities'];
+        if (category === 'Staffing') return ['Staffing Requirements'];
+        if (category === 'Office') return ['Office Requirements'];
+        return [...physicalGroupKeys];
+    }, [category]);
+
+    const visibleItems = useMemo(() => visibleGroupKeys.flatMap(groupKey => groupedDisplay[groupKey]), [groupedDisplay, visibleGroupKeys]);
+
+    const overallPhysicalSummary = useMemo(() => {
+        const leafRows = items.flatMap(item => item.isParent && item.children?.length ? item.children : [item]);
+        const activeRows = leafRows.filter(item => !item.targetExcluded);
+        const target = activeRows.length;
+        const accomplished = activeRows.filter(item => !!item.actualDateStart || item.isCompleted || item.dueStatus === 'Completed').length;
+        const percent = target > 0 ? Math.round((accomplished / target) * 100) : 0;
+        const status = target === 0 ? 'No target records' : percent >= 100 ? 'Completed' : percent >= 60 ? 'In progress' : 'Needs update';
+        return { target, accomplished, percent, status };
+    }, [items]);
 
     // --- 3. Handlers ---
 
@@ -526,12 +518,30 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         setExpandedGroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
     };
 
-    const toggleSubgroup = (group: string) => {
-        setExpandedSubgroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
-    };
-
     const toggleParent = (id: string) => {
         setExpandedParents(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+    };
+
+    const confirmScopeApply = () => {
+        if (changedItems.size > 0) {
+            const shouldDiscard = window.confirm('You have unsaved changes. Discard them and change the applied scope?');
+            if (!shouldDiscard) return false;
+            setChangedItems(new Map());
+        }
+        return true;
+    };
+
+    const handleCategoryKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentCategory: PhysicalCategory) => {
+        if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft' && event.key !== 'Home' && event.key !== 'End') return;
+        event.preventDefault();
+        const currentIndex = physicalCategories.indexOf(currentCategory);
+        const nextIndex = event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+                ? physicalCategories.length - 1
+                : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + physicalCategories.length) % physicalCategories.length;
+        setCategory(physicalCategories[nextIndex]);
+        document.getElementById(`physical-category-${nextIndex}`)?.focus();
     };
 
     const handleTitleClick = (item: PhysicalItem) => {
@@ -641,9 +651,6 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         hasPhysicalAccomplishment: !!newActualCompletionDate,
                         hasChanged: valuesDiffer(originalItem?.actualDateStart, newActualCompletionDate)
                             || valuesDiffer(originalItem?.catchUpPlanRemarks, item.catchUpPlanRemarks)
-                            || valuesDiffer(sp.actualMaleBeneficiaries, item.actualMaleBeneficiaries)
-                            || valuesDiffer(sp.actualFemaleBeneficiaries, item.actualFemaleBeneficiaries)
-                            || valuesDiffer(sp.actualFourPsBeneficiaries, item.actualFourPsBeneficiaries)
                             || valuesDiffer(sp.status, newStatus)
                             || hasSubprojectDetailActualChange(sp.details, normalizedUpdatedDetails),
                         previousSubmittedAt: sp.physical_accomplishment_submitted_at,
@@ -655,9 +662,6 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                             actualCompletionDate: newActualCompletionDate,
                             estimatedCompletionDate: item.targetDateStart || null,
                             catchUpPlanRemarks: item.catchUpPlanRemarks || null,
-                            actualMaleBeneficiaries: item.actualMaleBeneficiaries ?? null,
-                            actualFemaleBeneficiaries: item.actualFemaleBeneficiaries ?? null,
-                            actualFourPsBeneficiaries: item.actualFourPsBeneficiaries ?? null,
                             status: newStatus,
                             details: normalizedUpdatedDetails,
                             physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
@@ -666,7 +670,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     }
 
                     // Update Context
-                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, actualCompletionDate: newActualCompletionDate || undefined, estimatedCompletionDate: item.targetDateStart, catchUpPlanRemarks: item.catchUpPlanRemarks || '', actualMaleBeneficiaries: item.actualMaleBeneficiaries ?? null, actualFemaleBeneficiaries: item.actualFemaleBeneficiaries ?? null, actualFourPsBeneficiaries: item.actualFourPsBeneficiaries ?? null, status: newStatus, details: normalizedUpdatedDetails, physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt, updated_at: submittedAt } : s));
+                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, actualCompletionDate: newActualCompletionDate || undefined, estimatedCompletionDate: item.targetDateStart, catchUpPlanRemarks: item.catchUpPlanRemarks || '', status: newStatus, details: normalizedUpdatedDetails, physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt, updated_at: submittedAt } : s));
 
                 } else {
                     // Save Individual Child Row
@@ -807,21 +811,30 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         setIsSaveConfirmOpen(false);
         setIsSavingAll(true);
         try {
-            // Find all items that have changes
-            const itemsToSave: PhysicalItem[] = [];
-            
-            const findChangedItems = (nodes: PhysicalItem[]) => {
+            // Save one merged payload per Subproject so parent and child edits
+            // cannot overwrite different portions of the same details array.
+            const directItemsToSave: PhysicalItem[] = [];
+            const subprojectParents = new Map<number, PhysicalItem>();
+
+            const findChangedItems = (nodes: PhysicalItem[], subprojectParent?: PhysicalItem) => {
                 nodes.forEach(node => {
                     if (changedItems.has(node.uniqueId)) {
-                        itemsToSave.push(node);
+                        if (node.sourceType === 'Subproject') {
+                            const parent = node.isParent ? node : subprojectParent;
+                            if (parent) subprojectParents.set(parent.sourceId, parent);
+                        } else {
+                            directItemsToSave.push(node);
+                        }
                     }
                     if (node.children) {
-                        findChangedItems(node.children);
+                        findChangedItems(node.children, node.sourceType === 'Subproject' && node.isParent ? node : subprojectParent);
                     }
                 });
             };
-            
+
             findChangedItems(items);
+
+            const itemsToSave = [...subprojectParents.values(), ...directItemsToSave];
 
             for (const item of itemsToSave) {
                 if (!(await validatePhysicalItemForSave(item))) {
@@ -875,27 +888,29 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     };
 
     // --- Render Helpers ---
-    const renderDateInput = (value: string, onChange: (val: string) => void | Promise<void>, disabled: boolean) => (
+    const renderDateInput = (value: string, onChange: (val: string) => void | Promise<void>, disabled: boolean, label = 'Date') => (
         <input 
             type="date" 
             value={value} 
             onChange={(e) => onChange(e.target.value)} 
             disabled={disabled}
+            aria-label={label}
             className={commonInputClasses}
         />
     );
 
-    const renderNumberInput = (value: number, onChange: (val: number) => void, disabled: boolean) => (
+    const renderNumberInput = (value: number, onChange: (val: number) => void, disabled: boolean, label = 'Units') => (
         <input 
             type="number" 
             value={value || ''} 
             onChange={(e) => onChange(parseFloat(e.target.value) || 0)} 
             disabled={disabled}
+            aria-label={label}
             className={`${commonInputClasses} form-control--numeric`}
         />
     );
 
-    const renderActualNumberInput = (inputId: string, value: number, onChange: (val: number) => void, disabled: boolean) => {
+    const renderActualNumberInput = (inputId: string, value: number, onChange: (val: number) => void, disabled: boolean, label = 'Actual units') => {
         const isFocused = focusedNumberInputs.has(inputId);
         return (
             <input
@@ -910,26 +925,11 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 })}
                 onChange={(e) => onChange(parsePhysicalNumberInput(e.target.value))}
                 disabled={disabled}
+                aria-label={label}
                 className={`${commonInputClasses} form-control--numeric`}
             />
         );
     };
-
-    const renderNullableIntegerInput = (value: number | null | undefined, onChange: (val: number | null) => void, disabled: boolean, label: string) => (
-        <label>
-            <span>{label}</span>
-            <input
-                type="number"
-                min="0"
-                step="1"
-                value={value ?? ''}
-                onChange={(event) => onChange(event.target.value === '' ? null : Math.max(0, Math.trunc(Number(event.target.value))))}
-                disabled={disabled}
-                className={`${commonInputClasses} form-control--numeric`}
-                placeholder="Not reported"
-            />
-        </label>
-    );
 
     const renderDueBadge = (item: PhysicalItem) => {
         const status = item.dueStatus || 'On Track';
@@ -987,15 +987,55 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         return false;
     };
 
+    const renderParticipantInputs = (item: PhysicalItem, isDisabled: boolean, mode: 'target' | 'actual') => {
+        const isTarget = mode === 'target';
+        const male = isTarget ? item.targetMale || 0 : item.actualMale || 0;
+        const female = isTarget ? item.targetFemale || 0 : item.actualFemale || 0;
+        const updateMale = (value: number) => updateLocalItem(item.uniqueId, isTarget
+            ? { targetMale: value, targetQty: value + (item.targetFemale || 0) }
+            : { actualMale: value, actualQty: value + (item.actualFemale || 0) });
+        const updateFemale = (value: number) => updateLocalItem(item.uniqueId, isTarget
+            ? { targetFemale: value, targetQty: (item.targetMale || 0) + value }
+            : { actualFemale: value, actualQty: (item.actualMale || 0) + value });
+
+        return (
+            <div className="physical-accomplishment-participant-inputs">
+                <label className="physical-accomplishment-participant-input">
+                    <span>Male</span>
+                    {isTarget ? (
+                        <input
+                            type="number"
+                            value={item.targetMale || ''}
+                            onChange={(event) => updateMale(parseFloat(event.target.value) || 0)}
+                            disabled={isDisabled}
+                            aria-label={`Target male participants for ${item.name}`}
+                            className={`${commonInputClasses} form-control--numeric`}
+                        />
+                    ) : renderActualNumberInput(`${item.uniqueId}-actual-male`, male, updateMale, isDisabled, `Actual male participants for ${item.name}`)}
+                </label>
+                <label className="physical-accomplishment-participant-input">
+                    <span>Female</span>
+                    {isTarget ? (
+                        <input
+                            type="number"
+                            value={item.targetFemale || ''}
+                            onChange={(event) => updateFemale(parseFloat(event.target.value) || 0)}
+                            disabled={isDisabled}
+                            aria-label={`Target female participants for ${item.name}`}
+                            className={`${commonInputClasses} form-control--numeric`}
+                        />
+                    ) : renderActualNumberInput(`${item.uniqueId}-actual-female`, female, updateFemale, isDisabled, `Actual female participants for ${item.name}`)}
+                </label>
+            </div>
+        );
+    };
+
     const renderTargetUnits = (item: PhysicalItem, isTargetEditable: boolean) => {
         const targetClass = item.targetExcluded ? 'physical-accomplishment-target-excluded' : '';
         const canEditVisibleTarget = isTargetEditable && !item.targetExcluded;
         if (item.sourceType === 'Activity') {
             return canEditVisibleTarget ? (
-                <div className="physical-accomplishment-gender-inputs">
-                    <input type="number" placeholder="M" value={item.targetMale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { targetMale: parseFloat(e.target.value) || 0, targetQty: (parseFloat(e.target.value) || 0) + (item.targetFemale || 0) })} className={`${commonInputClasses} w-12`} />
-                    <input type="number" placeholder="F" value={item.targetFemale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { targetFemale: parseFloat(e.target.value) || 0, targetQty: (item.targetMale || 0) + (parseFloat(e.target.value) || 0) })} className={`${commonInputClasses} w-12`} />
-                </div>
+                renderParticipantInputs(item, false, 'target')
             ) : (
                 <div className={`physical-accomplishment-target-summary ${targetClass}`}>
                     <span>{item.targetQty} Pax</span>
@@ -1009,18 +1049,18 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         }
 
         return canEditVisibleTarget && !item.isParent ? (
-            renderNumberInput(item.targetQty, (val) => updateLocalItem(item.uniqueId, { targetQty: val }), false)
+            renderNumberInput(item.targetQty, (val) => updateLocalItem(item.uniqueId, { targetQty: val }), false, `Target units for ${item.name}`)
         ) : (
             <span className={targetClass}>{item.targetQty} {item.unitOfMeasure}</span>
         );
     };
 
-    const renderPhysicalItemRows = (groupItems: PhysicalItem[]) => sortPhysicalItems(groupItems, sortMode).map(item => {
-        const isParentExpanded = item.isParent && expandedParents.includes(item.uniqueId);
+    const renderPhysicalItemRows = (groupItems: PhysicalItem[]) => groupItems.map(item => {
+        const isParentExpanded = item.isParent && (normalizedSearchQuery.length > 0 || expandedParents.includes(item.uniqueId));
         const completionRate = getCompletionRate(item);
         const itemPhysicalDecision = getPhysicalStatusDecision(item);
         const canEditPhysicalItem = canEdit && itemPhysicalDecision.allowed;
-        const isLocked = !canEditPhysicalItem;
+        const isLocked = !canEditPhysicalItem || !!item.isSuperseded;
         const isDerivedSubprojectParentActual = item.sourceType === 'Subproject' && item.isParent;
         const isTargetEditable = canEditTarget(item);
         const canEditVisibleTarget = isTargetEditable && !item.targetExcluded;
@@ -1028,6 +1068,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         const itemRowClass = [
             'physical-accomplishment-row',
             item.isParent ? 'physical-accomplishment-row--parent' : '',
+            !item.isParent ? 'physical-accomplishment-row--child' : '',
             item.isOverdue ? 'physical-accomplishment-row--overdue' : '',
             item.targetExcluded ? 'physical-accomplishment-row--target-excluded' : '',
             getPhysicalTagClass(item),
@@ -1041,7 +1082,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         <div className="physical-accomplishment-title-cell">
                             {item.isParent && (
                                 <button onClick={() => toggleParent(item.uniqueId)} className="fac-expand-toggle fac-expand-toggle--small" aria-label={isParentExpanded ? 'Collapse row' : 'Expand row'}>
-                                    {isParentExpanded ? '-' : '+'}
+                                    {isParentExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
                                 </button>
                             )}
                             <div className="min-w-0">
@@ -1057,9 +1098,9 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     <td className="px-4 py-2 text-center">
                         {canEditVisibleTarget && !(item.sourceType === 'Staffing' && item.isParent) ? (
                             <div className="space-y-1">
-                                {renderDateInput(item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateStart: val }), false)}
+                                    {renderDateInput(item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateStart: val }), false, `Target date for ${item.name}`)}
                                 {item.sourceType === 'Activity' && (
-                                    renderDateInput(item.targetDateEnd || item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateEnd: val }), false)
+                                    renderDateInput(item.targetDateEnd || item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateEnd: val }), false, `Target end date for ${item.name}`)
                                 )}
                             </div>
                         ) : (
@@ -1078,32 +1119,23 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                 {renderDateInput(item.actualDateStart, async (val) => {
                                     if (val && !(await validatePhysicalActualMonth(item, val))) return;
                                     updateLocalItem(item.uniqueId, { actualDateStart: val });
-                                }, isLocked || isDerivedSubprojectParentActual)}
+                                }, isLocked || isDerivedSubprojectParentActual, `Actual date for ${item.name}`)}
                                 {item.sourceType === 'Activity' && item.targetDateEnd && (
                                     renderDateInput(item.actualDateEnd || item.actualDateStart, async (val) => {
                                         if (val && !(await validatePhysicalActualMonth(item, val))) return;
                                         updateLocalItem(item.uniqueId, { actualDateEnd: val });
-                                    }, isLocked)
+                                    }, isLocked, `Actual end date for ${item.name}`)
                                 )}
                             </div>
                         )}
                     </td>
                     <td className="pac-col-actual px-4 py-2 text-center">
                         {item.sourceType === 'Activity' ? (
-                            <div className="physical-accomplishment-gender-inputs">
-                                {renderActualNumberInput(`${item.uniqueId}-actual-male`, item.actualMale || 0, (val) => updateLocalItem(item.uniqueId, { actualMale: val, actualQty: val + (item.actualFemale || 0) }), isLocked)}
-                                {renderActualNumberInput(`${item.uniqueId}-actual-female`, item.actualFemale || 0, (val) => updateLocalItem(item.uniqueId, { actualFemale: val, actualQty: (item.actualMale || 0) + val }), isLocked)}
-                            </div>
+                            renderParticipantInputs(item, isLocked, 'actual')
                         ) : (
-                            item.isParent && item.sourceType === 'Subproject' ? (
-                                <div className="physical-accomplishment-beneficiary-inputs">
-                                    {renderNullableIntegerInput(item.actualMaleBeneficiaries, (val) => updateLocalItem(item.uniqueId, { actualMaleBeneficiaries: val }), isLocked, 'Male')}
-                                    {renderNullableIntegerInput(item.actualFemaleBeneficiaries, (val) => updateLocalItem(item.uniqueId, { actualFemaleBeneficiaries: val }), isLocked, 'Female')}
-                                    {renderNullableIntegerInput(item.actualFourPsBeneficiaries, (val) => updateLocalItem(item.uniqueId, { actualFourPsBeneficiaries: val }), isLocked, '4Ps Beneficiary')}
-                                </div>
-                            )
-                            : (item.sourceType === 'Staffing' && item.isParent ? <span className=" ">{item.actualQty} / {item.targetQty}</span>
-                                : renderActualNumberInput(`${item.uniqueId}-actual-qty`, item.actualQty, (val) => updateLocalItem(item.uniqueId, { actualQty: val }), isLocked))
+                            item.isParent && item.sourceType === 'Subproject' ? <span className="physical-accomplishment-empty-cell">-</span>
+                            : (item.sourceType === 'Staffing' && item.isParent ? <span>{item.actualQty} / {item.targetQty}</span>
+                                : renderActualNumberInput(`${item.uniqueId}-actual-qty`, item.actualQty, (val) => updateLocalItem(item.uniqueId, { actualQty: val }), isLocked, `Actual units for ${item.name}`))
                         )}
                     </td>
                     <td className="px-4 py-2 text-center physical-accomplishment-completion">
@@ -1117,10 +1149,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     </td>
                     <td className="px-4 py-2 text-right">
                         {isChanged && (
-                            <button onClick={() => undoLocalItem(item.uniqueId)} className="table-action table-action--danger" title="Undo Changes">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                                </svg>
+                            <button onClick={() => undoLocalItem(item.uniqueId)} className="table-action table-action--danger" title="Undo changes" aria-label={`Undo changes for ${item.name}`}>
+                                <Undo2 aria-hidden="true" />
                             </button>
                         )}
                     </td>
@@ -1132,124 +1162,82 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     });
 
     return (
-        <div className="data-list-page">
-            <div className="data-list-header">
-                <div>
-                    <h2 className="data-list-title">Physical Accomplishment Collection Form</h2>
-                </div>
-                <div className="page-filter-toggle">
-                    <span className="page-filter-summary">
-                        {[selectedOu === 'All' ? 'All OUs' : selectedOu, selectedTier, selectedFundType, selectedYear || defaultYear].join(' / ')}
-                    </span>
-                    <button
-                        type="button"
-                        className={`btn btn-secondary page-filter-button ${filtersOpen ? 'is-open' : ''}`}
-                        onClick={() => setFiltersOpen(prev => !prev)}
-                        aria-expanded={filtersOpen}
-                        aria-controls="physical-accomplishment-filter-panel"
-                    >
-                        <SlidersHorizontal aria-hidden="true" />
-                        <span>Filters</span>
-                        <ChevronDown aria-hidden="true" className="page-filter-button__chevron" />
-                    </button>
+        <div className="data-list-page physical-accomplishment-page">
+            <div className="data-list-header physical-accomplishment-page-header">
+                <div className="physical-accomplishment-header-copy">
+                    <h2 className="data-list-title">Physical Accomplishment Form</h2>
                 </div>
             </div>
 
-            <div
-                id="physical-accomplishment-filter-panel"
-                className={`report-filter-panel dashboard-filter-panel page-filter-panel ${filtersOpen ? 'is-open' : ''}`}
-                hidden={!filtersOpen}
-            >
-                <div className="report-filter-grid">
-                    <div className="report-filter">
-                        <label htmlFor="physical-ou-filter" className="form-label">OU</label>
-                        <select
-                            id="physical-ou-filter"
-                            value={selectedOu}
-                            onChange={(event) => setSelectedOu(event.target.value)}
-                            disabled={!canViewAll}
-                            className="form-control"
-                        >
-                            <option value="All">All OUs</option>
-                            {operatingUnits.map(ou => (
-                                <option key={ou} value={ou}>{ou}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="report-filter">
-                        <label htmlFor="physical-tier-filter" className="form-label">Tier</label>
-                        <select
-                            id="physical-tier-filter"
-                            value={selectedTier}
-                            onChange={(event) => setSelectedTier(event.target.value)}
-                            className="form-control"
-                        >
-                            <option value="All">All Tiers</option>
-                            {tiers.map(tier => (
-                                <option key={tier} value={tier}>{tier}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="report-filter">
-                        <label htmlFor="physical-fund-type-filter" className="form-label">Fund Type</label>
-                        <select
-                            id="physical-fund-type-filter"
-                            value={selectedFundType}
-                            onChange={(event) => setSelectedFundType(event.target.value)}
-                            className="form-control"
-                        >
-                            <option value="All">All Fund Types</option>
-                            {fundTypes.map(fundType => (
-                                <option key={fundType} value={fundType}>{fundType}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="report-filter">
-                        <label htmlFor="physical-year-filter" className="form-label">Year</label>
-                        <select
-                            id="physical-year-filter"
-                            value={(selectedYear || defaultYear).toString()}
-                            onChange={(event) => setSelectedYear(Number(event.target.value))}
-                            className="form-control"
-                        >
-                            {availableYears.map(year => (
-                                <option key={year} value={year}>{year}</option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
-            </div>
+            <DcfScopeFilterPanel
+                idPrefix="physical-accomplishment"
+                filters={dcfFilters}
+                onBeforeApply={confirmScopeApply}
+                onBeforeReset={confirmScopeApply}
+            />
 
             {isLoading ? (
                 <LoadingState label="Loading physical data..." />
             ) : (
-                <div className="data-table-card">
+                <>
                 <section className="financial-accomplishment-summary-grid physical-accomplishment-summary-grid" aria-label="Physical accomplishment summary">
                     {physicalSummaryCards.map(card => (
-                        <div key={card.label} className={`financial-accomplishment-summary-card physical-accomplishment-summary-card physical-accomplishment-summary-card--${card.tone}`}>
+                        <article key={card.label} className={`financial-accomplishment-summary-card physical-accomplishment-summary-card physical-accomplishment-summary-card--${card.tone}`}>
                             <div className="financial-accomplishment-summary-card__header">
                                 <span>{card.label}</span>
+                                <strong>{card.accomplished} / {card.target}</strong>
                             </div>
-                            <strong>{card.accomplished} / {card.target}</strong>
-                            <small>{card.percent}% accomplished - {card.status}</small>
-                        </div>
+                            <div className="physical-accomplishment-summary-progress" aria-label={`${card.percent}% accomplished`}>
+                                <span style={{ width: `${Math.min(100, card.percent)}%` }} />
+                            </div>
+                            <div className="physical-accomplishment-summary-card__footer">
+                                <span>{card.percent}% accomplished</span>
+                                <span className={`physical-accomplishment-summary-status physical-accomplishment-summary-status--${card.tone}`}>{card.status}</span>
+                            </div>
+                        </article>
                     ))}
                 </section>
-                <div className="physical-accomplishment-table-toolbar">
-                    <label htmlFor="physical-table-sort" className="physical-accomplishment-table-toolbar__label">Sort rows</label>
-                    <select
-                        id="physical-table-sort"
-                        value={sortMode}
-                        onChange={(event) => setSortMode(event.target.value as PhysicalSortMode)}
-                        className="form-control physical-accomplishment-sort-select"
-                    >
-                        <option value="default">Default</option>
-                        <option value="target-date-asc">Target Date: Earliest</option>
-                        <option value="target-date-desc">Target Date: Latest</option>
-                        <option value="due-status">Due Status</option>
-                    </select>
-                </div>
-                <div className="data-table-scroll financial-accomplishment-table-scroll physical-accomplishment-table-scroll custom-scrollbar">
+
+                <div className="financial-accomplishment-table-controls physical-accomplishment-table-controls">
+                        <div className="financial-accomplishment-category-tabs physical-accomplishment-category-tabs" role="tablist" aria-label="Physical accomplishment category">
+                            {physicalCategories.map((option, index) => (
+                                <button
+                                    key={option}
+                                    id={`physical-category-${index}`}
+                                    type="button"
+                                    role="tab"
+                                    tabIndex={category === option ? 0 : -1}
+                                    aria-selected={category === option}
+                                    aria-controls="physical-accomplishment-table-panel"
+                                    className={category === option ? 'is-active' : ''}
+                                    onClick={() => setCategory(option)}
+                                    onKeyDown={(event) => handleCategoryKeyDown(event, option)}
+                                >
+                                    {option}
+                                </button>
+                            ))}
+                        </div>
+                        <label className="financial-accomplishment-search physical-accomplishment-search">
+                            <Search aria-hidden="true" />
+                            <span className="sr-only">Search physical items</span>
+                            <input
+                                type="search"
+                                value={searchQuery}
+                                onChange={(event) => setSearchQuery(event.target.value)}
+                                placeholder="Search physical items by title"
+                                aria-label="Search physical items by title"
+                            />
+                            {searchQuery && (
+                                <button type="button" onClick={() => setSearchQuery('')} aria-label="Clear physical item search" title="Clear search">
+                                    <X aria-hidden="true" />
+                                </button>
+                            )}
+                        </label>
+                    </div>
+
+                <div className="data-table-card financial-accomplishment-table-card physical-accomplishment-table-card">
+
+                    <div id="physical-accomplishment-table-panel" className="data-table-scroll financial-accomplishment-table-scroll physical-accomplishment-table-scroll custom-scrollbar" role="tabpanel" aria-label={`${category} physical accomplishment records`}>
                     <table className="data-table physical-accomplishment-table">
                         <colgroup>
                             <col className="pac-width-particulars" />
@@ -1263,81 +1251,71 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                             <col className="pac-width-action" />
                         </colgroup>
                         <thead>
-                            <tr>
-                                <th className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars physical-accomplishment-sticky-head px-4 py-3 text-center align-middle">Particulars / Activity</th>
-                                <th className="px-4 py-3 text-center">Target Date</th>
-                                <th className="px-4 py-3 text-center">Target Units</th>
-                                <th className="pac-col-actual px-4 py-3 text-center">Actual Date</th>
-                                <th className="pac-col-actual px-4 py-3 text-center">Actual Units</th>
-                                <th className="px-4 py-3 text-center">% Completion</th>
-                                <th className="px-4 py-3 text-center">Due Status</th>
-                                <th className="px-4 py-3 text-center">Justification / Catch-up Plan</th>
-                                <th className="px-4 py-3 text-right">Action</th>
+                            <tr className="physical-accomplishment-table__group-header">
+                                <th rowSpan={2} scope="col" className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars physical-accomplishment-sticky-head">Particulars / Activity</th>
+                                <th colSpan={2} scope="colgroup">Target</th>
+                                <th colSpan={2} scope="colgroup" className="pac-col-actual">Actual</th>
+                                <th colSpan={2} scope="colgroup">Status</th>
+                                <th rowSpan={2} scope="col">Justification / Catch-up Plan</th>
+                                <th rowSpan={2} scope="col">Action</th>
+                            </tr>
+                            <tr className="physical-accomplishment-table__sub-header">
+                                <th scope="col">Date</th>
+                                <th scope="col">Units</th>
+                                <th scope="col" className="pac-col-actual">Date</th>
+                                <th scope="col" className="pac-col-actual">Units</th>
+                                <th scope="col">% Completion</th>
+                                <th scope="col">Due Status</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {(['Subprojects', 'Activities', 'Program Management'] as const).map(groupKey => {
-                                const groupItems: PhysicalItem[] = groupedDisplay[groupKey] || [];
+                            {visibleGroupKeys.map(groupKey => {
+                                const groupItems: PhysicalItem[] = groupedDisplay[groupKey];
                                 if (groupItems.length === 0) return null;
                                 const isGroupExpanded = expandedGroups.includes(groupKey);
-                                const isProgramManagement = groupKey === 'Program Management';
-                                const programSubgroups = ['Staffing Requirements', 'Office Requirements'] as const;
 
                                 return (
                                     <React.Fragment key={groupKey}>
                                         <tr className="physical-accomplishment-row physical-accomplishment-row--group">
-                                            <td className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars px-4 py-3">
-                                                <button onClick={() => toggleGroup(groupKey)} className="physical-accomplishment-drill-button">
-                                                    <span className="fac-expand-toggle" aria-hidden="true">{isGroupExpanded ? '-' : '+'}</span>
-                                                    <span>{groupKey}</span>
+                                            <td className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars">
+                                                <button onClick={() => toggleGroup(groupKey)} className="physical-accomplishment-drill-button" aria-expanded={isGroupExpanded}>
+                                                    <span className="fac-expand-toggle" aria-hidden="true">
+                                                        {isGroupExpanded ? <ChevronDown /> : <ChevronRight />}
+                                                    </span>
+                                                    <span className="physical-accomplishment-drill-text">{groupKey}</span>
                                                 </button>
                                             </td>
-                                            <td className="px-4 py-3 text-center physical-accomplishment-empty-cell">-</td>
-                                            <td className="px-4 py-3 text-center">{groupItems.length} record{groupItems.length === 1 ? '' : 's'}</td>
-                                            <td className="pac-col-actual px-4 py-3 text-center">-</td>
-                                            <td className="pac-col-actual px-4 py-3 text-center ">-</td>
-                                            <td className="px-4 py-3 text-center ">-</td>
-                                            <td className="px-4 py-3 text-center ">-</td>
-                                            <td className="px-4 py-3 text-center ">-</td>
-                                            <td className="px-4 py-3 text-right ">-</td>
+                                            <td className="text-center physical-accomplishment-empty-cell">-</td>
+                                            <td className="text-center">{groupItems.length} record{groupItems.length === 1 ? '' : 's'}</td>
+                                            <td className="pac-col-actual text-center">-</td>
+                                            <td className="pac-col-actual text-center">-</td>
+                                            <td className="text-center">-</td>
+                                            <td className="text-center">-</td>
+                                            <td className="text-center">-</td>
+                                            <td className="text-right">-</td>
                                         </tr>
 
-                                        {isGroupExpanded && !isProgramManagement && renderPhysicalItemRows(groupItems)}
-                                        {isGroupExpanded && isProgramManagement && programSubgroups.map(subgroupKey => {
-                                            const subgroupItems = groupedDisplay[subgroupKey] || [];
-                                            if (subgroupItems.length === 0) return null;
-                                            const isSubgroupExpanded = expandedSubgroups.includes(subgroupKey);
-
-                                            return (
-                                                <React.Fragment key={subgroupKey}>
-                                                    <tr className="physical-accomplishment-row physical-accomplishment-row--subgroup">
-                                                        <td className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars px-4 py-3">
-                                                            <button onClick={() => toggleSubgroup(subgroupKey)} className="physical-accomplishment-drill-button">
-                                                                <span className="fac-expand-toggle" aria-hidden="true">{isSubgroupExpanded ? '-' : '+'}</span>
-                                                                <span>{subgroupKey}</span>
-                                                            </button>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-center physical-accomplishment-empty-cell">-</td>
-                                                        <td className="px-4 py-3 text-center">{subgroupItems.length} record{subgroupItems.length === 1 ? '' : 's'}</td>
-                                                        <td className="pac-col-actual px-4 py-3 text-center">-</td>
-                                                        <td className="pac-col-actual px-4 py-3 text-center ">-</td>
-                                                        <td className="px-4 py-3 text-center ">-</td>
-                                                        <td className="px-4 py-3 text-center ">-</td>
-                                                        <td className="px-4 py-3 text-center ">-</td>
-                                                        <td className="px-4 py-3 text-right ">-</td>
-                                                    </tr>
-                                                    {isSubgroupExpanded && renderPhysicalItemRows(subgroupItems)}
-                                                </React.Fragment>
-                                            );
-                                        })}
+                                        {isGroupExpanded && renderPhysicalItemRows(groupItems)}
                                     </React.Fragment>
                                 );
                             })}
-                            {items.length === 0 && <tr><td colSpan={9} className="data-table__empty-cell">No data available for the selected filters.</td></tr>}
+                            {visibleItems.length === 0 && <tr><td colSpan={9} className="data-table__empty-cell">{category === 'All Particulars' ? 'No data available for the selected filters.' : `No ${category.toLowerCase()} records in the selected scope.`}</td></tr>}
                         </tbody>
                     </table>
+                    </div>
+                    <div className="physical-accomplishment-table-footer">
+                        <div className="physical-accomplishment-overall-summary">
+                            <span>Overall physical accomplishment</span>
+                            <strong>{overallPhysicalSummary.accomplished} / {overallPhysicalSummary.target}</strong>
+                            <span>{overallPhysicalSummary.percent}%</span>
+                            <span className={`physical-accomplishment-summary-status physical-accomplishment-summary-status--${overallPhysicalSummary.status === 'Completed' ? 'success' : overallPhysicalSummary.status === 'No target records' ? 'neutral' : overallPhysicalSummary.percent >= 60 ? 'warning' : 'danger'}`}>{overallPhysicalSummary.status}</span>
+                        </div>
+                        <div className="physical-accomplishment-table-meta">
+                            {visibleItems.length} line item{visibleItems.length === 1 ? '' : 's'} · Units follow each particular's unit of measure
+                        </div>
+                    </div>
                 </div>
-                </div>
+                </>
             )}
 
             {/* Global Save Bar */}

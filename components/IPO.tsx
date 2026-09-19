@@ -16,6 +16,7 @@ import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheck
 import { getLodEffectiveState } from '../lib/lodScoring';
 import { subscribeToLodDataChanges } from '../lib/lodDataSync';
 import { commodityCapacityToFormValue, getCommodityCapacityValues } from '../lib/commodityProfile';
+import { getActiveSubprojectBudget } from '../lib/subprojectItemAdjustments';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -200,7 +201,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         // Calculate from subprojects
         (subprojects || []).forEach(sp => {
             if (sp.status === 'Completed') {
-                const budget = (sp.details || []).reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+                const budget = getActiveSubprojectBudget(sp.details || []);
                 const currentInvestment = investmentMap.get(sp.indigenousPeopleOrganization) || 0;
                 investmentMap.set(sp.indigenousPeopleOrganization, currentInvestment + budget);
             }
@@ -223,7 +224,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
         // Calculate from subprojects (regardless of status)
         (subprojects || []).forEach(sp => {
-            const budget = (sp.details || []).reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+            const budget = getActiveSubprojectBudget(sp.details || []);
             const currentAllocation = allocationMap.get(sp.indigenousPeopleOrganization) || 0;
             allocationMap.set(sp.indigenousPeopleOrganization, currentAllocation + budget);
         });

@@ -88,9 +88,10 @@ interface FinancialItem {
  actualDisbursementDec: number;
 
  status: string; // Added status field
- isRealignment?: boolean;
- isSavings?: boolean;
- isCancelled?: boolean;
+  isRealignment?: boolean;
+  isSavings?: boolean;
+  isCancelled?: boolean;
+  isSuperseded?: boolean;
  isConfirmed: boolean; // Just a UI state for this session (or could map to 'status')
 }
 
@@ -176,7 +177,7 @@ const getContextDescription = (item: FinancialItem) => {
  return item.expenseParticular;
 };
 
-const isTaggedExclusion = (item: FinancialItem) => !!(item.isRealignment || item.isSavings || item.isCancelled);
+const isTaggedExclusion = (item: FinancialItem) => !!(item.isRealignment || item.isSavings || item.isCancelled || item.isSuperseded);
 
 const getTargetObligationForTotals = (item: FinancialItem) =>
  isTaggedExclusion(item) ? 0 : toFiniteNumber(item.targetObligationAmount);
@@ -524,9 +525,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
  obligations: obs.length > 0 ? obs : getInitialObligations(d.obligations, d.actualObligationDate || '', toFiniteNumber(d.actualObligationAmount)),
  disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(d.disbursements, d.actualDisbursementDate || '', toFiniteNumber(d.actualDisbursementAmount)),
  status: sp.status,
- isRealignment: sp.isRealignment || d.isRealignment,
- isSavings: sp.isSavings || d.isSavings,
- isCancelled: sp.status === 'Cancelled' || d.isCancelled,
+  isRealignment: sp.isRealignment || d.isRealignment,
+  isSavings: sp.isSavings || d.isSavings,
+  isCancelled: sp.status === 'Cancelled' || d.isCancelled,
+  isSuperseded: d.isSuperseded,
  ...defaultMonthly,
  isConfirmed: false
  });
@@ -1887,7 +1889,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  const isChanged = changedItems.has(item.uniqueId);
  const contextDescription = getContextDescription(item);
  const isTagged = isTaggedExclusion(item);
- const taggedLabel = item.isCancelled ? 'Cancelled' : item.isSavings ? 'Savings' : item.isRealignment ? 'Realignment' : '';
+  const taggedLabel = item.isCancelled ? 'Cancelled' : item.isSuperseded ? 'Replaced' : item.isSavings ? 'Savings' : item.isRealignment ? 'Realignment' : '';
  const itemFinancialDecision = getFinancialStatusDecision(item);
  const canEditFinancialItem = canEdit && itemFinancialDecision.allowed;
 
@@ -1914,7 +1916,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
  {/* Target Obli */}
  <td className={`fac-col-target-obligation px-2 py-1.5 text-center border-l ${isTagged ? 'fac-target-excluded fac-target-excluded-amount' : ''}`}>
- {item.status === 'Proposed' ? (
+  {item.status === 'Proposed' && !item.isSuperseded ? (
  <FinancialAmountCell
  value={toFiniteNumber(item.targetObligationAmount)}
  onChange={(value) => updateLocalItem(item.uniqueId, { targetObligationAmount: value })}
@@ -1929,7 +1931,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  <td className={`fac-col-target-obligation px-2 py-1.5 text-center ${isTagged ? 'fac-target-excluded' : ''}`}>
  {item.targetObligationMonth === 'Monthly' ? (
  'Monthly'
- ) : item.status === 'Proposed' ? (
+  ) : item.status === 'Proposed' && !item.isSuperseded ? (
  <FinancialMonthCell
  value={item.targetObligationMonth}
  onChange={(val) => updateLocalItem(item.uniqueId, { targetObligationMonth: val })}
@@ -1960,7 +1962,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
  {/* Target Disb */}
  <td className={`fac-col-target-disbursement px-2 py-1.5 text-center border-l ${isTagged ? 'fac-target-excluded fac-target-excluded-amount' : ''}`}>
- {item.status === 'Proposed' ? (
+  {item.status === 'Proposed' && !item.isSuperseded ? (
  <FinancialAmountCell
  value={toFiniteNumber(item.targetDisbursementAmount)}
  onChange={(value) => updateLocalItem(item.uniqueId, { targetDisbursementAmount: value })}
@@ -1975,7 +1977,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  <td className={`fac-col-target-disbursement px-2 py-1.5 text-center ${isTagged ? 'fac-target-excluded' : ''}`}>
  {item.targetDisbursementMonth === 'Monthly' ? (
  'Monthly'
- ) : item.status === 'Proposed' ? (
+  ) : item.status === 'Proposed' && !item.isSuperseded ? (
  <FinancialMonthCell
  value={item.targetDisbursementMonth}
  onChange={(val) => updateLocalItem(item.uniqueId, { targetDisbursementMonth: val })}
