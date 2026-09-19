@@ -40,6 +40,7 @@ interface PhysicalItem {
 
     // Display
     name: string; // Title, Particular, or Position
+    description?: string;
     subName?: string; // Additional info
     location?: string;
     
@@ -319,6 +320,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         parentId: parentId,
                         detailId: d.id,
                         name: d.particulars,
+                        description: sp.remarks || '',
                         targetDateStart: d.deliveryDate,
                         targetQty: d.numberOfUnits,
                         unitOfMeasure: d.unitOfMeasure,
@@ -341,6 +343,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     sourceType: 'Subproject',
                     sourceId: sp.id,
                     name: sp.name,
+                    description: sp.remarks || '',
                     location: sp.location,
                     targetDateStart: sp.estimatedCompletionDate,
                     targetQty: 0,
@@ -369,6 +372,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     sourceType: 'Activity',
                     sourceId: act.id,
                     name: act.name,
+                    description: act.description || '',
                     subName: act.type,
                     targetDateStart: act.date,
                     targetDateEnd: act.endDate !== act.date ? act.endDate : undefined,
@@ -406,6 +410,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     sourceId: s.id,
                     parentId: parentId,
                     name: `${s.personnelPosition} (${s.operatingUnit})`,
+                    description: s.salaryGrade !== undefined && s.salaryGrade !== null ? `SG-${s.salaryGrade}` : '',
                     targetDateStart: s.obligationDate,
                     targetQty: 1,
                     unitOfMeasure: 'Personnel',
@@ -424,6 +429,11 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     sourceType: 'Staffing',
                     sourceId: 0, // Virtual ID
                     name: position,
+                    description: Array.from(new Set(groupItems
+                        .map(item => item.salaryGrade)
+                        .filter(grade => grade !== undefined && grade !== null)))
+                        .map(grade => `SG-${grade}`)
+                        .join(', '),
                     targetDateStart: '',
                     targetQty: children.filter(child => !child.targetExcluded).length,
                     unitOfMeasure: 'Personnel',
@@ -446,6 +456,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     sourceType: 'Office',
                     sourceId: off.id,
                     name: off.equipment,
+                    description: off.specs || '',
                     targetDateStart: off.obligationDate,
                     targetQty: off.numberOfUnits,
                     unitOfMeasure: 'Units',
@@ -1086,7 +1097,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                 </button>
                             )}
                             <div className="min-w-0">
-                                <button onClick={() => handleTitleClick(item)} className="physical-accomplishment-title-action">
+                                <button onClick={() => handleTitleClick(item)} className="physical-accomplishment-title-action" title={item.name}>
                                     {item.name}
                                 </button>
                                 {renderPhysicalTagBadge(item.recordTag)}
@@ -1094,6 +1105,9 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                 {item.subName && <div className="physical-accomplishment-subtitle">{item.subName}</div>}
                             </div>
                         </div>
+                    </td>
+                    <td className="physical-accomplishment-description-cell px-4 py-2" title={item.description || undefined}>
+                        {item.description || <span className="physical-accomplishment-empty-cell">-</span>}
                     </td>
                     <td className="px-4 py-2 text-center">
                         {canEditVisibleTarget && !(item.sourceType === 'Staffing' && item.isParent) ? (
@@ -1241,6 +1255,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     <table className="data-table physical-accomplishment-table">
                         <colgroup>
                             <col className="pac-width-particulars" />
+                            <col className="pac-width-description" />
                             <col className="pac-width-date" />
                             <col className="pac-width-units" />
                             <col className="pac-width-date" />
@@ -1253,6 +1268,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         <thead>
                             <tr className="physical-accomplishment-table__group-header">
                                 <th rowSpan={2} scope="col" className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars physical-accomplishment-sticky-head">Particulars / Activity</th>
+                                <th rowSpan={2} scope="col">Description</th>
                                 <th colSpan={2} scope="colgroup">Target</th>
                                 <th colSpan={2} scope="colgroup" className="pac-col-actual">Actual</th>
                                 <th colSpan={2} scope="colgroup">Status</th>
@@ -1285,6 +1301,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                                     <span className="physical-accomplishment-drill-text">{groupKey}</span>
                                                 </button>
                                             </td>
+                                            <td className="physical-accomplishment-empty-cell">-</td>
                                             <td className="text-center physical-accomplishment-empty-cell">-</td>
                                             <td className="text-center">{groupItems.length} record{groupItems.length === 1 ? '' : 's'}</td>
                                             <td className="pac-col-actual text-center">-</td>
@@ -1299,7 +1316,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                     </React.Fragment>
                                 );
                             })}
-                            {visibleItems.length === 0 && <tr><td colSpan={9} className="data-table__empty-cell">{category === 'All Particulars' ? 'No data available for the selected filters.' : `No ${category.toLowerCase()} records in the selected scope.`}</td></tr>}
+                            {visibleItems.length === 0 && <tr><td colSpan={10} className="data-table__empty-cell">{category === 'All Particulars' ? 'No data available for the selected filters.' : `No ${category.toLowerCase()} records in the selected scope.`}</td></tr>}
                         </tbody>
                     </table>
                     </div>
