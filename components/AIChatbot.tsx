@@ -8,6 +8,7 @@ import {
     filterYears, fundTypes, tiers, operatingUnits
 } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
+import { getActiveSubprojectBudget } from '../lib/subprojectItemAdjustments';
 
 interface AIChatbotProps {
     subprojects: Subproject[];
@@ -759,7 +760,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
             // Subprojects always go to Production and Livelihood as per WFP report structure
             fSubprojects.forEach(s => {
-                const amt = s.details?.reduce((ds, d) => ds + (d.pricePerUnit * d.numberOfUnits), 0) || 0;
+                const amt = getActiveSubprojectBudget(s.details || []);
                 componentAllocation['Production and Livelihood'] += amt;
             });
 
@@ -905,7 +906,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             // Consolidation logic (same as Targets but for financial actuals)
             fSubprojects.forEach(s => {
                 const cat = 'Production and Livelihood';
-                const alloc = s.details?.reduce((ds, d) => ds + (d.pricePerUnit * d.numberOfUnits), 0) || 0;
+                const alloc = getActiveSubprojectBudget(s.details || []);
                 const obli = s.details?.reduce((ds, d) => ds + (d.actualObligationAmount || 0), 0) || 0;
                 const disb = s.details?.reduce((ds, d) => ds + (d.actualDisbursementAmount || 0), 0) || 0;
                 componentAllocation[cat] += alloc;

@@ -1,7 +1,7 @@
 
 // Author: 4K
-import React, { useState, FormEvent, useEffect, useMemo, useCallback } from 'react';
-import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, filterYears, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock } from '../constants';
+import React, { useState, FormEvent, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, filterYears, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock, ObligationRecord, DisbursementRecord } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
@@ -29,6 +29,18 @@ import {
     summarizeBudgetAdjustments,
     writeBudgetItemAdjustmentHistory
 } from '../lib/budgetLineAdjustments';
+import {
+    getActiveSubprojectBudget,
+    getOriginalSubprojectBudget,
+    getSubprojectActualDisbursement,
+    getSubprojectActualObligation,
+    getSubprojectAdjustmentLabel,
+    isActiveSubprojectDetail,
+    isSubprojectAdjustmentItem,
+    isSupersededSubprojectDetail,
+    SubprojectAdjustmentFundingSource,
+    SubprojectAdjustmentType,
+} from '../lib/subprojectItemAdjustments';
 import {
     Banknote,
     CalendarDays,
@@ -99,6 +111,53 @@ interface SubprojectDetailInput extends Omit<SubprojectDetailType, 'id'> {
     id?: number; // Optional locally until saved
     isCompleted?: boolean;
 }
+
+interface AccomplishmentItemDraft {
+    type: string;
+    particulars: string;
+    deliveryDate: string;
+    unitOfMeasure: string;
+    pricePerUnit: string;
+    numberOfUnits: string;
+    objectType: ObjectType;
+    expenseParticular: string;
+    uacsCode: string;
+    actualNumberOfUnits: string;
+    actualDeliveryDate: string;
+    obligations: ObligationRecord[];
+    disbursements: DisbursementRecord[];
+    adjustmentType: SubprojectAdjustmentType;
+    adjustmentFundingSource: SubprojectAdjustmentFundingSource;
+    replacementOfItemId: string;
+    adjustmentReason: string;
+    itemRemarks: string;
+}
+
+const createEmptyAccomplishmentItemDraft = (): AccomplishmentItemDraft => ({
+    type: '',
+    particulars: '',
+    deliveryDate: '',
+    unitOfMeasure: 'pcs',
+    pricePerUnit: '',
+    numberOfUnits: '',
+    objectType: 'MOOE',
+    expenseParticular: '',
+    uacsCode: '',
+    actualNumberOfUnits: '',
+    actualDeliveryDate: '',
+    obligations: [],
+    disbursements: [],
+    adjustmentType: 'Replacement',
+    adjustmentFundingSource: 'Original Allocation',
+    replacementOfItemId: '',
+    adjustmentReason: '',
+    itemRemarks: '',
+});
+
+// Keep locally-created detail IDs stable when the parent row is persisted. The
+// generic table hook treats very large positive numbers as temporary IDs and
+// replaces them after insert, which would break central actual-record joins.
+const createLocalDetailId = () => -(Date.now() * 1000 + Math.floor(Math.random() * 1000));
 
 const MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June",
@@ -176,6 +235,21 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
     const [monthLockMessage, setMonthLockMessage] = useState('');
+    const [accomplishmentRemarks, setAccomplishmentRemarks] = useState(subproject.accomplishmentRemarks || '');
+    const [accomplishmentItemModalOpen, setAccomplishmentItemModalOpen] = useState(false);
+    const [accomplishmentItemEditingIndex, setAccomplishmentItemEditingIndex] = useState<number | null>(null);
+    const [accomplishmentItemDraft, setAccomplishmentItemDraft] = useState<AccomplishmentItemDraft>(createEmptyAccomplishmentItemDraft);
+    const [accomplishmentItemFormMessage, setAccomplishmentItemFormMessage] = useState<string | null>(null);
+    const [isAccomplishmentItemSubmitting, setIsAccomplishmentItemSubmitting] = useState(false);
+    const accomplishmentItemSubmitLock = useRef(false);
+    const [accomplishmentItemNotice, setAccomplishmentItemNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [pendingAdjustmentHistory, setPendingAdjustmentHistory] = useState<Array<{
+        action: BudgetItemAdjustmentHistory['action'];
+        beforeSnapshot: any;
+        afterSnapshot: any;
+        sourceItemId?: number | string | null;
+        reason: string;
+    }>>([]);
 
     // Form Inputs
     const [currentDetail, setCurrentDetail] = useState({
@@ -253,6 +327,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const canEditCommodity = commodityDecision.allowed;
     const canEditBudget = budgetDecision.allowed;
     const canEditAccomplishment = physicalAccomplishmentDecision.allowed || financialAccomplishmentDecision.allowed;
+    const canAddAccomplishmentItem = physicalAccomplishmentDecision.allowed
+        && (subproject.status === 'Ongoing' || ['Administrator', 'Super Admin'].includes(currentUser?.role || '') || physicalAccomplishmentDecision.code === 'allowed_by_override');
 
     const getEditModeDecision = (mode: typeof editMode) => {
         if (mode === 'details') return { decision: detailsDecision, action: 'editDetails' as const };
@@ -359,6 +435,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     useEffect(() => {
         let cancelled = false;
         setEditedSubproject(subproject);
+        setAccomplishmentRemarks(subproject.accomplishmentRemarks || '');
+        setAccomplishmentItemModalOpen(false);
+        setAccomplishmentItemEditingIndex(null);
+        setAccomplishmentItemDraft(createEmptyAccomplishmentItemDraft());
+        setAccomplishmentItemFormMessage(null);
+        setAccomplishmentItemNotice(null);
+        setPendingAdjustmentHistory([]);
         const applyObligationRows = (centralRows: Awaited<ReturnType<typeof fetchFinancialObligationsForParent>> | null) => {
             const hydratedDetails = (subproject.details || []).map(d => {
                 const centralObligations = centralRows?.filter(row => row.itemId === String(d.id)) || [];
@@ -514,19 +597,23 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         });
     }, [detailItems, editMode]);
 
-    const totalBudget = useMemo(() => {
-       return detailItems.reduce((acc, item) => acc + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)), 0);
-    }, [detailItems]);
+    const workingDetails = editMode !== 'none'
+        ? detailItems as SubprojectDetailType[]
+        : subproject.details;
+    const totalBudget = useMemo(
+        () => getActiveSubprojectBudget(workingDetails),
+        [workingDetails]
+    );
     const actualObligationTotal = useMemo(
-        () => subproject.details.reduce((total, item) => total + getActualObligationSummary(item).amount, 0),
+        () => getSubprojectActualObligation(subproject.details),
         [subproject.details]
     );
     const actualDisbursementTotal = useMemo(
-        () => subproject.details.reduce((total, item) => total + getActualDisbursementSummary(item).amount, 0),
+        () => getSubprojectActualDisbursement(subproject.details),
         [subproject.details]
     );
     const deliveredItemCount = useMemo(
-        () => subproject.details.filter(item => !!item.actualDeliveryDate).length,
+        () => subproject.details.filter(item => isActiveSubprojectDetail(item) && !!item.actualDeliveryDate).length,
         [subproject.details]
     );
     const linkedIpo = useMemo(
@@ -535,11 +622,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         [ipos, subproject.indigenousPeopleOrganization, subproject.ipo_id]
     );
 
-    const calculateTotalBudget = (details: SubprojectDetailType[]) => {
-        return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)), 0);
-    }
+    const calculateTotalBudget = (details: SubprojectDetailType[]) => getActiveSubprojectBudget(details);
 
     const budgetAdjustmentSummary = useMemo(() => summarizeBudgetAdjustments(detailItems), [detailItems]);
+    const originalApprovedBudget = useMemo(
+        () => getOriginalSubprojectBudget(workingDetails),
+        [workingDetails]
+    );
+    const adjustedBudget = useMemo(
+        () => getActiveSubprojectBudget(workingDetails),
+        [workingDetails]
+    );
+    const adjustedBudgetVariance = adjustedBudget - originalApprovedBudget;
+    const budgetOverage = Math.max(adjustedBudget, budgetAdjustmentSummary.actualObligated) - originalApprovedBudget;
 
     const persistBudgetAdjustmentHistory = async (
         action: BudgetItemAdjustmentHistory['action'],
@@ -559,7 +654,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 reason,
                 currentUser,
             });
-            setBudgetAdjustmentHistory(prev => [saved, ...prev]);
+            if (saved) setBudgetAdjustmentHistory(prev => [saved, ...prev]);
         } catch {
             // History failure should not block editing the nested budget line.
         }
@@ -587,6 +682,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }
         return codes;
     }, [currentDetail.expenseParticular, currentDetail.objectType]);
+
+    const allUacsCodes = useMemo(() => {
+        const codes: { code: string; desc: string }[] = [];
+        Object.entries(uacsCodes).forEach(([, expenseParticulars]) => {
+            Object.entries(expenseParticulars).forEach(([, codesByParticular]) => {
+                Object.entries(codesByParticular as Record<string, string>).forEach(([code, desc]) => {
+                    if (!codes.some(item => item.code === code)) codes.push({ code, desc });
+                });
+            });
+        });
+        return codes;
+    }, [uacsCodes]);
 
     const getMonthFromDateStr = (dateStr: string | undefined) => {
         if (!dateStr) return '';
@@ -665,6 +772,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
             // Sync details if fundingYear changes
             setDetailItems(prev => prev.map(d => {
+                // A superseded original remains an immutable audit record.
+                if (d.isSuperseded) return d;
                 const updateDate = (dateStr?: string) => {
                     if (!dateStr) return dateStr;
                     const parts = dateStr.split('-');
@@ -873,6 +982,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const handleRemoveDetail = async (indexToRemove: number) => {
         const item = detailItems[indexToRemove];
+        if (!item || item.isSuperseded) return;
         const isSavedLine = !!(item.id && (subproject.details || []).some(detail => detail.id === item.id));
         const hasActuals = hasActualObligationRecords(item) || ((item.disbursements?.length || 0) > 0) || Number(item.actualDisbursementAmount) > 0;
         if (isSavedLine || hasActuals) {
@@ -894,6 +1004,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const handleEditParticular = (indexToEdit: number) => {
         const itemToEdit = normalizeBudgetLineStatus(detailItems[indexToEdit]);
+        if (!itemToEdit || itemToEdit.isSuperseded) return;
         setCurrentDetail({
             ...itemToEdit,
             pricePerUnit: String(itemToEdit.pricePerUnit),
@@ -913,6 +1024,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const handleBudgetLineTagChange = async (index: number, tag: 'Cancelled' | 'Realignment' | 'Savings' | null) => {
         const item = detailItems[index];
+        if (!item || item.isSuperseded) return;
         const actionLabel = tag ? `marking this item as ${tag}` : 'clearing this budget item tag';
         const reason = requestAdjustmentReason(actionLabel);
         if (!reason) return;
@@ -945,6 +1057,339 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 ? { ...d, actualDeliveryDate: value, ...(value ? {} : { isCompleted: false }) }
                 : d
         )));
+    };
+
+    const replacementSourceItems = useMemo(() => detailItems.filter(item => (
+        item.id !== undefined
+        && item.id !== null
+        && !item.isCancelled
+        && !isSubprojectAdjustmentItem(item as SubprojectDetailType)
+    )), [detailItems]);
+
+    const handleAccomplishmentDraftChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        const { name, value } = event.target;
+        setAccomplishmentItemFormMessage(null);
+        setAccomplishmentItemDraft(previous => {
+            if (name === 'objectType') {
+                return { ...previous, objectType: value as ObjectType, expenseParticular: '', uacsCode: '' };
+            }
+            if (name === 'adjustmentType') {
+                return {
+                    ...previous,
+                    adjustmentType: value as SubprojectAdjustmentType,
+                    replacementOfItemId: value === 'Replacement' ? previous.replacementOfItemId : '',
+                };
+            }
+            if (name === 'adjustmentFundingSource') {
+                return { ...previous, adjustmentFundingSource: value as SubprojectAdjustmentFundingSource };
+            }
+            return { ...previous, [name]: value };
+        });
+    };
+
+    const openAccomplishmentItemModal = () => {
+        if (!canAddAccomplishmentItem) {
+            setAccomplishmentItemNotice({
+                type: 'error',
+                text: 'Only users with physical accomplishment edit access can add physical items while the subproject is editable.',
+            });
+            return;
+        }
+        setAccomplishmentItemEditingIndex(null);
+        setAccomplishmentItemDraft(createEmptyAccomplishmentItemDraft());
+        setAccomplishmentItemFormMessage(null);
+        setAccomplishmentItemNotice(null);
+        setAccomplishmentItemModalOpen(true);
+    };
+
+    const handleEditAccomplishmentItem = (index: number) => {
+        const item = detailItems[index];
+        if (!item || !isSubprojectAdjustmentItem(item as SubprojectDetailType) || item.isSuperseded) return;
+        setAccomplishmentItemEditingIndex(index);
+        setAccomplishmentItemFormMessage(null);
+        setAccomplishmentItemNotice(null);
+        setAccomplishmentItemDraft({
+            type: item.type || '',
+            particulars: item.particulars || '',
+            deliveryDate: item.deliveryDate || '',
+            unitOfMeasure: item.unitOfMeasure || 'pcs',
+            pricePerUnit: String(item.pricePerUnit ?? ''),
+            numberOfUnits: String(item.numberOfUnits ?? ''),
+            objectType: item.objectType || 'MOOE',
+            expenseParticular: item.expenseParticular || '',
+            uacsCode: item.uacsCode || '',
+            actualNumberOfUnits: item.actualNumberOfUnits === undefined || item.actualNumberOfUnits === null ? '' : String(item.actualNumberOfUnits),
+            actualDeliveryDate: item.actualDeliveryDate || '',
+            obligations: item.obligations || [],
+            disbursements: item.disbursements || [],
+            adjustmentType: item.adjustmentType || 'Additional Item',
+            adjustmentFundingSource: item.adjustmentFundingSource || 'Original Allocation',
+            replacementOfItemId: String(item.replacementOfItemId ?? item.sourceItemId ?? ''),
+            adjustmentReason: item.adjustmentReason || '',
+            itemRemarks: item.itemRemarks || '',
+        });
+        setAccomplishmentItemModalOpen(true);
+    };
+
+    const handleAddAccomplishmentItem = async () => {
+        if (!canAddAccomplishmentItem || accomplishmentItemSubmitLock.current) return;
+
+        accomplishmentItemSubmitLock.current = true;
+        setIsAccomplishmentItemSubmitting(true);
+        try {
+
+        const requiredFields: Array<keyof AccomplishmentItemDraft> = [
+            'type',
+            'particulars',
+            'deliveryDate',
+            'pricePerUnit',
+            'numberOfUnits',
+            'uacsCode',
+            'adjustmentReason',
+        ];
+        const missingFields = requiredFields.filter(field => !String(accomplishmentItemDraft[field] || '').trim());
+        if (accomplishmentItemDraft.adjustmentType === 'Replacement' && !accomplishmentItemDraft.replacementOfItemId) {
+            missingFields.push('replacementOfItemId');
+        }
+        if (missingFields.length > 0) {
+            setAccomplishmentItemFormMessage(`Complete the required fields before adding this item: ${missingFields.map(field => field === 'replacementOfItemId' ? 'Original item' : field).join(', ')}.`);
+            return;
+        }
+
+        const pricePerUnit = Number(accomplishmentItemDraft.pricePerUnit);
+        const numberOfUnits = Number(accomplishmentItemDraft.numberOfUnits);
+        const actualNumberOfUnits = accomplishmentItemDraft.actualNumberOfUnits.trim() === ''
+            ? undefined
+            : Number(accomplishmentItemDraft.actualNumberOfUnits);
+        if (!Number.isFinite(pricePerUnit) || pricePerUnit <= 0 || !Number.isFinite(numberOfUnits) || numberOfUnits <= 0) {
+            setAccomplishmentItemFormMessage('Price per Unit and Number of Units must be greater than zero.');
+            return;
+        }
+        if (actualNumberOfUnits !== undefined && (!Number.isFinite(actualNumberOfUnits) || actualNumberOfUnits < 0)) {
+            setAccomplishmentItemFormMessage('Actual Units must be zero or greater.');
+            return;
+        }
+
+        const obligationError = getActualObligationValidationError(accomplishmentItemDraft.obligations);
+        if (obligationError) {
+            setAccomplishmentItemFormMessage(obligationError);
+            return;
+        }
+        if (accomplishmentItemDraft.actualDeliveryDate && !(await validateSubprojectActualMonth(accomplishmentItemDraft.actualDeliveryDate))) return;
+        for (const record of [...accomplishmentItemDraft.obligations, ...accomplishmentItemDraft.disbursements]) {
+            if (record.date && !(await validateSubprojectActualMonth(record.date))) return;
+        }
+
+        const sourceItem = accomplishmentItemDraft.adjustmentType === 'Replacement'
+            ? replacementSourceItems.find(item => String(item.id) === accomplishmentItemDraft.replacementOfItemId)
+            : undefined;
+        if (accomplishmentItemDraft.adjustmentType === 'Replacement' && !sourceItem) {
+            setAccomplishmentItemFormMessage('Select an original item to replace.');
+            return;
+        }
+
+        const existingAdjustmentItem = accomplishmentItemEditingIndex === null
+            ? undefined
+            : detailItems[accomplishmentItemEditingIndex];
+        const previousSourceItemId = existingAdjustmentItem?.replacementOfItemId ?? existingAdjustmentItem?.sourceItemId ?? null;
+        const isChangingReplacementSource = accomplishmentItemDraft.adjustmentType === 'Replacement'
+            && sourceItem
+            && (!existingAdjustmentItem || String(previousSourceItemId) !== String(sourceItem.id));
+        const sourceHasFinancialActuals = !!sourceItem && (
+            hasActualObligationRecords(sourceItem)
+            || (sourceItem.disbursements?.length || 0) > 0
+            || Number(sourceItem.actualDisbursementAmount) !== 0
+        );
+        if (isChangingReplacementSource && sourceHasFinancialActuals) {
+            const confirmed = window.confirm(
+                `The original item "${sourceItem?.particulars}" already has recorded financial actuals. `
+                + 'Those obligations and disbursements will be preserved for audit and will not be transferred to the replacement. Continue?'
+            );
+            if (!confirmed) return;
+        }
+        const newItemId = existingAdjustmentItem?.id ?? createLocalDetailId();
+        const actualObligationAmount = accomplishmentItemDraft.obligations.reduce((total, record) => total + (Number(record.amount) || 0), 0);
+        const actualDisbursementAmount = accomplishmentItemDraft.disbursements.reduce((total, record) => total + (Number(record.amount) || 0), 0);
+        const latestObligation = [...accomplishmentItemDraft.obligations].filter(record => record.date).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+        const latestDisbursement = [...accomplishmentItemDraft.disbursements].filter(record => record.date).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+        const sourceItemId = sourceItem?.id ?? null;
+        const reason = accomplishmentItemDraft.adjustmentReason.trim();
+        const newItem = ensureOriginalBudgetSnapshot({
+            type: accomplishmentItemDraft.type,
+            particulars: accomplishmentItemDraft.particulars,
+            deliveryDate: accomplishmentItemDraft.deliveryDate,
+            unitOfMeasure: accomplishmentItemDraft.unitOfMeasure,
+            pricePerUnit,
+            numberOfUnits,
+            objectType: accomplishmentItemDraft.objectType,
+            expenseParticular: accomplishmentItemDraft.expenseParticular,
+            uacsCode: accomplishmentItemDraft.uacsCode,
+            obligationMonth: latestObligation?.date || '',
+            disbursementMonth: latestDisbursement?.date || '',
+            actualDeliveryDate: accomplishmentItemDraft.actualDeliveryDate || '',
+            actualNumberOfUnits,
+            actualObligationDate: latestObligation?.date || '',
+            actualDisbursementDate: latestDisbursement?.date || '',
+            actualAmount: actualObligationAmount,
+            actualObligationAmount,
+            actualDisbursementAmount,
+            obligations: accomplishmentItemDraft.obligations,
+            disbursements: accomplishmentItemDraft.disbursements,
+            isCompleted: !!accomplishmentItemDraft.actualDeliveryDate,
+            isAdjustmentItem: true,
+            adjustmentType: accomplishmentItemDraft.adjustmentType,
+            adjustmentFundingSource: accomplishmentItemDraft.adjustmentFundingSource,
+            replacementOfItemId: sourceItemId,
+            sourceItemId,
+            adjustmentReason: reason,
+            replacementReason: accomplishmentItemDraft.adjustmentType === 'Replacement' ? reason : null,
+            itemRemarks: accomplishmentItemDraft.itemRemarks.trim() || null,
+            id: newItemId,
+        } as SubprojectDetailInput);
+
+        const nextDetailsBeforeSourceUpdate = accomplishmentItemEditingIndex === null
+            ? [...detailItems, newItem]
+            : detailItems.map((item, index) => index === accomplishmentItemEditingIndex ? newItem : item);
+        const hasOtherReplacement = (sourceId: number | string | null) => (
+            sourceId !== null
+            && nextDetailsBeforeSourceUpdate.some((item, index) => (
+                index !== accomplishmentItemEditingIndex
+                && isSubprojectAdjustmentItem(item as SubprojectDetailType)
+                && !item.isCancelled
+                && String(item.replacementOfItemId ?? item.sourceItemId) === String(sourceId)
+            ))
+        );
+        const nextDetails = nextDetailsBeforeSourceUpdate.map(item => {
+            const isPreviousSource = previousSourceItemId !== null && String(item.id) === String(previousSourceItemId);
+            const isCurrentSource = sourceItem && String(item.id) === String(sourceItem.id);
+            if (isPreviousSource && String(previousSourceItemId) !== String(sourceItemId) && !hasOtherReplacement(previousSourceItemId)) {
+                return {
+                    ...item,
+                    isSuperseded: false,
+                    replacedByItemIds: (item.replacedByItemIds || []).filter(id => String(id) !== String(newItemId)),
+                    replacementReason: null,
+                };
+            }
+            if (!isCurrentSource) return item;
+            return {
+                ...item,
+                isSuperseded: true,
+                replacedByItemIds: Array.from(new Set([...(item.replacedByItemIds || []), newItemId])),
+                replacementReason: reason,
+            };
+        });
+        setDetailItems(nextDetails);
+        const adjustmentHistoryEntries: Array<{
+            action: BudgetItemAdjustmentHistory['action'];
+            beforeSnapshot: any;
+            afterSnapshot: any;
+            sourceItemId: number | string | null;
+            reason: string;
+        }> = [{
+            action: existingAdjustmentItem
+                ? 'edit_adjustment_item'
+                : accomplishmentItemDraft.adjustmentType === 'Replacement' ? 'replace_item' : 'create_adjustment_item',
+            beforeSnapshot: existingAdjustmentItem || sourceItem || null,
+            afterSnapshot: newItem,
+            sourceItemId,
+            reason,
+        }];
+        if (
+            existingAdjustmentItem
+            && existingAdjustmentItem.adjustmentFundingSource !== newItem.adjustmentFundingSource
+        ) {
+            adjustmentHistoryEntries.push({
+                action: 'funding_source_changed',
+                beforeSnapshot: existingAdjustmentItem,
+                afterSnapshot: newItem,
+                sourceItemId,
+                reason: `${reason} Funding source changed from ${existingAdjustmentItem.adjustmentFundingSource || 'Original Allocation'} to ${newItem.adjustmentFundingSource}.`,
+            });
+        }
+        setPendingAdjustmentHistory(previous => [...previous, ...adjustmentHistoryEntries]);
+        const wasEditingAdjustmentItem = !!existingAdjustmentItem;
+        setAccomplishmentItemModalOpen(wasEditingAdjustmentItem ? false : true);
+        setAccomplishmentItemEditingIndex(null);
+        setAccomplishmentItemDraft(createEmptyAccomplishmentItemDraft());
+        if (wasEditingAdjustmentItem) {
+            setAccomplishmentItemNotice({
+                type: 'success',
+                text: 'Adjustment item updated. Review the item list, then select Save Changes to persist it.',
+            });
+        } else {
+            setAccomplishmentItemFormMessage('Item added. Add another physical item or close this form when finished.');
+            setAccomplishmentItemNotice({
+                type: 'success',
+                text: `${accomplishmentItemDraft.adjustmentType} added. Review the item list, then select Save Changes to persist it.`,
+            });
+        }
+        } finally {
+            accomplishmentItemSubmitLock.current = false;
+            setIsAccomplishmentItemSubmitting(false);
+        }
+    };
+
+    const handleDiscardUnsavedAccomplishmentItem = (index: number) => {
+        const item = detailItems[index];
+        if (!item || !isSubprojectAdjustmentItem(item as SubprojectDetailType) || (item.id !== undefined && subproject.details.some(detail => String(detail.id) === String(item.id)))) return;
+        const replacementOfItemId = item.replacementOfItemId ?? item.sourceItemId;
+        setDetailItems(previous => {
+            const nextDetails = previous.filter((_, itemIndex) => itemIndex !== index);
+            if (replacementOfItemId === undefined || replacementOfItemId === null) return nextDetails;
+            const hasActiveReplacement = nextDetails.some(detail => (
+                isSubprojectAdjustmentItem(detail as SubprojectDetailType)
+                && !detail.isCancelled
+                && String(detail.replacementOfItemId ?? detail.sourceItemId) === String(replacementOfItemId)
+            ));
+            return nextDetails.map(detail => String(detail.id) === String(replacementOfItemId)
+                ? {
+                    ...detail,
+                    isSuperseded: hasActiveReplacement,
+                    replacedByItemIds: (detail.replacedByItemIds || []).filter(id => String(id) !== String(item.id)),
+                    replacementReason: hasActiveReplacement ? detail.replacementReason : null,
+                }
+                : detail);
+        });
+        setPendingAdjustmentHistory(previous => previous.filter(entry => String(entry.afterSnapshot?.id) !== String(item.id)));
+        setAccomplishmentItemNotice({ type: 'success', text: 'The unsaved adjustment item was removed from this update.' });
+    };
+
+    const handleDeactivateAccomplishmentItem = (index: number) => {
+        const item = detailItems[index];
+        if (!item || !isSubprojectAdjustmentItem(item as SubprojectDetailType) || item.isSuperseded || item.isCancelled) return;
+        const reason = requestAdjustmentReason('deactivating this adjustment item');
+        if (!reason) return;
+        const afterItem = {
+            ...item,
+            isCancelled: true,
+            adjustmentReason: reason,
+        };
+        const sourceItemId = item.replacementOfItemId ?? item.sourceItemId ?? null;
+        setDetailItems(previous => {
+            const deactivatedDetails = previous.map((detail, itemIndex) => itemIndex === index ? afterItem : detail);
+            if (sourceItemId === null) return deactivatedDetails;
+            const activeReplacement = deactivatedDetails.find(detail => (
+                isSubprojectAdjustmentItem(detail as SubprojectDetailType)
+                && !detail.isCancelled
+                && String(detail.replacementOfItemId ?? detail.sourceItemId) === String(sourceItemId)
+            ));
+            return deactivatedDetails.map(detail => String(detail.id) === String(sourceItemId)
+                ? {
+                    ...detail,
+                    isSuperseded: !!activeReplacement,
+                    replacedByItemIds: (detail.replacedByItemIds || []).filter(id => String(id) !== String(item.id)),
+                    replacementReason: activeReplacement?.replacementReason || null,
+                }
+                : detail);
+        });
+        setPendingAdjustmentHistory(previous => [...previous, {
+            action: 'deactivate_adjustment_item',
+            beforeSnapshot: item,
+            afterSnapshot: afterItem,
+            sourceItemId,
+            reason,
+        }]);
+        setAccomplishmentItemNotice({ type: 'success', text: 'The adjustment item was marked for deactivation. Select Save Changes to persist it.' });
     };
 
     const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -1139,11 +1584,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }
 
         // Add 'id' back to details if missing (from new adds)
-        const cleanDetails = detailItems.map((d, i) => {
+        const cleanDetails = detailItems.map(d => {
             const detailWithSnapshot = ensureOriginalBudgetSnapshot(d);
             const cleanD = {
                 ...detailWithSnapshot,
-                id: detailWithSnapshot.id || (Date.now() + i) // Ensure ID
+                id: detailWithSnapshot.id ?? createLocalDetailId() // Ensure a stable ID for central actual joins
             };
             if (cleanD.deliveryDate === '') (cleanD as any).deliveryDate = null;
             if (cleanD.actualDeliveryDate === '') (cleanD as any).actualDeliveryDate = null;
@@ -1196,6 +1641,12 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             submittedAt
         });
 
+        const nextAccomplishmentRemarks = editMode === 'accomplishment'
+            ? (accomplishmentRemarks.trim() || null)
+            : editedSubproject.accomplishmentRemarks;
+        const accomplishmentRemarksChanged = editMode === 'accomplishment'
+            && valuesDiffer(subproject.accomplishmentRemarks, nextAccomplishmentRemarks);
+
         const updatedSubprojectWithDetails = {
             ...editedSubproject,
             ipo_id: resolvedIpoId,
@@ -1203,6 +1654,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             actualCompletionDate: nextActualCompletionDate,
             physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
             details: normalizedCleanDetails as SubprojectDetailType[],
+            accomplishmentRemarks: nextAccomplishmentRemarks,
             history: [...(subproject.history || []), historyEntry]
         };
 
@@ -1219,6 +1671,26 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         if (supabase) {
              await syncSubprojectObligations(subproject.id, normalizedCleanDetails as SubprojectDetailType[]);
              await syncSubprojectDisbursements(subproject.id, normalizedCleanDetails as SubprojectDetailType[]);
+        }
+
+        if (editMode === 'accomplishment' && pendingAdjustmentHistory.length > 0) {
+            for (const entry of pendingAdjustmentHistory) {
+                await persistBudgetAdjustmentHistory(
+                    entry.action,
+                    entry.beforeSnapshot,
+                    entry.afterSnapshot,
+                    entry.reason
+                );
+            }
+        }
+
+        if (editMode === 'accomplishment' && accomplishmentRemarksChanged) {
+            await persistBudgetAdjustmentHistory(
+                'update_accomplishment_remarks',
+                { id: subproject.id, accomplishmentRemarks: subproject.accomplishmentRemarks || null },
+                { id: subproject.id, accomplishmentRemarks: nextAccomplishmentRemarks },
+                'Updated subproject accomplishment remarks.'
+            );
         }
 
         setEditMode('none');
@@ -1289,7 +1761,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     if (editMode !== 'none') {
         return (
-            <div className="form-page animate-fadeIn">
+            <div className="form-page subproject-edit-page animate-fadeIn">
                 <div className="detail-header">
                     <h1 className="detail-title">
                         {editMode === 'budget' ? 'Editing Budget: ' : editMode === 'accomplishment' ? 'Editing Accomplishment: ' : editMode === 'commodity' ? 'Editing Commodities: ' : 'Editing Details: '}{subproject.name}
@@ -1644,10 +2116,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     <div className="budget-item-card__actions">
                                                         <span className="budget-item-card__total">{formatCurrency(getBudgetLineAmount(d))}</span>
                                                         <div className="budget-item-card__buttons">
-                                                            <button type="button" onClick={() => handleEditParticular(index)} className="table-action table-action--primary" title="Edit item">
+                                                            <button type="button" onClick={() => handleEditParticular(index)} disabled={!!d.isSuperseded} className="table-action table-action--primary" title={d.isSuperseded ? 'Replaced item is read-only' : 'Edit item'}>
                                                                 <Pencil className="btn-symbol" aria-hidden="true" />
                                                             </button>
-                                                            <button type="button" onClick={() => handleRemoveDetail(index)} className="table-action table-action--danger" title="Remove item"><Trash2 className="btn-symbol" aria-hidden="true" /></button>
+                                                            <button type="button" onClick={() => handleRemoveDetail(index)} disabled={!!d.isSuperseded} className="table-action table-action--danger" title={d.isSuperseded ? 'Replaced item is read-only' : 'Remove item'}><Trash2 className="btn-symbol" aria-hidden="true" /></button>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1850,49 +2322,134 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 <div className="form-stack form-stack--spacious">
                                     <fieldset className="form-section">
                                         <legend>Budget Items Accomplishment</legend>
+                                        {canAddAccomplishmentItem && (
+                                            <div className="subproject-accomplishment-section-actions">
+                                                <button type="button" className="btn btn-secondary btn-compact" onClick={openAccomplishmentItemModal}>
+                                                    <Plus aria-hidden="true" />
+                                                    Add Physical Item
+                                                </button>
+                                            </div>
+                                        )}
+                                        <div className="subproject-accomplishment-summary" aria-label="Subproject accomplishment budget summary">
+                                            <div>
+                                                <span>Original Budget</span>
+                                                <strong>{formatCurrency(originalApprovedBudget)}</strong>
+                                            </div>
+                                            <div>
+                                                <span>Active Adjusted Total</span>
+                                                <strong>{formatCurrency(adjustedBudget)}</strong>
+                                            </div>
+                                            <div>
+                                                <span>Obligated</span>
+                                                <strong>{formatCurrency(budgetAdjustmentSummary.actualObligated)}</strong>
+                                            </div>
+                                            <div>
+                                                <span>Disbursed</span>
+                                                <strong>{formatCurrency(budgetAdjustmentSummary.actualDisbursed)}</strong>
+                                            </div>
+                                            <div className={adjustedBudgetVariance > 0 ? 'subproject-accomplishment-summary__warning' : ''}>
+                                                <span>Variance</span>
+                                                <strong>{formatCurrency(adjustedBudgetVariance)}</strong>
+                                            </div>
+                                        </div>
+                                        {budgetOverage > 0 && (
+                                            <div className="subproject-accomplishment-notice" role="status">
+                                                Adjusted items or posted actual obligations exceed the original budget by {formatCurrency(budgetOverage)}. You may continue saving this update.
+                                            </div>
+                                        )}
+                                        {accomplishmentItemNotice && (
+                                            <div className={`budget-item-form-message budget-item-form-message--${accomplishmentItemNotice.type}`} role={accomplishmentItemNotice.type === 'error' ? 'alert' : 'status'}>
+                                                {accomplishmentItemNotice.text}
+                                            </div>
+                                        )}
                                         <div className="data-table-scroll">
-                                            <table className="data-table">
+                                            <table className="data-table subproject-accomplishment-table">
+                                                <colgroup>
+                                                    <col className="subproject-accomplishment-table__completed" />
+                                                    <col className="subproject-accomplishment-table__particulars-column" />
+                                                    <col className="subproject-accomplishment-table__adjustment-column" />
+                                                    <col className="subproject-accomplishment-table__funding-column" />
+                                                    <col className="subproject-accomplishment-table__target-column" />
+                                                    <col className="subproject-accomplishment-table__amount-column" />
+                                                    <col className="subproject-accomplishment-table__actual-units-column" />
+                                                    <col className="subproject-accomplishment-table__delivery-column" />
+                                                    <col className="subproject-accomplishment-table__financial-column" />
+                                                    <col className="subproject-accomplishment-table__financial-column" />
+                                                    <col className="subproject-accomplishment-table__actions-column" />
+                                                </colgroup>
                                                 <thead>
                                                     <tr>
                                                         <th>Completed</th>
                                                         <th>Particulars</th>
+                                                        <th>Adjustment</th>
+                                                        <th>Funding Source</th>
+                                                        <th>Target Units</th>
+                                                        <th>Item Amount</th>
                                                         <th>Actual Units</th>
                                                         <th>Actual Delivery</th>
-                                                        <th colSpan={2}>Obligation</th>
-                                                        <th colSpan={2}>Disbursement</th>
+                                                        <th>Obligation</th>
+                                                        <th>Disbursement</th>
+                                                        <th>Actions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {detailItems.map((detail, idx) => {
-                                                        const originalDetail = subproject.details.find(d => d.id === detail.id);
+                                                        const originalDetail = subproject.details.find(d => String(d.id) === String(detail.id));
                                                         const wasCompleted = originalDetail?.isCompleted || false;
                                                         const hasDeliveryDate = !!detail.actualDeliveryDate;
+                                                        const isSuperseded = isSupersededSubprojectDetail(detail as SubprojectDetailType);
+                                                        const adjustmentLabel = getSubprojectAdjustmentLabel(detail as SubprojectDetailType);
+                                                        const replacementOfItemId = detail.replacementOfItemId ?? detail.sourceItemId;
+                                                        const replacementSource = replacementOfItemId === undefined || replacementOfItemId === null
+                                                            ? null
+                                                            : detailItems.find(item => String(item.id) === String(replacementOfItemId));
+                                                        const replacementTargets = detailItems
+                                                            .filter(item => String(item.replacementOfItemId ?? item.sourceItemId) === String(detail.id) && isSubprojectAdjustmentItem(item as SubprojectDetailType))
+                                                            .map(item => item.particulars)
+                                                            .filter(Boolean);
+                                                        const adjustmentText = isSuperseded
+                                                            ? `Superseded${replacementTargets.length > 0 ? ` - Replaced by ${replacementTargets.join(', ')}` : ''}`
+                                                            : adjustmentLabel || 'Original item';
+                                                        const particularsTitle = [detail.particulars, detail.adjustmentReason].filter(Boolean).join(' - ');
 
                                                         // Checkbox disabled if no delivery date
-                                                        const isCheckboxDisabled = !hasDeliveryDate;
+                                                        const isCheckboxDisabled = !hasDeliveryDate || isSuperseded;
 
                                                         return (
-                                                            <tr key={idx} className={wasCompleted ? 'data-table__row--muted' : ''}>
+                                                            <tr key={`${detail.id ?? 'detail'}-${idx}`} className={`${wasCompleted ? 'data-table__row--muted' : ''} ${isSuperseded ? 'subproject-accomplishment-table__row--superseded' : ''}`}>
                                                                 <td className="data-table__selection">
                                                                     <input
                                                                         type="checkbox"
                                                                         checked={detail.isCompleted || false}
                                                                         onChange={(e) => handleDetailAccomplishmentChange(idx, 'isCompleted', e.target.checked)}
-                                                                        disabled={isCheckboxDisabled} // Only clickable if date exists and not already locked (unless admin)
+                                                                        disabled={isCheckboxDisabled}
                                                                         className="form-checkbox"
                                                                     />
                                                                 </td>
-                                                                <td className="data-table__primary">
-                                                                    {detail.particulars}
-                                                                    <div className="data-table__secondary">Target: {detail.numberOfUnits} {detail.unitOfMeasure}</div>
+                                                                <td className="data-table__primary subproject-accomplishment-table__particulars" title={particularsTitle}>
+                                                                    <strong>{detail.particulars}</strong>
                                                                 </td>
+                                                                <td title={adjustmentText}>
+                                                                    <span className={isSuperseded ? 'subproject-accomplishment-indicator subproject-accomplishment-indicator--muted' : 'subproject-accomplishment-indicator'}>
+                                                                        {adjustmentText}
+                                                                    </span>
+                                                                </td>
+                                                                <td>
+                                                                    <span title={detail.adjustmentFundingSource || 'Original approved allocation'}>
+                                                                        {detail.adjustmentFundingSource || 'Original allocation'}
+                                                                    </span>
+                                                                </td>
+                                                                <td>{detail.numberOfUnits} {detail.unitOfMeasure}</td>
+                                                                <td>{formatCurrency(getBudgetLineAmount(detail))}</td>
                                                                 <td>
                                                                     <input
                                                                         type="number"
-                                                                        value={(detail as any).actualNumberOfUnits || ''}
-                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualNumberOfUnits', parseFloat(e.target.value))}
+                                                                        min="0"
+                                                                        value={detail.actualNumberOfUnits ?? ''}
+                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualNumberOfUnits', e.target.value === '' ? undefined : parseFloat(e.target.value))}
                                                                         className="form-control form-control--compact"
                                                                         placeholder={`0 ${detail.unitOfMeasure}`}
+                                                                        disabled={isSuperseded}
                                                                     />
                                                                 </td>
                                                                 <td>
@@ -1905,10 +2462,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         placeholder="Select month"
                                                                         defaultYear={editedSubproject.fundingYear}
                                                                         className="form-control--compact"
+                                                                        disabled={isSuperseded}
                                                                         allowClear
                                                                     />
                                                                 </td>
-                                                                <td colSpan={2}>
+                                                                <td>
                                                                     <ObligationsEditor
                                                                         obligations={detail.obligations || []}
                                                                         onChange={(newObs, total) => {
@@ -1919,7 +2477,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         validateMonthChange={validateSubprojectActualMonth}
                                                                     />
                                                                 </td>
-                                                                <td colSpan={2}>
+                                                                <td>
                                                                     <DisbursementsEditor
                                                                         disbursements={detail.disbursements || []}
                                                                         onChange={(newDb, total) => {
@@ -1930,9 +2488,37 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         validateMonthChange={validateSubprojectActualMonth}
                                                                     />
                                                                 </td>
+                                                                <td>
+                                                                    {!isSuperseded && isSubprojectAdjustmentItem(detail as SubprojectDetailType) && (
+                                                                        <div className="subproject-accomplishment-table__actions">
+                                                                            {!detail.isCancelled && (
+                                                                                <button type="button" className="table-action table-action--primary" title="Edit adjustment item" onClick={() => handleEditAccomplishmentItem(idx)}>
+                                                                                    <Pencil aria-hidden="true" />
+                                                                                </button>
+                                                                            )}
+                                                                            {!subproject.details.some(saved => String(saved.id) === String(detail.id)) && (
+                                                                                <button type="button" className="table-action table-action--danger" title="Discard unsaved adjustment item" onClick={() => handleDiscardUnsavedAccomplishmentItem(idx)}>
+                                                                                    <Trash2 aria-hidden="true" />
+                                                                                </button>
+                                                                            )}
+                                                                            {detail.isCancelled && <span className="data-table__secondary">Deactivated</span>}
+                                                                            {!detail.isCancelled && subproject.details.some(saved => String(saved.id) === String(detail.id)) && (
+                                                                                <button type="button" className="table-action table-action--danger" title="Deactivate adjustment item" onClick={() => handleDeactivateAccomplishmentItem(idx)}>
+                                                                                    <X aria-hidden="true" />
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                    {isSuperseded && replacementSource && <span className="data-table__secondary">Original retained</span>}
+                                                                </td>
                                                             </tr>
                                                         );
                                                     })}
+                                                    {detailItems.length === 0 && (
+                                                        <tr>
+                                                            <td colSpan={11} className="data-table__empty">No physical items recorded.</td>
+                                                        </tr>
+                                                    )}
                                                 </tbody>
                                             </table>
                                         </div>
@@ -1985,6 +2571,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <input type="number" name="actualYouth" value={editedSubproject.actualYouth || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" />
                                             </div>
                                         </div>
+                                    </fieldset>
+
+                                    <fieldset className="form-fieldset">
+                                        <legend className="form-legend">Accomplishment Remarks</legend>
+                                        <textarea
+                                            value={accomplishmentRemarks}
+                                            onChange={(event) => setAccomplishmentRemarks(event.target.value)}
+                                            rows={4}
+                                            className={`${commonInputClasses} subproject-accomplishment-remarks`}
+                                            placeholder="Add remarks about this accomplishment..."
+                                            aria-label="Subproject accomplishment remarks"
+                                        />
                                     </fieldset>
 
                                     {/* Section 4: Outcome of Subproject */}
@@ -2079,6 +2677,193 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                         </div>
                     </form>
                 </div>
+                {accomplishmentItemModalOpen && (
+                    <div className="modal-backdrop" role="presentation" onClick={() => setAccomplishmentItemModalOpen(false)}>
+                        <section
+                            className="modal-card subproject-accomplishment-item-modal"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="accomplishment-item-modal-title"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <header className="modal-card__header">
+                                <h3 id="accomplishment-item-modal-title">
+                                    {accomplishmentItemEditingIndex === null ? 'Add Physical Item' : 'Edit Adjustment Item'}
+                                </h3>
+                                <button type="button" className="modal-card__close" onClick={() => setAccomplishmentItemModalOpen(false)} aria-label="Close item form">
+                                    <X aria-hidden="true" />
+                                </button>
+                            </header>
+                            <div className="modal-card__body subproject-accomplishment-item-modal__body">
+                                <div className="form-grid subproject-accomplishment-item-modal__grid">
+                                    <div>
+                                        <label className="form-label">Item Type <span className="form-required">*</span></label>
+                                        <select
+                                            name="type"
+                                            value={accomplishmentItemDraft.type}
+                                            onChange={(event) => setAccomplishmentItemDraft(previous => ({ ...previous, type: event.target.value, particulars: '' }))}
+                                            className={commonInputClasses}
+                                        >
+                                            <option value="">Select Type</option>
+                                            {Object.keys(particularTypes).map(type => <option key={type} value={type}>{type}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Particulars <span className="form-required">*</span></label>
+                                        <select
+                                            name="particulars"
+                                            value={accomplishmentItemDraft.particulars}
+                                            onChange={handleAccomplishmentDraftChange}
+                                            disabled={!accomplishmentItemDraft.type}
+                                            className={commonInputClasses}
+                                        >
+                                            <option value="">Select Item</option>
+                                            {(particularTypes[accomplishmentItemDraft.type] || []).map(particular => <option key={particular} value={particular}>{particular}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Object Type</label>
+                                        <select name="objectType" value={accomplishmentItemDraft.objectType} onChange={handleAccomplishmentDraftChange} className={commonInputClasses}>
+                                            {objectTypes.map(type => <option key={type} value={type}>{type}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Expense Particular</label>
+                                        <select
+                                            name="expenseParticular"
+                                            value={accomplishmentItemDraft.expenseParticular}
+                                            onChange={(event) => setAccomplishmentItemDraft(previous => ({ ...previous, expenseParticular: event.target.value, uacsCode: '' }))}
+                                            className={commonInputClasses}
+                                        >
+                                            <option value="">Select Particular</option>
+                                            {Object.keys(uacsCodes[accomplishmentItemDraft.objectType] || {}).map(particular => <option key={particular} value={particular}>{particular}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="form-label">UACS Code <span className="form-required">*</span></label>
+                                        <input
+                                            type="text"
+                                            name="uacsCode"
+                                            value={accomplishmentItemDraft.uacsCode}
+                                            onChange={handleAccomplishmentDraftChange}
+                                            list="accomplishment-uacs-codes-list"
+                                            className={commonInputClasses}
+                                        />
+                                        <datalist id="accomplishment-uacs-codes-list">
+                                            {allUacsCodes.map(item => <option key={item.code} value={item.code}>{item.code} - {item.desc}</option>)}
+                                        </datalist>
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Target Delivery Month <span className="form-required">*</span></label>
+                                        <MonthYearPicker
+                                            value={accomplishmentItemDraft.deliveryDate}
+                                            onChange={(value) => setAccomplishmentItemDraft(previous => ({ ...previous, deliveryDate: value }))}
+                                            placeholder="Select month"
+                                            defaultYear={editedSubproject.fundingYear}
+                                            className="form-control"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Price per Unit <span className="form-required">*</span></label>
+                                        <input type="number" min="0" step="0.01" name="pricePerUnit" value={accomplishmentItemDraft.pricePerUnit} onChange={handleAccomplishmentDraftChange} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Number of Units <span className="form-required">*</span></label>
+                                        <input type="number" min="0" step="0.01" name="numberOfUnits" value={accomplishmentItemDraft.numberOfUnits} onChange={handleAccomplishmentDraftChange} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Unit of Measure</label>
+                                        <select name="unitOfMeasure" value={accomplishmentItemDraft.unitOfMeasure} onChange={handleAccomplishmentDraftChange} className={commonInputClasses}>
+                                            {['pcs', 'grams', 'kg', 'liters', 'boxes', 'cans', 'sets', 'pax', 'heads', 'months', 'days', 'ha', 'bags', 'bottles', 'sachets', 'rolls', 'meters', 'units', 'packs', 'lots'].map(unit => <option key={unit} value={unit}>{unit}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Actual Units</label>
+                                        <input type="number" min="0" step="0.01" name="actualNumberOfUnits" value={accomplishmentItemDraft.actualNumberOfUnits} onChange={handleAccomplishmentDraftChange} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Actual Delivery Month</label>
+                                        <MonthYearPicker
+                                            value={accomplishmentItemDraft.actualDeliveryDate}
+                                            onChange={(value) => setAccomplishmentItemDraft(previous => ({ ...previous, actualDeliveryDate: value }))}
+                                            placeholder="Select month"
+                                            defaultYear={editedSubproject.fundingYear}
+                                            className="form-control"
+                                            allowClear
+                                        />
+                                    </div>
+                                </div>
+
+                                <fieldset className="subproject-accomplishment-item-modal__adjustment">
+                                    <legend className="form-legend">Adjustment Details</legend>
+                                    <div className="form-grid subproject-accomplishment-item-modal__grid">
+                                        <div>
+                                            <label className="form-label">Adjustment Type <span className="form-required">*</span></label>
+                                            <select name="adjustmentType" value={accomplishmentItemDraft.adjustmentType} onChange={handleAccomplishmentDraftChange} className={commonInputClasses}>
+                                                <option value="Replacement">Replacement</option>
+                                                <option value="Additional Item">Additional Item</option>
+                                            </select>
+                                        </div>
+                                        {accomplishmentItemDraft.adjustmentType === 'Replacement' && (
+                                            <div>
+                                                <label className="form-label">Original Item <span className="form-required">*</span></label>
+                                                <select name="replacementOfItemId" value={accomplishmentItemDraft.replacementOfItemId} onChange={handleAccomplishmentDraftChange} className={commonInputClasses}>
+                                                    <option value="">Select original item</option>
+                                                    {replacementSourceItems.map(item => <option key={String(item.id)} value={String(item.id)}>{item.particulars} · {String(item.id)}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+                                        <div>
+                                            <label className="form-label">Funding Source <span className="form-required">*</span></label>
+                                            <select name="adjustmentFundingSource" value={accomplishmentItemDraft.adjustmentFundingSource} onChange={handleAccomplishmentDraftChange} className={commonInputClasses}>
+                                                <option value="Original Allocation">Original Allocation</option>
+                                                <option value="Realignment">Realignment</option>
+                                                <option value="Savings">Savings</option>
+                                            </select>
+                                        </div>
+                                        <div className="subproject-accomplishment-item-modal__wide">
+                                            <label className="form-label">Reason <span className="form-required">*</span></label>
+                                            <input type="text" name="adjustmentReason" value={accomplishmentItemDraft.adjustmentReason} onChange={handleAccomplishmentDraftChange} className={commonInputClasses} placeholder="Reason for this adjustment" />
+                                        </div>
+                                        <div className="subproject-accomplishment-item-modal__wide">
+                                            <label className="form-label">Item Remarks</label>
+                                            <textarea name="itemRemarks" value={accomplishmentItemDraft.itemRemarks} onChange={handleAccomplishmentDraftChange} rows={2} className={commonInputClasses} placeholder="Optional item remarks" />
+                                        </div>
+                                    </div>
+                                </fieldset>
+
+                                <div className="subproject-accomplishment-item-modal__financial-grid">
+                                    <div>
+                                        <h4>Actual Obligations</h4>
+                                        <ObligationsEditor
+                                            obligations={accomplishmentItemDraft.obligations}
+                                            onChange={(records) => setAccomplishmentItemDraft(previous => ({ ...previous, obligations: records }))}
+                                            defaultYear={String(editedSubproject.fundingYear || '')}
+                                            validateMonthChange={validateSubprojectActualMonth}
+                                        />
+                                    </div>
+                                    <div>
+                                        <h4>Actual Disbursements</h4>
+                                        <DisbursementsEditor
+                                            disbursements={accomplishmentItemDraft.disbursements}
+                                            onChange={(records) => setAccomplishmentItemDraft(previous => ({ ...previous, disbursements: records }))}
+                                            defaultYear={String(editedSubproject.fundingYear || '')}
+                                            validateMonthChange={validateSubprojectActualMonth}
+                                        />
+                                    </div>
+                                </div>
+                                {accomplishmentItemFormMessage && <div className="budget-item-form-message budget-item-form-message--error" role="alert">{accomplishmentItemFormMessage}</div>}
+                            </div>
+                            <footer className="modal-card__footer">
+                                <button type="button" className="btn btn-secondary" onClick={() => setAccomplishmentItemModalOpen(false)}>Cancel</button>
+                                <button type="button" className="btn btn-primary" onClick={handleAddAccomplishmentItem} disabled={isAccomplishmentItemSubmitting}>
+                                    {isAccomplishmentItemSubmitting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
+                                    {isAccomplishmentItemSubmitting ? 'Validating...' : accomplishmentItemEditingIndex === null ? 'Add Item' : 'Update Item'}
+                                </button>
+                            </footer>
+                        </section>
+                    </div>
+                )}
             </div>
         )
     }
@@ -2557,6 +3342,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
                     <RecordPanel title="Remarks">
                         <p className="detail-note">{subproject.remarks || 'No remarks provided.'}</p>
+                    </RecordPanel>
+
+                    <RecordPanel title="Accomplishment Remarks">
+                        <p className="detail-note detail-note--multiline">{subproject.accomplishmentRemarks || 'No accomplishment remarks provided.'}</p>
                     </RecordPanel>
 
                     <RecordPanel

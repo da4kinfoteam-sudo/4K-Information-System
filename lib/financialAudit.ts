@@ -316,7 +316,7 @@ export const buildFinancialAudit = (
                 'Info',
                 item.excludedTargetAllocation || 0,
                 ['Financial Accomplishment', 'WFP', 'BEDS 1', 'BEDS 3', 'Budget Utilization'],
-                'This cancelled/realignment/savings line keeps its encoded target for reference, but target reports exclude it from totals.',
+                'This cancelled/realignment/savings/replaced line keeps its encoded target for reference, but target reports exclude it from totals.',
                 metrics
             );
         }
@@ -357,7 +357,7 @@ export const buildFinancialAudit = (
             );
         }
 
-        if ((item.line.isCancelled || item.line.isRealignment || item.line.isSavings) && !item.line.originalCapturedAt) {
+        if ((item.line.isCancelled || item.line.isRealignment || item.line.isSavings || item.line.isSuperseded) && !item.line.originalCapturedAt) {
             addIssue(
                 item,
                 'Line missing original budget snapshot',

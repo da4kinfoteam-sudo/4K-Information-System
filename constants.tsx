@@ -182,6 +182,14 @@ export interface SubprojectDetail {
     originalCapturedAt?: string;
     sourceItemId?: number | string | null;
     adjustmentReason?: string | null;
+    adjustmentType?: 'Replacement' | 'Additional Item';
+    adjustmentFundingSource?: 'Original Allocation' | 'Realignment' | 'Savings';
+    isAdjustmentItem?: boolean;
+    isSuperseded?: boolean;
+    replacementOfItemId?: number | string | null;
+    replacedByItemIds?: Array<number | string>;
+    replacementReason?: string | null;
+    itemRemarks?: string | null;
 }
 
 export interface SubprojectCommodity {
@@ -222,6 +230,7 @@ export interface Subproject extends BaseEntity {
     encodedBy: string;
     history?: HistoryEntry[];
     remarks?: string;
+    accomplishmentRemarks?: string | null;
     catchUpPlanRemarks?: string;
     newTargetCompletionDate?: string;
     // Gender and Inclusivity Actuals

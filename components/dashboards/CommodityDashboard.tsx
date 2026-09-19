@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { ChevronDown, Download, Layers3, PackageSearch, Search, Sprout, UsersRound, WalletCards } from 'lucide-react';
 import { Subproject } from '../../constants';
 import { XLSX } from '../reports/ReportUtils';
+import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 
 interface Props {
     subprojects: Subproject[];
@@ -86,9 +87,7 @@ const formatSetList = (values: Set<string>, emptyLabel = '-') => {
 
 const getSubprojectAmount = (subproject: Subproject) => {
     return (subproject.details || []).reduce((total, detail) => {
-        const units = Number(detail.numberOfUnits) || 0;
-        const price = Number(detail.pricePerUnit) || 0;
-        return total + units * price;
+        return total + (isBudgetLineExcludedFromTargets(detail) ? 0 : getBudgetLineAmount(detail));
     }, 0);
 };
 

@@ -21,6 +21,7 @@ import { Subproject } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { XLSX } from '../reports/ReportUtils';
 import { isMonthTargetOverdue } from '../../lib/dateStatus';
+import { isSupersededSubprojectDetail } from '../../lib/subprojectItemAdjustments';
 
 interface Props {
     subprojects: Subproject[];
@@ -324,7 +325,7 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
             const ipo = subproject.indigenousPeopleOrganization || 'Unspecified IPO';
             const region = subproject.operatingUnit || 'Unspecified OU';
 
-            return (subproject.details || []).filter(Boolean).map((detail, index) => {
+            return (subproject.details || []).filter(Boolean).filter(detail => !isSupersededSubprojectDetail(detail)).map((detail, index) => {
                 const target = normalizeQuantity(Number(detail.numberOfUnits) || 0, detail.unitOfMeasure);
                 const actual = normalizeQuantity(Number(detail.actualNumberOfUnits) || 0, detail.unitOfMeasure);
                 const allocation = (Number(detail.numberOfUnits) || 0) * (Number(detail.pricePerUnit) || 0);

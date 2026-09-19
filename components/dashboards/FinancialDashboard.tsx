@@ -41,7 +41,7 @@ interface FinancialDashboardProps {
     selectedFundTypeProp?: string;
 }
 
-type AdjustmentType = 'Savings' | 'Realignment' | 'Cancelled';
+type AdjustmentType = 'Savings' | 'Realignment' | 'Cancelled' | 'Replaced';
 type BreakdownView = 'component' | 'operatingUnit' | FinancialGeographicLevel;
 type Bucket = { label: string; allocation: number; obligation: number; disbursement: number };
 type AdjustmentRow = { id: string; type: AdjustmentType; component: string; source: string; amount: number; reason: string };
@@ -72,6 +72,7 @@ const percent = (value: number) => `${value.toFixed(1)}%`;
 
 const adjustmentType = (item: FinancialLineItem): AdjustmentType | null => {
     if (item.lineTag === 'Cancelled' || item.isCancelledLine || item.status === 'Cancelled') return 'Cancelled';
+    if (item.lineTag === 'Replaced') return 'Replaced';
     if (item.lineTag === 'Realignment' || item.isRealignment) return 'Realignment';
     if (item.lineTag === 'Savings' || item.isSavings) return 'Savings';
     return null;

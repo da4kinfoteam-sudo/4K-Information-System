@@ -11,7 +11,11 @@ export type BudgetAdjustmentAction =
     | 'clear_tag'
     | 'create_adjustment_item'
     | 'edit_adjustment_item'
-    | 'delete_adjustment_item';
+    | 'delete_adjustment_item'
+    | 'replace_item'
+    | 'deactivate_adjustment_item'
+    | 'funding_source_changed'
+    | 'update_accomplishment_remarks';
 
 export interface BudgetItemAdjustmentHistory {
     id?: number;
@@ -47,10 +51,17 @@ export interface AdjustableBudgetLine {
     originalCapturedAt?: string | null;
     sourceItemId?: number | string | null;
     adjustmentReason?: string | null;
+    adjustmentType?: 'Replacement' | 'Additional Item';
+    adjustmentFundingSource?: 'Original Allocation' | 'Realignment' | 'Savings';
+    isAdjustmentItem?: boolean;
+    isSuperseded?: boolean;
+    replacementOfItemId?: number | string | null;
+    replacedByItemIds?: Array<number | string>;
+    replacementReason?: string | null;
     [key: string]: any;
 }
 
-export type BudgetLineTag = 'Cancelled' | 'Realignment' | 'Savings' | null;
+export type BudgetLineTag = 'Cancelled' | 'Realignment' | 'Savings' | 'Replaced' | null;
 
 const MONTH_KEYS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
@@ -68,6 +79,7 @@ export const getBudgetLineAmount = (line?: AdjustableBudgetLine | null) => {
 export const getBudgetLineTag = (line?: AdjustableBudgetLine | null): BudgetLineTag => {
     if (!line) return null;
     if (line.isCancelled) return 'Cancelled';
+    if (line.isSuperseded) return 'Replaced';
     if (line.isRealignment) return 'Realignment';
     if (line.isSavings) return 'Savings';
     return null;
@@ -84,7 +96,7 @@ export const normalizeBudgetLineStatus = <T extends AdjustableBudgetLine>(line: 
 };
 
 export const isBudgetLineExcludedFromTargets = (line?: AdjustableBudgetLine | null) =>
-    !!(line?.isCancelled || line?.isRealignment || line?.isSavings);
+    !!(line?.isCancelled || line?.isRealignment || line?.isSavings || line?.isSuperseded);
 
 export const isParentExcludedFromTargets = (record?: { status?: string; isRealignment?: boolean; isSavings?: boolean } | null) =>
     !!(record?.status === 'Cancelled' || record?.isRealignment || record?.isSavings);
@@ -136,12 +148,14 @@ export const summarizeBudgetAdjustments = (lines: AdjustableBudgetLine[] = []) =
             const actualObligated = getBudgetLineActualObligation(line);
             const actualDisbursed = getBudgetLineActualDisbursement(line);
 
-            summary.originalPlannedBudget += originalAmount;
+            if (!line.isAdjustmentItem) summary.originalPlannedBudget += originalAmount;
             summary.actualObligated += actualObligated;
             summary.actualDisbursed += actualDisbursed;
 
             if (line.isCancelled) {
                 summary.cancelledAmount += amount;
+            } else if (line.isSuperseded) {
+                summary.replacedAmount += amount;
             } else if (line.isRealignment) {
                 summary.realignedAmount += amount;
             } else if (line.isSavings) {
@@ -156,6 +170,7 @@ export const summarizeBudgetAdjustments = (lines: AdjustableBudgetLine[] = []) =
             originalPlannedBudget: 0,
             activeTargetBudget: 0,
             cancelledAmount: 0,
+            replacedAmount: 0,
             realignedAmount: 0,
             savingsAmount: 0,
             actualObligated: 0,

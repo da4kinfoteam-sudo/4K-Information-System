@@ -206,7 +206,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
         const lineItems: any[] = [];
         const addLineItem = (item: any) => {
-            if (item.amount <= 0 || item.isRealignment || item.isSavings || item.isCancelled) return;
+            if (item.amount <= 0 || item.isRealignment || item.isSavings || item.isCancelled || item.isSuperseded) return;
             ensureHeader(item.objectType, item.particularName, item.uacsCode, item.amount);
             lineItems.push(item);
         };
@@ -220,7 +220,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     itemParticular: d.particulars,
                     isRealignment: sp.isRealignment || d.isRealignment,
                     isSavings: sp.isSavings || d.isSavings,
-                    isCancelled: sp.status === 'Cancelled' || d.isCancelled
+                    isCancelled: sp.status === 'Cancelled' || d.isCancelled,
+                    isSuperseded: d.isSuperseded
                 });
             });
         });
@@ -339,7 +340,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         };
         
         lineItems.forEach(item => {
-            if (item.amount <= 0 || item.isRealignment || item.isSavings || item.isCancelled) return;
+            if (item.amount <= 0 || item.isRealignment || item.isSavings || item.isCancelled || item.isSuperseded) return;
 
             let targetList;
             const packageKey = item.packageType || (item.isTraining ? 'Trainings' : 'Activities');

@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import { operatingUnits, Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, filterYears } from '../../constants';
+import { isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 
 interface BudgetCeilingManagementProps {
     subprojects: Subproject[];
@@ -71,7 +72,7 @@ const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
             (!fundType || s.fundType === fundType)
         ).forEach(s => {
             s.details.forEach(d => {
-                total += (d.pricePerUnit * d.numberOfUnits);
+                if (!isBudgetLineExcludedFromTargets(d)) total += (d.pricePerUnit * d.numberOfUnits);
             });
         });
 

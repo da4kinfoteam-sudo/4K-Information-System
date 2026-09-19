@@ -34,6 +34,7 @@ import { supabase } from '../supabaseClient';
 import { getLodEffectiveState } from '../lib/lodScoring';
 import { subscribeToLodDataChanges } from '../lib/lodDataSync';
 import { commodityCapacityToFormValue, getCommodityCapacityValues } from '../lib/commodityProfile';
+import { getActiveSubprojectBudget } from '../lib/subprojectItemAdjustments';
 import {
     deleteIpoDriveFile,
     formatFileSize,
@@ -732,7 +733,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
 
         // 2. Investment Calculation
         const subprojectInvestment = completedSubprojects.reduce((sum, sp) => {
-            return sum + (sp.details || []).reduce((dSum, d) => dSum + (toSafeNumber(d.pricePerUnit) * toSafeNumber(d.numberOfUnits)), 0);
+            return sum + getActiveSubprojectBudget(sp.details || []);
         }, 0);
 
         const trainingInvestment = completedTrainings.reduce((sum, t) => {
@@ -743,7 +744,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
 
         // 4. Total Allocation (regardless of status)
         const subprojectAllocation = (subprojects || []).reduce((sum, sp) => {
-            return sum + (sp.details || []).reduce((dSum, d) => dSum + (toSafeNumber(d.pricePerUnit) * toSafeNumber(d.numberOfUnits)), 0);
+            return sum + getActiveSubprojectBudget(sp.details || []);
         }, 0);
 
         const trainingAllocation = (trainings || []).reduce((sum, t) => {
@@ -1054,7 +1055,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
     };
 
     const calculateTotalBudget = (details?: Subproject['details'] | null) => {
-        return (details || []).reduce((total, item) => total + (toSafeNumber(item.pricePerUnit) * toSafeNumber(item.numberOfUnits)), 0);
+        return getActiveSubprojectBudget(details || []);
     }
     
     const commonInputClasses = "form-control";
