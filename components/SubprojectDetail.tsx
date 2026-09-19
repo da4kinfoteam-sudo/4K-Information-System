@@ -1,7 +1,7 @@
 
 // Author: 4K
 import React, { useState, FormEvent, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, filterYears, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock, ObligationRecord, DisbursementRecord } from '../constants';
+import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, fundSources, tiers, SubprojectCommodity, filterYears, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock, ObligationRecord, DisbursementRecord } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
@@ -213,13 +213,15 @@ const budgetItemFieldLabels: Record<string, string> = {
 };
 
 const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onEditModeChange, onUpdateSubproject, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, hasAccess, getVisibilityScope } = useAuth();
     const { canEdit } = useUserAccess('Subprojects');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
     const { canEdit: canEditPhysical } = useUserAccess('Accomplishment - Physical');
     const { addIpoHistory } = useIpoHistory();
     const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
     const isAdmin = currentUser?.role === 'Administrator';
+    const canChooseOperatingUnit = currentUser?.role === 'Super Admin'
+        || (hasAccess('Subprojects', 'edit') && getVisibilityScope('Subprojects') === 'All');
     const canDeleteDriveFiles = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
 
     // Edit Modes: 'full' (legacy), 'details' (exclusive), 'commodity' (exclusive), 'budget' (exclusive), 'accomplishment'
@@ -733,6 +735,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
+
+        if (name === 'operatingUnit' && !canChooseOperatingUnit) return;
 
         if (missingFields.includes(name)) {
             setMissingFields(prev => prev.filter(f => f !== name));
@@ -1512,7 +1516,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         if (!(await validateSubprojectAccomplishmentMonthsForSave())) return;
 
         if (editMode === 'details') {
-            const requiredFields = ['name', 'indigenousPeopleOrganization', 'status'];
+            const requiredFields = ['name', 'indigenousPeopleOrganization', 'status', 'operatingUnit'];
             const missing = requiredFields.filter(field => !editedSubproject[field as keyof Subproject]);
 
             if (missing.length > 0) {
@@ -1647,8 +1651,21 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         const accomplishmentRemarksChanged = editMode === 'accomplishment'
             && valuesDiffer(subproject.accomplishmentRemarks, nextAccomplishmentRemarks);
 
+        const effectiveOperatingUnit = canChooseOperatingUnit
+            ? editedSubproject.operatingUnit
+            : (currentUser?.operatingUnit || '');
+        if (!effectiveOperatingUnit) {
+            alert('Operating Unit is required before saving the Subproject.');
+            return;
+        }
+        if (!canChooseOperatingUnit && subproject.operatingUnit !== effectiveOperatingUnit) {
+            alert('You can only edit Subprojects assigned to your Operating Unit.');
+            return;
+        }
+
         const updatedSubprojectWithDetails = {
             ...editedSubproject,
+            operatingUnit: effectiveOperatingUnit,
             ipo_id: resolvedIpoId,
             status: nextStatus,
             actualCompletionDate: nextActualCompletionDate,
@@ -1776,26 +1793,26 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 {monthLockMessage}
                             </div>
                         )}
-                        <div className="min-h-[400px]">
+                        <div className="subproject-edit-content">
                             {/* DETAILS EDIT MODE */}
                             {editMode === 'details' && (
                                 <div className="space-y-6">
                                     <fieldset className="form-section">
                                         <legend>Project Details</legend>
-                                        <div className="form-grid">
+                                         <div className="form-grid">
                                             <div>
                                                 <label className="form-label">Subproject Name <span className="form-required">*</span></label>
                                                 <input type="text" name="name" value={editedSubproject.name} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('name') ? 'form-control--invalid' : ''}`} />
                                             </div>
                                             <div>
-                                                <label className="form-label">Operating Unit</label>
+                                                <label className="form-label">Operating Unit <span className="form-required">*</span></label>
                                                 <select
                                                     name="operatingUnit"
                                                     value={editedSubproject.operatingUnit || ''}
                                                     onChange={handleInputChange}
-                                                    className={commonInputClasses}
-                                                    disabled={currentUser?.role !== 'Administrator'}
-                                                    title={currentUser?.role !== 'Administrator' ? "Only Administrators can edit the Operating Unit" : ""}
+                                                    className={`${commonInputClasses} ${missingFields.includes('operatingUnit') ? 'form-control--invalid' : ''}`}
+                                                    disabled={!canChooseOperatingUnit}
+                                                    title={!canChooseOperatingUnit ? "Operating Unit is locked to your assigned OU" : undefined}
                                                 >
                                                     <option value="">Select Operating Unit</option>
                                                     {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
@@ -1861,7 +1878,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                     </fieldset>
                                     <fieldset className="form-section">
                                         <legend>Funding</legend>
-                                        <div className="form-grid">
+                                         <div className="form-grid form-grid--four subproject-funding-grid">
                                             <div>
                                                 <label className="form-label">Year</label>
                                                 <select name="fundingYear" value={editedSubproject.fundingYear} onChange={handleInputChange} className={commonInputClasses}>
@@ -1880,6 +1897,23 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     {tiers.map(t => <option key={t} value={t}>{t}</option>)}
                                                 </select>
                                             </div>
+                                            <div>
+                                                <label className="form-label">Fund Source</label>
+                                                <select name="fundSource" value={editedSubproject.fundSource || ''} onChange={handleInputChange} className={commonInputClasses}>
+                                                    <option value="">Select Fund Source</option>
+                                                    {fundSources.map(source => <option key={source} value={source}>{source}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div className="form-check-group subproject-adjustment-checks">
+                                            <label className="form-check">
+                                                <input type="checkbox" checked={editedSubproject.isRealignment || false} onChange={e => setEditedSubproject(prev => ({ ...prev, isRealignment: e.target.checked, isSavings: e.target.checked ? false : prev.isSavings }))} className="form-checkbox" />
+                                                <span>Realignment</span>
+                                            </label>
+                                            <label className="form-check">
+                                                <input type="checkbox" checked={editedSubproject.isSavings || false} onChange={e => setEditedSubproject(prev => ({ ...prev, isSavings: e.target.checked, isRealignment: e.target.checked ? false : prev.isRealignment }))} className="form-checkbox" />
+                                                <span>Savings</span>
+                                            </label>
                                         </div>
                                     </fieldset>
                                     <fieldset className="form-section">
@@ -2964,9 +2998,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             <DetailItem label="IPO" value={subproject.indigenousPeopleOrganization} />
                             <DetailItem label="Estimated Completion" value={formatMonthYear(subproject.estimatedCompletionDate)} />
                             <DetailItem label="Actual Completion" value={formatMonthYear(subproject.actualCompletionDate)} />
-                            <DetailItem label="Funding Year" value={subproject.fundingYear?.toString()} />
-                            <DetailItem label="Fund Type" value={subproject.fundType} />
-                            <DetailItem label="Tier" value={subproject.tier} />
+                             <DetailItem label="Funding Year" value={subproject.fundingYear?.toString()} />
+                             <DetailItem label="Fund Type" value={subproject.fundType} />
+                             <DetailItem label="Tier" value={subproject.tier} />
+                             <DetailItem label="Fund Source" value={subproject.fundSource || '—'} />
                          </dl>
 
                          {/* Completion Progress Bar */}
@@ -3326,8 +3361,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             <div><dt>Total budget</dt><dd>{formatCurrency(totalBudget)}</dd></div>
                             <div><dt>Physical completion</dt><dd>{projectCompletionStats.text}</dd></div>
                             <div><dt>Budget items</dt><dd>{subproject.details.length}</dd></div>
-                            <div><dt>Fund Year</dt><dd>{subproject.fundingYear || 'N/A'}</dd></div>
-                            <div><dt>Fund Type</dt><dd>{subproject.fundType || 'N/A'}</dd></div>
+                             <div><dt>Fund Year</dt><dd>{subproject.fundingYear || 'N/A'}</dd></div>
+                             <div><dt>Fund Type</dt><dd>{subproject.fundType || 'N/A'}</dd></div>
+                             <div><dt>Fund Source</dt><dd>{subproject.fundSource || '—'}</dd></div>
                         </dl>
                     </RecordPanel>
 
