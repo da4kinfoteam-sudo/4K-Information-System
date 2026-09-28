@@ -1,7 +1,7 @@
 // Author: 4K
 import React from 'react';
 import {
-    OfficeRequirement, StaffingRequirement, OtherProgramExpense
+    OfficeRequirement, StaffingRequirement, OtherProgramExpense, RefFundSource
 } from '../constants';
 import { OfficeRequirementsTab } from './program_management/OfficeRequirementsTab';
 import { StaffingRequirementsTab } from './program_management/StaffingRequirementsTab';
@@ -19,6 +19,7 @@ interface ProgramManagementProps {
     otherProgramExpenses: OtherProgramExpense[];
     setOtherProgramExpenses: React.Dispatch<React.SetStateAction<OtherProgramExpense[]>>;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    fundSources: RefFundSource[];
     onSelectOfficeReq: (item: OfficeRequirement) => void;
     onSelectStaffingReq: (item: StaffingRequirement) => void;
     onSelectOtherExpense: (item: OtherProgramExpense) => void;
@@ -30,7 +31,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
     officeReqs, setOfficeReqs,
     staffingReqs, setStaffingReqs,
     otherProgramExpenses, setOtherProgramExpenses,
-    uacsCodes,
+    uacsCodes, fundSources,
     onSelectOfficeReq,
     onSelectStaffingReq,
     onSelectOtherExpense,
@@ -69,6 +70,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                         items={scopedOfficeReqs}
                         setItems={setOfficeReqs}
                         uacsCodes={uacsCodes}
+                        fundSources={fundSources}
                         onSelect={onSelectOfficeReq}
                     />
                 )}
@@ -77,6 +79,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                         items={scopedStaffingReqs}
                         setItems={setStaffingReqs}
                         uacsCodes={uacsCodes}
+                        fundSources={fundSources}
                         onSelect={onSelectStaffingReq}
                     />
                 )}
@@ -85,6 +88,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                         items={scopedOtherProgramExpenses}
                         setItems={setOtherProgramExpenses}
                         uacsCodes={uacsCodes}
+                        fundSources={fundSources}
                         onSelect={onSelectOtherExpense}
                     />
                 )}

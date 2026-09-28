@@ -2,7 +2,7 @@
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
-import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
+import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, ObjectType, RefFundSource } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
@@ -14,10 +14,13 @@ import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
 import { getActualObligationValidationError } from '../../lib/financialObligationUtils';
 import { replaceFinancialObligationRecords } from '../../lib/financialObligationSync';
+import { FundSourceField } from '../ui/FundSourceField';
+import { getFundSourceByUid, getFundSourceLabel } from '../../lib/fundSources';
 
 interface OfficeRequirementDetailProps {
     item: OfficeRequirement;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    fundSources: RefFundSource[];
     onUpdate: (item: OfficeRequirement) => void;
 }
 
@@ -38,14 +41,14 @@ const getStatusBadge = (status: OfficeRequirement['status']) => {
     }
 }
 
-const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
+const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode; preserveBlank?: boolean }> = ({ label, value, preserveBlank }) => (
     <div className="detail-item">
         <dt className="detail-label">{label}</dt>
-        <dd className="detail-value detail-value--emphasis">{value || 'N/A'}</dd>
+        <dd className="detail-value detail-value--emphasis">{preserveBlank && !value ? '' : value || 'N/A'}</dd>
     </div>
 );
 
-const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item, uacsCodes, onUpdate }) => {
+const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item, uacsCodes, fundSources, onUpdate }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Program Management');
     const { logAction } = useLogAction();
@@ -371,6 +374,11 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
             }),
             updated_at: timestamp
         };
+        const selectedFundSource = getFundSourceByUid(updatedItem.fundSourceUid, fundSources);
+        if (selectedFundSource) {
+            updatedItem.fundSourceUid = selectedFundSource.uid;
+            updatedItem.fundSource = selectedFundSource.label;
+        }
 
         if (supabase) {
             try {
@@ -444,6 +452,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                     <div><label className="form-label">Fund Year <span className="form-required">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
                                     <div><label className="form-label">Fund Type <span className="form-required">*</span></label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                     <div><label className="form-label">Tier <span className="form-required">*</span></label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                    <FundSourceField uid={formData.fundSourceUid} label={formData.fundSource} references={fundSources} onChange={(fundSourceUid, fundSource) => setFormData(previous => ({ ...previous, fundSourceUid, fundSource }))} />
                                 </div>
                                 
                                 <div className="program-form-grid program-form-grid--four">
@@ -689,7 +698,8 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                         <DetailItem label="Price Per Unit" value={formatCurrency(item.pricePerUnit)} />
                         <DetailItem label="Total Amount" value={formatCurrency(item.pricePerUnit * item.numberOfUnits)} />
                         
-                        <DetailItem label="Fund Source" value={`${item.fundType} ${item.fundYear} - ${item.tier}`} />
+                        <DetailItem label="Fund Source" value={getFundSourceLabel(item, fundSources)} preserveBlank />
+                        <DetailItem label="Funding" value={`${item.fundType} ${item.fundYear} - ${item.tier}`} />
                         <div className="detail-item--wide">
                             <DetailItem label="UACS Code" value={`${item.uacsCode} - ${selectedParticular} - ${selectedUacsDesc || 'Lookup Failed'}`} />
                         </div>

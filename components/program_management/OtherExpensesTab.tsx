@@ -1,18 +1,21 @@
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
-import { OtherProgramExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
+import { OtherProgramExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, RefFundSource } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { useSelection, useUserAccess, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
-import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
+import { resolveOperatingUnit, resolveTier, resolveImportFundSource } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState'; // Import for persistent state
 import { Search, X, Check, ChevronDown, Download, FileSpreadsheet, Plus, Upload } from 'lucide-react';
 import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { ConfirmDialog, DataTablePagination, SortableTableHeader } from '../ui/enterprise';
 import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from '../ui/MajorDataTable';
+import { FundSourceField } from '../ui/FundSourceField';
+import { FundSourceCloneDialog } from '../ui/FundSourceCloneDialog';
+import { fundSourceNeedsCloneSelection, getFundSourceByUid, getFundSourceFilterOptions, getFundSourceFilterValue, getFundSourceLabel, getFundSourceSortLabel, getNewFundSourceDefault, resolveClonedFundSource } from '../../lib/fundSources';
 
 declare const XLSX: any;
 
@@ -65,10 +68,11 @@ interface OtherExpensesTabProps {
     items: OtherProgramExpense[];
     setItems: React.Dispatch<React.SetStateAction<OtherProgramExpense[]>>;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    fundSources: RefFundSource[];
     onSelect: (item: OtherProgramExpense) => void;
 }
 
-export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setItems, uacsCodes, onSelect }) => {
+export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setItems, uacsCodes, fundSources, onSelect }) => {
     const { currentUser } = useAuth();
     const tableStoragePrefix = `programManagement_other_${currentUser?.id || 'anonymous'}`;
     const { logAction } = useLogAction();
@@ -87,6 +91,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const [itemToDelete, setItemToDelete] = useState<OtherProgramExpense | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
+    const [pendingCloneItems, setPendingCloneItems] = useState<OtherProgramExpense[] | null>(null);
 
     // Search and Column Filtering/Sorting
     const [searchTerm, setSearchTerm] = useLocalStorageState(`${tableStoragePrefix}_searchTerm`, '');
@@ -112,7 +117,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     // Form State
     const initialFormState: OtherProgramExpense = {
-        id: 0, uid: '', operatingUnit: '', uacsCode: '', obligationDate: '', disbursementDate: '', fundType: 'Current' as FundType, fundYear: new Date().getFullYear(), tier: 'Tier 1' as Tier, encodedBy: '',
+        id: 0, uid: '', operatingUnit: '', uacsCode: '', obligationDate: '', disbursementDate: '', fundType: 'Current' as FundType, fundSource: null, fundSourceUid: null, fundYear: new Date().getFullYear(), tier: 'Tier 1' as Tier, encodedBy: '',
         particulars: '', amount: 0, obligatedAmount: 0, status: 'Proposed',
         actualDate: '', actualAmount: 0, actualObligationDate: '', actualDisbursementDate: '', actualObligationAmount: 0, actualDisbursementAmount: 0,
         // Target Schedule
@@ -197,7 +202,8 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             uacsCode: [],
             particulars: [],
             fundYear: [],
-            fundType: []
+            fundType: [],
+            fundSourceUid: getFundSourceFilterOptions(items, fundSources).map(option => option.value)
         };
 
         items.forEach(item => {
@@ -211,7 +217,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
         Object.keys(values).forEach(key => values[key].sort());
         return values;
-    }, [items]);
+    }, [items, fundSources]);
 
     const filteredItems = useMemo(() => {
         let filtered = items;
@@ -231,6 +237,9 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             const selectedValues = columnFilters[key];
             if (selectedValues && selectedValues.length > 0) {
                 filtered = filtered.filter(item => {
+                    if (key === 'fundSourceUid') {
+                        return selectedValues.includes(getFundSourceFilterValue(item, fundSources));
+                    }
                     const itemValue = String(item[key as keyof OtherProgramExpense] || '');
                     return selectedValues.includes(itemValue);
                 });
@@ -239,8 +248,12 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
         // Sorting
         return [...filtered].sort((a, b) => {
-            const aValue = a[sortConfig.key as keyof OtherProgramExpense];
-            const bValue = b[sortConfig.key as keyof OtherProgramExpense];
+            const aValue = sortConfig.key === 'fundSourceUid' || sortConfig.key === 'fundSource'
+                ? getFundSourceSortLabel(a, fundSources)
+                : a[sortConfig.key as keyof OtherProgramExpense];
+            const bValue = sortConfig.key === 'fundSourceUid' || sortConfig.key === 'fundSource'
+                ? getFundSourceSortLabel(b, fundSources)
+                : b[sortConfig.key as keyof OtherProgramExpense];
 
             if (aValue === bValue) return 0;
             
@@ -251,7 +264,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             const comparison = aValue < bValue ? -1 : 1;
             return sortConfig.direction === 'ascending' ? comparison : -comparison;
         });
-    }, [items, searchTerm, sortConfig, columnFilters]);
+    }, [items, searchTerm, sortConfig, columnFilters, fundSources]);
 
     const handleSort = (key: keyof OtherProgramExpense, direction: 'ascending' | 'descending') => {
         setSortConfig({ key, direction });
@@ -323,6 +336,16 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         }
     }, [view, editingItem]);
 
+    useEffect(() => {
+        if (view !== 'form' || editingItem || fundSources.length === 0) return;
+        const defaultSource = getNewFundSourceDefault(fundSources);
+        if (defaultSource) {
+            setFormData(previous => previous.fundSourceUid || previous.fundSource
+                ? previous
+                : { ...previous, fundSourceUid: defaultSource.uid, fundSource: defaultSource.label });
+        }
+    }, [view, editingItem, fundSources]);
+
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
@@ -366,6 +389,13 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             return;
         }
 
+        const selectedFundSource = getFundSourceByUid(formData.fundSourceUid, fundSources);
+        if (!selectedFundSource?.is_active) {
+            setValidationErrors(previous => [...previous, 'fundSourceUid']);
+            alert('Select an active Fund Source before saving a new program expense.');
+            return;
+        }
+
         setValidationErrors([]);
 
         const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
@@ -375,6 +405,8 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             amount: Number(formData.amount), 
             obligatedAmount: Number(formData.amount), // Set obligatedAmount equal to amount (allocation)
             fundYear: Number(formData.fundYear),
+            fundSourceUid: selectedFundSource.uid,
+            fundSource: selectedFundSource.label,
             // Default 0 for new accomplishments
             actualAmount: 0, actualObligationAmount: 0, actualDisbursementAmount: 0,
             encodedBy: formData.encodedBy || currentUser?.fullName || 'System', 
@@ -505,16 +537,13 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         setIsMultiDeleteModalOpen(false); setSelectedIds([]);
     };
 
-    const handleClone = async () => {
-        const itemsToClone = items.filter(i => selectedIds.includes(i.id));
-        if (itemsToClone.length === 0) return;
-
-        if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} items?`)) return;
-
+    const cloneItems = async (itemsToClone: OtherProgramExpense[], replacementUid?: string) => {
         const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
         const currentTimestamp = new Date().toISOString();
         const newItemsPayload = itemsToClone.map((item, index) => {
             const { id, uid, created_at, updated_at, physicalDeliveryDate, obligations, ...rest } = item;
+            const fundSource = resolveClonedFundSource(item, fundSources, replacementUid);
+            if (!fundSource) throw new Error('Choose an active Fund Source for every copied record before cloning.');
             // Generate new UID
             const newUid = `OE-${item.fundYear}-${Date.now().toString().slice(-6)}${index}`;
             
@@ -535,6 +564,8 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                 ...rest,
                 ...resetActuals,
                 uid: newUid,
+                fundSourceUid: fundSource.uid,
+                fundSource: fundSource.label,
                 workflow_status,
                 encodedBy: currentUser?.fullName || 'System Clone',
                 created_at: currentTimestamp,
@@ -556,6 +587,36 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             setItems(prev => [...newLocalItems, ...prev]);
             resetSelection();
             alert(`Successfully cloned ${newLocalItems.length} items (Local).`);
+        }
+    };
+
+    const handleClone = async () => {
+        const itemsToClone = items.filter(i => selectedIds.includes(i.id));
+        if (itemsToClone.length === 0) return;
+        if (!fundSources.length) {
+            alert('Fund Source references are still loading. Try cloning again shortly.');
+            return;
+        }
+        if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} items?`)) return;
+        if (itemsToClone.some(item => fundSourceNeedsCloneSelection(item, fundSources))) {
+            setPendingCloneItems(itemsToClone);
+            return;
+        }
+        try {
+            await cloneItems(itemsToClone);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Failed to clone items.');
+        }
+    };
+
+    const handleCloneSourceConfirm = async (fundSourceUid: string) => {
+        const pending = pendingCloneItems;
+        setPendingCloneItems(null);
+        if (!pending) return;
+        try {
+            await cloneItems(pending, fundSourceUid);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Failed to clone program expenses.');
         }
     };
 
@@ -624,15 +685,16 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     const handleDownloadReport = () => {
         const data = filteredItems.map(item => ({
-            UID: item.uid, OU: item.operatingUnit, Particulars: item.particulars, Amount: item.amount, 'Obligated Amount': item.obligatedAmount, 'Fund Type': item.fundType, 'Fund Year': item.fundYear, Tier: item.tier, 'Obligation Date': item.obligationDate, 'Disbursement Date': item.disbursementDate
+            UID: item.uid, OU: item.operatingUnit, Particulars: item.particulars, Amount: item.amount, 'Obligated Amount': item.obligatedAmount, 'Fund Type': item.fundType, 'Fund Year': item.fundYear, Tier: item.tier, 'Fund Source UID': item.fundSourceUid || '', 'Fund Source': getFundSourceLabel(item, fundSources), 'Obligation Date': item.obligationDate, 'Disbursement Date': item.disbursementDate
         }));
         const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Other Expenses"); XLSX.writeFile(wb, "Other_Expenses_Report.xlsx");
     };
 
     const handleDownloadTemplate = () => {
         const monthHeaders = ['disbursementJan', 'disbursementFeb', 'disbursementMar', 'disbursementApr', 'disbursementMay', 'disbursementJun', 'disbursementJul', 'disbursementAug', 'disbursementSep', 'disbursementOct', 'disbursementNov', 'disbursementDec'];
-        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'amount', 'obligatedAmount', 'uacsCode', 'particulars', ...monthHeaders];
-        const exampleData = [{ operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', amount: 20000, obligatedAmount: 10000, uacsCode: '50299990-99', particulars: 'Miscellaneous Expenses', disbursementJan: 10000, disbursementFeb: 5000 }];
+        const defaultSource = getNewFundSourceDefault(fundSources);
+        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'obligationDate', 'amount', 'obligatedAmount', 'uacsCode', 'particulars', ...monthHeaders];
+        const exampleData = [{ operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', fundSourceUid: defaultSource?.uid || '', fundSource: defaultSource?.label || '', obligationDate: '2024-01-15', amount: 20000, obligatedAmount: 10000, uacsCode: '50299990-99', particulars: 'Miscellaneous Expenses', disbursementJan: 10000, disbursementFeb: 5000 }];
         const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers }); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Template"); XLSX.writeFile(wb, "Other_Exp_Template.xlsx");
     };
 
@@ -650,6 +712,10 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();
                     const uid = `OE-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
                     const resolvedOU = row.operatingUnit ? resolveOperatingUnit(row.operatingUnit) : 'NPMO';
+                    const sourceUid = String(row.fundSourceUid ?? row['Fund Source UID'] ?? row.fund_source_uid ?? '').trim();
+                    const sourceLabel = String(row.fundSource ?? row['Fund Source'] ?? row.fund_source ?? '').trim();
+                    const source = resolveImportFundSource(sourceUid, sourceLabel, fundSources);
+                    if (!source) throw new Error(`Row ${index + 2}: Fund Source "${sourceUid || sourceLabel || '4K Fund default'}" is invalid, inactive, or unavailable.`);
 
                     return parseOtherExpenseRow(row, {
                         uid, 
@@ -657,6 +723,8 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                         fundYear: fundYear, 
                         fundType: row.fundType || 'Current', 
                         tier: resolveTier(row.tier) || 'Tier 1', 
+                        fundSourceUid: source.uid,
+                        fundSource: source.label,
                         obligationDate: row.obligationDate || '', 
                         uacsCode: row.uacsCode || '', 
                         encodedBy: currentUser?.fullName || 'Upload', 
@@ -734,12 +802,23 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="form-label">Tier <span className="form-required">*</span></label>
-                                    <select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
-                                        {tiers.map(t => <option key={t} value={t}>{t}</option>)}
-                                    </select>
-                                </div>
-                                <div className="form-check-group">
+                                        <label className="form-label">Tier <span className="form-required">*</span></label>
+                                        <select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
+                                            {tiers.map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                    </div>
+                                    <FundSourceField
+                                        uid={formData.fundSourceUid}
+                                        label={formData.fundSource}
+                                        references={fundSources}
+                                        required
+                                        invalid={validationErrors.includes('fundSourceUid')}
+                                        onChange={(fundSourceUid, fundSource) => {
+                                            setFormData(previous => ({ ...previous, fundSourceUid, fundSource }));
+                                            setValidationErrors(previous => previous.filter(field => field !== 'fundSourceUid'));
+                                        }}
+                                    />
+                                    <div className="form-check-group">
                                     <label className="form-check">
                                         <input type="checkbox" checked={formData.isRealignment || false} onChange={e => setFormData(prev => ({ ...prev, isRealignment: e.target.checked, isSavings: e.target.checked ? false : prev.isSavings }))} />
                                         <span>Realignment</span>
@@ -873,7 +952,8 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const tableFilterFields = [
         { key: 'status', label: 'Status', values: uniqueValues.status || [] },
         { key: 'uacsCode', label: 'UACS Code', values: uniqueValues.uacsCode || [] },
-        { key: 'particulars', label: 'Particulars', values: uniqueValues.particulars || [] }
+        { key: 'particulars', label: 'Particulars', values: uniqueValues.particulars || [] },
+        { key: 'fundSourceUid', label: 'Fund Source', values: getFundSourceFilterOptions(items, fundSources).map(option => option.value), options: getFundSourceFilterOptions(items, fundSources) }
     ];
 
     // Compact list view
@@ -881,6 +961,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         <div className="data-table-card major-table-card animate-fadeIn">
             {isDeleteModalOpen && <ConfirmDialog title="Confirm deletion" description="Delete this record? This action cannot be undone." confirmLabel="Delete record" onCancel={() => setIsDeleteModalOpen(false)} onConfirm={handleDelete} />}
             {isMultiDeleteModalOpen && <ConfirmDialog title={`Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'entry' : 'entries'}?`} description="This action cannot be undone. The selected records will be permanently removed." confirmLabel="Delete" onCancel={() => setIsMultiDeleteModalOpen(false)} onConfirm={handleMultiDelete} />}
+            {pendingCloneItems && <FundSourceCloneDialog count={pendingCloneItems.filter(item => fundSourceNeedsCloneSelection(item, fundSources)).length} references={fundSources} onCancel={() => setPendingCloneItems(null)} onConfirm={handleCloneSourceConfirm} />}
             <ColumnFilterDialog open={isColumnFilterOpen} fields={tableFilterFields} filters={columnFilters} onApply={setColumnFilters} onClose={() => setIsColumnFilterOpen(false)} />
             <MajorTableToolbar searchTerm={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Search other expenses..." activeFilterCount={Object.keys(columnFilters).length} onOpenFilters={() => setIsColumnFilterOpen(true)} actions={isSelectionMode ? <BulkSelectionBar intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} /> : <>
                 {canEdit && <button onClick={() => { setEditingItem(null); setView('form'); }} className="btn btn-primary"><Plus aria-hidden="true" /> Add New</button>}
@@ -889,10 +970,10 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             </>} />
             <div className="data-table-scroll"><table className="data-table"><thead><tr>
                 {isSelectionMode && <th className="data-table__cell--selection"><SelectionCheckbox aria-label="Select all expenses on this page" onChange={(event) => handleSelectAll(event, paginatedData)} checked={paginatedData.length > 0 && paginatedData.every(item => selectedIds.includes(item.id))} indeterminate={paginatedData.some(item => selectedIds.includes(item.id)) && !paginatedData.every(item => selectedIds.includes(item.id))} /></th>}
-                <SortableTableHeader label="Code" columnKey="uid" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="OU" columnKey="operatingUnit" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Status" columnKey="status" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="UACS Code" columnKey="uacsCode" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Particulars" columnKey="particulars" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Amount" columnKey="amount" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Fund Year" columnKey="fundYear" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={requestSort} /><th>Workflow Status</th>
+                <SortableTableHeader label="Code" columnKey="uid" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="OU" columnKey="operatingUnit" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Status" columnKey="status" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="UACS Code" columnKey="uacsCode" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Particulars" columnKey="particulars" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Amount" columnKey="amount" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Fund Year" columnKey="fundYear" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Fund Source" columnKey="fundSourceUid" sortConfig={sortConfig} onSort={requestSort} /><th>Workflow Status</th>
             </tr></thead><tbody>
-                {paginatedData.map(item => <tr key={item.id} className={isSelectionMode ? (selectedIds.includes(item.id) ? `data-table__row--selected${selectionIntent === 'delete' ? ' data-table__row--selected-danger' : ''}` : undefined) : 'data-table__row--interactive'} tabIndex={isSelectionMode ? undefined : 0} aria-label={isSelectionMode ? undefined : `View details for ${item.uid}`} onClick={isSelectionMode ? undefined : () => onSelect(item)} onKeyDown={isSelectionMode ? undefined : event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(item); } }}>{isSelectionMode && <td className="data-table__cell--selection"><SelectionCheckbox aria-label={`Select ${item.uid}`} checked={selectedIds.includes(item.id)} onChange={() => handleSelectRow(item.id)} /></td>}<td className="data-table__cell--mono"><TruncatedTableCell value={item.uid} /></td><td><TruncatedTableCell value={item.operatingUnit} /></td><td><span className={`status-badge ${item.status === 'Completed' ? 'status-badge--completed' : item.status === 'Ongoing' ? 'status-badge--ongoing' : item.status === 'Cancelled' ? 'status-badge--cancelled' : 'status-badge--proposed'}`}>{item.status}</span></td><td className="data-table__cell--mono"><TruncatedTableCell value={item.uacsCode} /></td><td className="data-table__cell--primary"><TruncatedTableCell value={item.particulars} /></td><td className="data-table__cell--numeric">{formatCurrency(item.amount)}</td><td>{item.fundYear}</td><td>{item.fundType}</td><td>{item.tier}</td><td>{getWorkflowStatusBadge(item.workflow_status)}</td></tr>)}
-                {paginatedData.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 11 : 10}>No other expenses match the current filters.</td></tr>}
+                {paginatedData.map(item => <tr key={item.id} className={isSelectionMode ? (selectedIds.includes(item.id) ? `data-table__row--selected${selectionIntent === 'delete' ? ' data-table__row--selected-danger' : ''}` : undefined) : 'data-table__row--interactive'} tabIndex={isSelectionMode ? undefined : 0} aria-label={isSelectionMode ? undefined : `View details for ${item.uid}`} onClick={isSelectionMode ? undefined : () => onSelect(item)} onKeyDown={isSelectionMode ? undefined : event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(item); } }}>{isSelectionMode && <td className="data-table__cell--selection"><SelectionCheckbox aria-label={`Select ${item.uid}`} checked={selectedIds.includes(item.id)} onChange={() => handleSelectRow(item.id)} /></td>}<td className="data-table__cell--mono"><TruncatedTableCell value={item.uid} /></td><td><TruncatedTableCell value={item.operatingUnit} /></td><td><span className={`status-badge ${item.status === 'Completed' ? 'status-badge--completed' : item.status === 'Ongoing' ? 'status-badge--ongoing' : item.status === 'Cancelled' ? 'status-badge--cancelled' : 'status-badge--proposed'}`}>{item.status}</span></td><td className="data-table__cell--mono"><TruncatedTableCell value={item.uacsCode} /></td><td className="data-table__cell--primary"><TruncatedTableCell value={item.particulars} /></td><td className="data-table__cell--numeric">{formatCurrency(item.amount)}</td><td>{item.fundYear}</td><td>{item.fundType}</td><td>{item.tier}</td><td><TruncatedTableCell value={getFundSourceLabel(item, fundSources) || '—'} /></td><td>{getWorkflowStatusBadge(item.workflow_status)}</td></tr>)}
+                {paginatedData.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 12 : 11}>No other expenses match the current filters.</td></tr>}
             </tbody></table></div>
             <DataTablePagination currentPage={currentPage} itemsPerPage={itemsPerPage} totalItems={filteredItems.length} totalPages={totalPages} onPageChange={setCurrentPage} onItemsPerPageChange={setItemsPerPage} />
         </div>

@@ -57,7 +57,7 @@ const ArchiveManagementTab: React.FC<{ fundSources: RefFundSource[] }> = ({ fund
 
     const prepareRestoreData = (item: TrashItem) => {
         const data = { ...item.data };
-        if (item.entity_type === 'subproject') {
+        if (['subproject', 'activity', 'office_requirement', 'staffing_requirement', 'other_program_expense'].includes(item.entity_type)) {
             data.fundSourceUid = getFundSourceByUid(data.fundSourceUid, fundSources)?.uid
                 || resolveFundSourceUidFromLegacyLabel(data.fundSource, fundSources)
                 || null;

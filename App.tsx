@@ -1653,6 +1653,7 @@ const AppContent: React.FC = () => {
                 otherProgramExpenses={visibleOtherExpenses}
                 setOtherProgramExpenses={setOtherProgramExpenses}
                 uacsCodes={derivedUacsCodes}
+                fundSources={fundSources}
                 onSelectOfficeReq={handleSelectOfficeReq}
                 onSelectStaffingReq={handleSelectStaffingReq}
                 onSelectOtherExpense={handleSelectOtherExpense}
@@ -1737,6 +1738,7 @@ const AppContent: React.FC = () => {
                             onCreateActivity={handleCreateActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
+                            fundSources={fundSources}
                             forcedType="Training"
                             externalFilters={externalFilters}
                             onClearExternalFilters={clearExternalFilters}
@@ -1752,6 +1754,7 @@ const AppContent: React.FC = () => {
                             onCreateActivity={handleCreateActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
+                            fundSources={fundSources}
                             forcedType="Activity"
                             externalFilters={externalFilters}
                             onClearExternalFilters={clearExternalFilters}
@@ -1767,6 +1770,7 @@ const AppContent: React.FC = () => {
                             onCreateActivity={handleCreateActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
+                            fundSources={fundSources}
                             externalFilters={externalFilters}
                             onClearExternalFilters={clearExternalFilters}
                             onDataScopeChange={ensureDataScope}
@@ -1823,6 +1827,7 @@ const AppContent: React.FC = () => {
                             }}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
+                            fundSources={fundSources}
                             forcedType={
                                 previousPage === '/trainings' ? 'Training' : 
                                 previousPage === '/other-activities' ? 'Activity' : 
@@ -1959,6 +1964,7 @@ const AppContent: React.FC = () => {
                 return <OfficeRequirementDetail 
                             item={latestOffice}
                             uacsCodes={derivedUacsCodes}
+                            fundSources={fundSources}
                             onUpdate={(updatedItem) => {
                                 setOfficeReqs(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
                                 setSelectedOfficeReq(updatedItem);
@@ -1986,6 +1992,7 @@ const AppContent: React.FC = () => {
                 return <StaffingRequirementDetail 
                             item={latestStaff}
                             uacsCodes={derivedUacsCodes}
+                            fundSources={fundSources}
                             onUpdate={(updatedItem) => {
                                 setStaffingReqs(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
                                 setSelectedStaffingReq(updatedItem);
@@ -2013,6 +2020,7 @@ const AppContent: React.FC = () => {
                 return <OtherExpenseDetail 
                             item={latestOther}
                             uacsCodes={derivedUacsCodes}
+                            fundSources={fundSources}
                             onUpdate={(updatedItem) => {
                                 setOtherProgramExpenses(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
                                 setSelectedOtherExpense(updatedItem);
@@ -2168,6 +2176,7 @@ const AppContent: React.FC = () => {
                 return <ActivityDetail
                             activity={latestAct}
                             ipos={activityWorkflowIpos}
+                            fundSources={fundSources}
                             onUpdateActivity={(updated) => {
                                 setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
                                 setSelectedActivity(updated);

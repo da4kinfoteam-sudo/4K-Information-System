@@ -2,7 +2,7 @@
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
-import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents } from '../../constants';
+import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents, RefFundSource } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
@@ -27,19 +27,22 @@ import {
 import { createStaffingExpenseId, normalizeStaffingExpenses } from '../../lib/staffingExpenseIdentity';
 import { getActualObligationValidationError, hasActualObligationRecords } from '../../lib/financialObligationUtils';
 import { replaceFinancialObligationRecords } from '../../lib/financialObligationSync';
+import { FundSourceField } from '../ui/FundSourceField';
+import { getFundSourceByUid, getFundSourceLabel } from '../../lib/fundSources';
 
 interface StaffingRequirementDetailProps {
     item: StaffingRequirement;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    fundSources: RefFundSource[];
     onUpdate: (item: StaffingRequirement) => void;
 }
 
 const commonInputClasses = "form-control";
 
-const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
+const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode; preserveBlank?: boolean }> = ({ label, value, preserveBlank }) => (
     <div className="detail-item">
         <dt className="detail-label">{label}</dt>
-        <dd className="detail-value detail-value--emphasis">{value || 'N/A'}</dd>
+        <dd className="detail-value detail-value--emphasis">{preserveBlank && !value ? '' : value || 'N/A'}</dd>
     </div>
 );
 
@@ -77,7 +80,7 @@ const getHiringStatusBadge = (status: StaffingRequirement['hiringStatus']) => {
     }
 }
 
-const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ item, uacsCodes, onUpdate }) => {
+const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ item, uacsCodes, fundSources, onUpdate }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
@@ -701,6 +704,11 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             }),
             updated_at: timestamp
         };
+        const selectedFundSource = getFundSourceByUid(updatedItem.fundSourceUid, fundSources);
+        if (selectedFundSource) {
+            updatedItem.fundSourceUid = selectedFundSource.uid;
+            updatedItem.fundSource = selectedFundSource.label;
+        }
 
         if (supabase) {
             try {
@@ -807,6 +815,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                 <div><label className="form-label">Fund Year <span className="form-required">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
                                 <div><label className="form-label">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                 <div><label className="form-label">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                <FundSourceField uid={formData.fundSourceUid} label={formData.fundSource} references={fundSources} onChange={(fundSourceUid, fundSource) => setFormData(previous => ({ ...previous, fundSourceUid, fundSource }))} />
                             </div>
                         </fieldset>
 
@@ -1226,7 +1235,8 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         <DetailItem label="Employment" value={item.status} />
                         <DetailItem label="Salary Grade" value={`SG-${item.salaryGrade}`} />
                         <DetailItem label="Type" value={item.personnelType} />
-                        <DetailItem label="Fund Source" value={`${item.fundType} ${item.fundYear} - ${item.tier}`} />
+                        <DetailItem label="Fund Source" value={getFundSourceLabel(item, fundSources)} preserveBlank />
+                        <DetailItem label="Funding" value={`${item.fundType} ${item.fundYear} - ${item.tier}`} />
                         <DetailItem label="Total Annual Requirement" value={formatCurrency(item.annualSalary)} />
                         <DetailItem label="Encoded By" value={item.encodedBy} />
                     </div>
