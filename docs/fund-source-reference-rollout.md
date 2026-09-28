@@ -18,6 +18,10 @@ choices and rejected writes, including those from Super Admin users.
 - Subproject editing preserves the saved option while references load and persists
   a resolved UID when the legacy label can be matched.
 - Neither access migration updates existing reference or subproject records.
+- Migration 202609280004 fills missing UID links for unambiguous labels that
+  arrived after the original backfill. A compatibility trigger links label-only
+  writes from older clients. Existing UIDs and legacy text are preserved; blank
+  or unrecognized labels are never assigned an arbitrary source.
 
 Validation includes lint/build, schema lint, a live REST read, a rejected invalid
 save request, and `supabase/tests/fund_source_direct_client_access.sql`. That SQL
@@ -26,7 +30,7 @@ denials, duplicate labels, and UID preservation in a rolled-back transaction.
 
 ## Later 4kistest Sync
 
-Port the reference feature and all three 20260928 migrations together, preserving
+Port the reference feature and all four 20260928 migrations together, preserving
 4kistest's independent activity-title and ID-join changes. Confirm its login model
 before applying access policies. Do not remove legacy text or backfill blank
 sources. Re-run the access checks using the test project's actual client role.
