@@ -99,8 +99,9 @@ export const resolveImportFundSource = (uid: string, label: string, references: 
     }
     if (label) {
         const normalized = normalizeFundSourceLabel(label);
-        const byLabel = references.find(source => source.is_active && normalizeFundSourceLabel(source.label) === normalized);
-        if (byLabel) return byLabel;
+        const labelMatches = references.filter(source => normalizeFundSourceLabel(source.label) === normalized);
+        if (labelMatches.length > 1) return undefined;
+        if (labelMatches.length === 1) return labelMatches[0].is_active ? labelMatches[0] : undefined;
         const legacyUid = resolveFundSourceUidFromLegacyLabel(label, references);
         const legacySource = legacyUid ? getFundSourceByUid(legacyUid, references) : undefined;
         return legacySource?.is_active ? legacySource : undefined;
@@ -448,7 +449,7 @@ export const handleSubprojectsUpload = (
 
 // --- ACTIVITIES ---
 
-export const downloadActivitiesReport = (activities: Activity[]) => {
+export const downloadActivitiesReport = (activities: Activity[], fundSources: RefFundSource[]) => {
     const dataToExport = activities.map(a => ({
         'UID': a.uid || '',
         'Type': a.type,
@@ -462,6 +463,8 @@ export const downloadActivitiesReport = (activities: Activity[]) => {
         'Funding Year': a.fundingYear,
         'Fund Type': a.fundType,
         'Tier': a.tier,
+        'Fund Source UID': a.fundSourceUid || '',
+        'Fund Source': getFundSourceLabel(a, fundSources),
         'Operating Unit': a.operatingUnit,
         'Encoded By': a.encodedBy,
         'Participating IPOs': a.participatingIpos.join(', '),
@@ -475,11 +478,12 @@ export const downloadActivitiesReport = (activities: Activity[]) => {
     XLSX.writeFile(wb, "Activities_Report.xlsx");
 };
 
-export const downloadActivitiesTemplate = () => {
+export const downloadActivitiesTemplate = (fundSources: RefFundSource[]) => {
+    const defaultSource = getNewSubprojectDefaultFundSource(fundSources);
     const headers = [
         'uid', 'type', 'component', 'name', 'date', 'province', 'municipality', 'facilitator', 'description',
         'participatingIpos', 'participantsMale', 'participantsFemale',
-        'fundingYear', 'fundType', 'tier', 'operatingUnit',
+        'fundingYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'operatingUnit',
         'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount'
     ];
     const exampleData = [
@@ -499,6 +503,8 @@ export const downloadActivitiesTemplate = () => {
             fundingYear: 2024,
             fundType: 'Current',
             tier: 'Tier 1',
+            fundSourceUid: defaultSource?.uid || '',
+            fundSource: defaultSource?.label || '',
             operatingUnit: 'RPMO 4A',
             expense_uacsCode: '50202010-01',
             expense_obligationMonth: '2024-03-01',
@@ -513,6 +519,7 @@ export const downloadActivitiesTemplate = () => {
         ["province", "Province name."],
         ["municipality", "City or Municipality name."],
         ["operatingUnit", "e.g., RPMO 4A. If specified, this takes precedence over your current account's OU."],
+        ["fundSourceUid / fundSource", "Use the canonical Fund Source UID where available, or its unambiguous current label. If both are blank, the active 4K Fund default is used for a new record."],
         ["expense_uacsCode", "UACS Code used to identify Expense Particular and Object Type."],
         ["expense_amount", "Amount for the expense entry."]
     ];
@@ -533,7 +540,8 @@ export const handleActivitiesUpload = (
     logAction: (action: string, details: string) => void,
     setIsUploading: (val: boolean) => void,
     uacsCodes: any,
-    currentUser: any
+    currentUser: any,
+    fundSources: RefFundSource[]
 ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -561,6 +569,14 @@ export const handleActivitiesUpload = (
                 // Extract participating IPOs for this row (moved out of new entry block to support merging)
                 let rowParticipatingIpos: string[] = [];
                 const rawIpos = (row.participatingIpos || '').toString().trim();
+                const sourceUidInput = row.fundSourceUid ?? row['Fund Source UID'] ?? row.fund_source_uid;
+                const sourceLabelInput = row.fundSource ?? row['Fund Source'] ?? row.fund_source;
+                const rawSourceUid = sourceUidInput == null ? '' : String(sourceUidInput).trim();
+                const rawSourceLabel = sourceLabelInput == null ? '' : String(sourceLabelInput).trim();
+                const fundSource = resolveImportFundSource(rawSourceUid, rawSourceLabel, fundSources);
+                if (!fundSource) {
+                    throw new Error(`Row ${rowNum}: Fund Source "${rawSourceUid || rawSourceLabel || '4K Fund default'}" is invalid, inactive, or unavailable.`);
+                }
 
                 if (rawIpos) {
                     // 1. Exact match check (handles "Name, Inc" single entry)
@@ -612,6 +628,8 @@ export const handleActivitiesUpload = (
                             fundingYear: Number(row.fundingYear) || undefined,
                             fundType: fundTypes.includes(row.fundType) ? row.fundType : undefined,
                             tier: resolveTier(row.tier),
+                            fundSourceUid: fundSource.uid,
+                            fundSource: fundSource.label,
                             operatingUnit: operatingUnit,
                             encodedBy: currentUser?.fullName || 'System',
                             facilitator: String(row.facilitator || ''),
@@ -623,6 +641,9 @@ export const handleActivitiesUpload = (
                 } else {
                     // Entry exists, merge participating IPOs
                     const entry = groupedData.get(uid);
+                    if (entry.common.fundSourceUid !== fundSource.uid) {
+                        throw new Error(`Row ${rowNum}: Activity UID ${uid} contains conflicting Fund Sources across its rows.`);
+                    }
                     const currentIpos = new Set(entry.common.participatingIpos);
                     rowParticipatingIpos.forEach(ipo => currentIpos.add(ipo));
                     entry.common.participatingIpos = Array.from(currentIpos);

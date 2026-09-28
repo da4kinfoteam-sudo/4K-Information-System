@@ -2,13 +2,13 @@
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
-import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents, ActivityComponentType } from '../../constants';
+import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents, ActivityComponentType, RefFundSource } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { useSelection, useUserAccess, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
-import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
+import { resolveOperatingUnit, resolveTier, resolveImportFundSource } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { Search, X, Check, Download, FileSpreadsheet, Plus, Upload } from 'lucide-react';
 import { createStaffingExpenseId } from '../../lib/staffingExpenseIdentity';
@@ -16,6 +16,9 @@ import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/
 import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { ConfirmDialog, DataTablePagination, SortableTableHeader } from '../ui/enterprise';
 import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from '../ui/MajorDataTable';
+import { FundSourceField } from '../ui/FundSourceField';
+import { FundSourceCloneDialog } from '../ui/FundSourceCloneDialog';
+import { fundSourceNeedsCloneSelection, getFundSourceByUid, getFundSourceFilterOptions, getFundSourceFilterValue, getFundSourceLabel, getFundSourceSortLabel, getNewFundSourceDefault, resolveClonedFundSource } from '../../lib/fundSources';
 
 declare const XLSX: any;
 
@@ -81,10 +84,11 @@ interface StaffingRequirementsTabProps {
     items: StaffingRequirement[];
     setItems: React.Dispatch<React.SetStateAction<StaffingRequirement[]>>;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    fundSources: RefFundSource[];
     onSelect: (item: StaffingRequirement) => void;
 }
 
-export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = ({ items, setItems, uacsCodes, onSelect }) => {
+export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = ({ items, setItems, uacsCodes, fundSources, onSelect }) => {
     const { currentUser } = useAuth();
     const tableStoragePrefix = `programManagement_staffing_${currentUser?.id || 'anonymous'}`;
     const { logAction } = useLogAction();
@@ -98,6 +102,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     const [isUploading, setIsUploading] = useState(false);
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
+    const [pendingCloneItems, setPendingCloneItems] = useState<StaffingRequirement[] | null>(null);
 
     const getInputClasses = (fieldName: string) => {
         const hasError = validationErrors.includes(fieldName);
@@ -130,7 +135,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
     // Form State
     const initialFormState = {
-        id: 0, uid: '', operatingUnit: '', uacsCode: '', obligationDate: '', disbursementDate: '', fundType: 'Current' as FundType, fundYear: new Date().getFullYear(), tier: 'Tier 1' as Tier, encodedBy: '',
+        id: 0, uid: '', operatingUnit: '', uacsCode: '', obligationDate: '', disbursementDate: '', fundType: 'Current' as FundType, fundSource: null, fundSourceUid: null, fundYear: new Date().getFullYear(), tier: 'Tier 1' as Tier, encodedBy: '',
         personnelPosition: '', component: 'Program Management' as ActivityComponentType, status: 'Contractual', salaryGrade: 1, annualSalary: 0, personnelType: 'Technical',
         disbursementJan: 0, disbursementFeb: 0, disbursementMar: 0, disbursementApr: 0, disbursementMay: 0, disbursementJun: 0,
         disbursementJul: 0, disbursementAug: 0, disbursementSep: 0, disbursementOct: 0, disbursementNov: 0, disbursementDec: 0,
@@ -198,6 +203,16 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         }
     }, [view, uacsCodes, currentUser, canViewAll]);
 
+    useEffect(() => {
+        if (view !== 'form' || fundSources.length === 0) return;
+        const defaultSource = getNewFundSourceDefault(fundSources);
+        if (defaultSource) {
+            setFormData(previous => previous.fundSourceUid || previous.fundSource
+                ? previous
+                : { ...previous, fundSourceUid: defaultSource.uid, fundSource: defaultSource.label });
+        }
+    }, [view, fundSources]);
+
     const availableYears = useMemo(() => {
         const years = new Set<string>(); 
         items.forEach(i => {
@@ -228,6 +243,9 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             const selectedValues = columnFilters[key];
             if (selectedValues && selectedValues.length > 0) {
                 filtered = filtered.filter(item => {
+                    if (key === 'fundSourceUid') {
+                        return selectedValues.includes(getFundSourceFilterValue(item, fundSources));
+                    }
                     const itemValue = String(item[key as keyof StaffingRequirement] || '');
                     return selectedValues.includes(itemValue);
                 });
@@ -236,8 +254,8 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
         // Sorting
         return [...filtered].sort((a, b) => {
-            const aValue = sortConfig.key === 'budget' ? getStaffingBudget(a) : a[sortConfig.key as keyof StaffingRequirement];
-            const bValue = sortConfig.key === 'budget' ? getStaffingBudget(b) : b[sortConfig.key as keyof StaffingRequirement];
+            const aValue = sortConfig.key === 'budget' ? getStaffingBudget(a) : sortConfig.key === 'fundSourceUid' || sortConfig.key === 'fundSource' ? getFundSourceSortLabel(a, fundSources) : a[sortConfig.key as keyof StaffingRequirement];
+            const bValue = sortConfig.key === 'budget' ? getStaffingBudget(b) : sortConfig.key === 'fundSourceUid' || sortConfig.key === 'fundSource' ? getFundSourceSortLabel(b, fundSources) : b[sortConfig.key as keyof StaffingRequirement];
 
             if (aValue === bValue) return 0;
             
@@ -248,7 +266,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             const comparison = aValue < bValue ? -1 : 1;
             return sortConfig.direction === 'ascending' ? comparison : -comparison;
         });
-    }, [items, canViewAll, currentUser, searchTerm, sortConfig, columnFilters]);
+    }, [items, canViewAll, currentUser, searchTerm, sortConfig, columnFilters, fundSources]);
 
     const handleSort = (key: any, direction: 'ascending' | 'descending') => {
         setSortConfig({ key, direction });
@@ -266,7 +284,8 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             personnelPosition: [],
             personnelType: [],
             fundYear: [],
-            fundType: []
+            fundType: [],
+            fundSourceUid: getFundSourceFilterOptions(items, fundSources).map(option => option.value)
         };
 
         items.forEach(item => {
@@ -283,7 +302,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         });
 
         return values;
-    }, [items]);
+    }, [items, fundSources]);
 
     useEffect(() => {
         if (!isSelectionMode) return;
@@ -370,6 +389,13 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             alert("At least one financial requirement item is required.");
             return;
         }
+
+        const selectedFundSource = getFundSourceByUid(formData.fundSourceUid, fundSources);
+        if (!selectedFundSource?.is_active) {
+            setValidationErrors(previous => [...previous, 'fundSourceUid']);
+            alert('Select an active Fund Source before saving a new staffing requirement.');
+            return;
+        }
         
         // Aggregate totals from expensesList
         const aggregatedTotals = {
@@ -403,6 +429,8 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             obligationDate: primaryObligationDate,
             salaryGrade: Number(formData.salaryGrade),
             fundYear: Number(formData.fundYear),
+            fundSourceUid: selectedFundSource.uid,
+            fundSource: selectedFundSource.label,
             expenses: expensesList, // Store detailed list
             actualAmount: 0, actualObligationAmount: 0, actualDisbursementAmount: 0,
             hiringStatus: formData.hiringStatus || 'Proposed',
@@ -524,16 +552,13 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         setIsMultiDeleteModalOpen(false); setSelectedIds([]);
     };
 
-    const handleClone = async () => {
-        const itemsToClone = items.filter(i => selectedIds.includes(i.id));
-        if (itemsToClone.length === 0) return;
-
-        if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} staffing requirements? This will create new entries with the same targets but reset accomplishments.`)) return;
-
+    const cloneItems = async (itemsToClone: StaffingRequirement[], replacementUid?: string) => {
         const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
         const currentTimestamp = new Date().toISOString();
         const newItemsPayload = itemsToClone.map((item, index) => {
             const { id, uid, created_at, updated_at, obligations, physical_accomplishment_submitted_at, ...rest } = item;
+            const fundSource = resolveClonedFundSource(item, fundSources, replacementUid);
+            if (!fundSource) throw new Error(`Select an active Fund Source before cloning ${item.uid}.`);
             const newUid = `SR-${item.fundYear}-${Date.now().toString().slice(-6)}${index}`;
             
             const clonedExpenseIds: number[] = [];
@@ -574,6 +599,8 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 ...rest,
                 ...resetActuals,
                 uid: newUid,
+                fundSourceUid: fundSource.uid,
+                fundSource: fundSource.label,
                 expenses: clonedExpenses,
                 workflow_status,
                 encodedBy: currentUser?.fullName || 'System Clone',
@@ -596,6 +623,36 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             setItems(prev => [...newLocalItems, ...prev]);
             resetSelection();
             alert(`Successfully cloned ${newLocalItems.length} items (Local).`);
+        }
+    };
+
+    const handleClone = async () => {
+        const itemsToClone = items.filter(i => selectedIds.includes(i.id));
+        if (itemsToClone.length === 0) return;
+        if (!fundSources.length) {
+            alert('Fund Source references are still loading. Try cloning again shortly.');
+            return;
+        }
+        if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} staffing requirements? This will create new entries with the same targets but reset accomplishments.`)) return;
+        if (itemsToClone.some(item => fundSourceNeedsCloneSelection(item, fundSources))) {
+            setPendingCloneItems(itemsToClone);
+            return;
+        }
+        try {
+            await cloneItems(itemsToClone);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Failed to clone staffing requirements.');
+        }
+    };
+
+    const handleCloneSourceConfirm = async (fundSourceUid: string) => {
+        const pending = pendingCloneItems;
+        setPendingCloneItems(null);
+        if (!pending) return;
+        try {
+            await cloneItems(pending, fundSourceUid);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Failed to clone staffing requirements.');
         }
     };
 
@@ -665,15 +722,16 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
     const handleDownloadReport = () => {
         const data = filteredItems.map(item => ({
-            UID: item.uid, OU: item.operatingUnit, Position: item.personnelPosition, HiringStatus: item.hiringStatus, EmploymentStatus: item.status, 'Salary Grade': item.salaryGrade, 'Annual Salary': item.annualSalary, Type: item.personnelType, 'Fund Type': item.fundType, 'Fund Year': item.fundYear, Tier: item.tier, 'Obligation Date': item.obligationDate
+            UID: item.uid, OU: item.operatingUnit, Position: item.personnelPosition, HiringStatus: item.hiringStatus, EmploymentStatus: item.status, 'Salary Grade': item.salaryGrade, 'Annual Salary': item.annualSalary, Type: item.personnelType, 'Fund Type': item.fundType, 'Fund Year': item.fundYear, Tier: item.tier, 'Fund Source UID': item.fundSourceUid || '', 'Fund Source': getFundSourceLabel(item, fundSources), 'Obligation Date': item.obligationDate
         }));
         const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Staffing Requirements"); XLSX.writeFile(wb, "Staffing_Requirements_Report.xlsx");
     };
 
     const handleDownloadTemplate = () => {
+        const defaultSource = getNewFundSourceDefault(fundSources);
         const monthHeaders = ['disbursementJan', 'disbursementFeb', 'disbursementMar', 'disbursementApr', 'disbursementMay', 'disbursementJun', 'disbursementJul', 'disbursementAug', 'disbursementSep', 'disbursementOct', 'disbursementNov', 'disbursementDec'];
-        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'uacsCode', 'personnelPosition', 'status', 'salaryGrade', 'personnelType', 'amount', 'hiringStatus', ...monthHeaders];
-        const exampleData = [{ operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', uacsCode: '50100000-00', personnelPosition: 'PDO II', status: 'Contractual', salaryGrade: 15, personnelType: 'Technical', amount: 540000, hiringStatus: 'Proposed', disbursementJan: 45000, disbursementFeb: 45000, disbursementMar: 45000, disbursementApr: 45000, disbursementMay: 45000, disbursementJun: 45000, disbursementJul: 45000, disbursementAug: 45000, disbursementSep: 45000, disbursementOct: 45000, disbursementNov: 45000, disbursementDec: 45000 }];
+        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'obligationDate', 'uacsCode', 'personnelPosition', 'status', 'salaryGrade', 'personnelType', 'amount', 'hiringStatus', ...monthHeaders];
+        const exampleData = [{ operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', fundSourceUid: defaultSource?.uid || '', fundSource: defaultSource?.label || '', obligationDate: '2024-01-15', uacsCode: '50100000-00', personnelPosition: 'PDO II', status: 'Contractual', salaryGrade: 15, personnelType: 'Technical', amount: 540000, hiringStatus: 'Proposed', disbursementJan: 45000, disbursementFeb: 45000, disbursementMar: 45000, disbursementApr: 45000, disbursementMay: 45000, disbursementJun: 45000, disbursementJul: 45000, disbursementAug: 45000, disbursementSep: 45000, disbursementOct: 45000, disbursementNov: 45000, disbursementDec: 45000 }];
         const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers }); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Template"); XLSX.writeFile(wb, "Staffing_Req_Template.xlsx");
     };
 
@@ -691,6 +749,10 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();
                     const uid = `SR-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
                     const resolvedOU = row.operatingUnit ? resolveOperatingUnit(row.operatingUnit) : 'NPMO';
+                    const sourceUid = String(row.fundSourceUid ?? row['Fund Source UID'] ?? row.fund_source_uid ?? '').trim();
+                    const sourceLabel = String(row.fundSource ?? row['Fund Source'] ?? row.fund_source ?? '').trim();
+                    const source = resolveImportFundSource(sourceUid, sourceLabel, fundSources);
+                    if (!source) throw new Error(`Row ${index + 2}: Fund Source "${sourceUid || sourceLabel || '4K Fund default'}" is invalid, inactive, or unavailable.`);
                     
                     // Create base object
                     const parsed = parseStaffingRequirementRow(row, {
@@ -698,6 +760,8 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                         operatingUnit: resolvedOU, 
                         fundYear: fundYear, 
                         fundType: row.fundType || 'Current', 
+                        fundSourceUid: source.uid,
+                        fundSource: source.label,
                         tier: resolveTier(row.tier) || 'Tier 1', 
                         obligationDate: row.obligationDate || '', 
                         disbursementDate: '', 
@@ -791,6 +855,17 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                             <div><label className="form-label">Fund Year <span className="form-required">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
                             <div><label className="form-label">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                             <div><label className="form-label">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                            <FundSourceField
+                                uid={formData.fundSourceUid}
+                                label={formData.fundSource}
+                                references={fundSources}
+                                required
+                                invalid={validationErrors.includes('fundSourceUid')}
+                                onChange={(fundSourceUid, fundSource) => {
+                                    setFormData(previous => ({ ...previous, fundSourceUid, fundSource }));
+                                    setValidationErrors(previous => previous.filter(field => field !== 'fundSourceUid'));
+                                }}
+                            />
                             <div className="form-check-group">
                                 <label className="form-check">
                                     <input type="checkbox" checked={formData.isRealignment || false} onChange={e => setFormData(prev => ({ ...prev, isRealignment: e.target.checked, isSavings: e.target.checked ? false : prev.isSavings }))} />
@@ -949,7 +1024,8 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     const tableFilterFields = [
         { key: 'hiringStatus', label: 'Status', values: uniqueValues.hiringStatus || [] },
         { key: 'personnelPosition', label: 'Position', values: uniqueValues.personnelPosition || [] },
-        { key: 'personnelType', label: 'Personnel Type', values: uniqueValues.personnelType || [] }
+        { key: 'personnelType', label: 'Personnel Type', values: uniqueValues.personnelType || [] },
+        { key: 'fundSourceUid', label: 'Fund Source', values: getFundSourceFilterOptions(items, fundSources).map(option => option.value), options: getFundSourceFilterOptions(items, fundSources) }
     ];
 
     // Compact list view
@@ -957,6 +1033,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         <div className="data-table-card major-table-card animate-fadeIn">
             {isDeleteModalOpen && <ConfirmDialog title="Confirm deletion" description="Delete this record? This action cannot be undone." confirmLabel="Delete record" onCancel={() => setIsDeleteModalOpen(false)} onConfirm={handleDelete} />}
             {isMultiDeleteModalOpen && <ConfirmDialog title={`Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'entry' : 'entries'}?`} description="This action cannot be undone. The selected records will be permanently removed." confirmLabel="Delete" onCancel={() => setIsMultiDeleteModalOpen(false)} onConfirm={handleMultiDelete} />}
+            {pendingCloneItems && <FundSourceCloneDialog count={pendingCloneItems.filter(item => fundSourceNeedsCloneSelection(item, fundSources)).length} references={fundSources} onCancel={() => setPendingCloneItems(null)} onConfirm={handleCloneSourceConfirm} />}
             <ColumnFilterDialog open={isColumnFilterOpen} fields={tableFilterFields} filters={columnFilters} onApply={setColumnFilters} onClose={() => setIsColumnFilterOpen(false)} />
             <MajorTableToolbar searchTerm={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Search staffing requirements..." activeFilterCount={Object.keys(columnFilters).length} onOpenFilters={() => setIsColumnFilterOpen(true)} actions={isSelectionMode ? <BulkSelectionBar intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} /> : <>
                 {canEdit && <button onClick={() => setView('form')} className="btn btn-primary"><Plus aria-hidden="true" /> Add New</button>}
@@ -965,10 +1042,10 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             </>} />
             <div className="data-table-scroll"><table className="data-table"><thead><tr>
                 {isSelectionMode && <th className="data-table__cell--selection"><SelectionCheckbox aria-label="Select all staffing requirements on this page" onChange={(event) => handleSelectAll(event, paginatedData)} checked={paginatedData.length > 0 && paginatedData.every(item => selectedIds.includes(item.id))} indeterminate={paginatedData.some(item => selectedIds.includes(item.id)) && !paginatedData.every(item => selectedIds.includes(item.id))} /></th>}
-                <SortableTableHeader label="Code" columnKey="uid" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="OU" columnKey="operatingUnit" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Status" columnKey="hiringStatus" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Position" columnKey="personnelPosition" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Annual Salary" columnKey="annualSalary" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Fund Year" columnKey="fundYear" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Budget" columnKey="budget" sortConfig={sortConfig} onSort={requestSort} /><th>Workflow Status</th>
+                <SortableTableHeader label="Code" columnKey="uid" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="OU" columnKey="operatingUnit" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Status" columnKey="hiringStatus" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Position" columnKey="personnelPosition" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Annual Salary" columnKey="annualSalary" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Fund Year" columnKey="fundYear" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Fund Source" columnKey="fundSourceUid" sortConfig={sortConfig} onSort={requestSort} /><SortableTableHeader label="Budget" columnKey="budget" sortConfig={sortConfig} onSort={requestSort} /><th>Workflow Status</th>
             </tr></thead><tbody>
-                {paginatedData.map(item => <tr key={item.id} className={isSelectionMode ? (selectedIds.includes(item.id) ? `data-table__row--selected${selectionIntent === 'delete' ? ' data-table__row--selected-danger' : ''}` : undefined) : 'data-table__row--interactive'} tabIndex={isSelectionMode ? undefined : 0} aria-label={isSelectionMode ? undefined : `View details for ${item.uid}`} onClick={isSelectionMode ? undefined : () => onSelect(item)} onKeyDown={isSelectionMode ? undefined : event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(item); } }}>{isSelectionMode && <td className="data-table__cell--selection"><SelectionCheckbox aria-label={`Select ${item.uid}`} checked={selectedIds.includes(item.id)} onChange={() => handleSelectRow(item.id)} /></td>}<td className="data-table__cell--mono"><TruncatedTableCell value={item.uid} /></td><td><TruncatedTableCell value={item.operatingUnit} /></td><td><span className={getHiringStatusBadge(item.hiringStatus)}>{item.hiringStatus}</span></td><td className="data-table__cell--primary"><TruncatedTableCell value={item.personnelPosition} /></td><td className="data-table__cell--numeric">{formatCurrency(item.annualSalary)}</td><td>{item.fundYear}</td><td>{item.fundType}</td><td>{item.tier}</td><td className="data-table__cell--numeric">{formatCurrency(getStaffingBudget(item))}</td><td>{getWorkflowStatusBadge(item.workflow_status)}</td></tr>)}
-                {paginatedData.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 11 : 10}>No staffing requirements match the current filters.</td></tr>}
+                {paginatedData.map(item => <tr key={item.id} className={isSelectionMode ? (selectedIds.includes(item.id) ? `data-table__row--selected${selectionIntent === 'delete' ? ' data-table__row--selected-danger' : ''}` : undefined) : 'data-table__row--interactive'} tabIndex={isSelectionMode ? undefined : 0} aria-label={isSelectionMode ? undefined : `View details for ${item.uid}`} onClick={isSelectionMode ? undefined : () => onSelect(item)} onKeyDown={isSelectionMode ? undefined : event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(item); } }}>{isSelectionMode && <td className="data-table__cell--selection"><SelectionCheckbox aria-label={`Select ${item.uid}`} checked={selectedIds.includes(item.id)} onChange={() => handleSelectRow(item.id)} /></td>}<td className="data-table__cell--mono"><TruncatedTableCell value={item.uid} /></td><td><TruncatedTableCell value={item.operatingUnit} /></td><td><span className={getHiringStatusBadge(item.hiringStatus)}>{item.hiringStatus}</span></td><td className="data-table__cell--primary"><TruncatedTableCell value={item.personnelPosition} /></td><td className="data-table__cell--numeric">{formatCurrency(item.annualSalary)}</td><td>{item.fundYear}</td><td>{item.fundType}</td><td>{item.tier}</td><td><TruncatedTableCell value={getFundSourceLabel(item, fundSources) || '—'} /></td><td className="data-table__cell--numeric">{formatCurrency(getStaffingBudget(item))}</td><td>{getWorkflowStatusBadge(item.workflow_status)}</td></tr>)}
+                {paginatedData.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 12 : 11}>No staffing requirements match the current filters.</td></tr>}
             </tbody></table></div>
             <DataTablePagination currentPage={currentPage} itemsPerPage={itemsPerPage} totalItems={filteredItems.length} totalPages={totalPages} onPageChange={setCurrentPage} onItemsPerPageChange={setItemsPerPage} />
         </div>

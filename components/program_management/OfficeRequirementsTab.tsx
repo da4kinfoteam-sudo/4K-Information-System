@@ -2,19 +2,22 @@
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
-import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
+import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, RefFundSource } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { useSelection, useUserAccess, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { parseLocation } from '../LocationPicker'; 
-import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
+import { resolveOperatingUnit, resolveTier, resolveImportFundSource } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { Search, X, Check, Download, FileSpreadsheet, Plus, Upload } from 'lucide-react';
 import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { ConfirmDialog, DataTablePagination, SortableTableHeader } from '../ui/enterprise';
 import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from '../ui/MajorDataTable';
+import { FundSourceField } from '../ui/FundSourceField';
+import { FundSourceCloneDialog } from '../ui/FundSourceCloneDialog';
+import { fundSourceNeedsCloneSelection, getFundSourceByUid, getFundSourceFilterOptions, getFundSourceFilterValue, getFundSourceLabel, getFundSourceSortLabel, getNewFundSourceDefault, resolveClonedFundSource } from '../../lib/fundSources';
 
 declare const XLSX: any;
 
@@ -67,10 +70,11 @@ interface OfficeRequirementsTabProps {
     items: OfficeRequirement[];
     setItems: React.Dispatch<React.SetStateAction<OfficeRequirement[]>>;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    fundSources: RefFundSource[];
     onSelect: (item: OfficeRequirement) => void;
 }
 
-export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ items, setItems, uacsCodes, onSelect }) => {
+export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ items, setItems, uacsCodes, fundSources, onSelect }) => {
     const { locale } = useAuth(); // Assume it exists or just use default
     const { currentUser } = useAuth();
     const tableStoragePrefix = `programManagement_office_${currentUser?.id || 'anonymous'}`;
@@ -85,6 +89,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     const [isUploading, setIsUploading] = useState(false);
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
+    const [pendingCloneItems, setPendingCloneItems] = useState<OfficeRequirement[] | null>(null);
 
     // Search and Column Filtering/Sorting
     const [searchTerm, setSearchTerm] = useLocalStorageState(`${tableStoragePrefix}_searchTerm`, '');
@@ -119,6 +124,8 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         disbursementDate: '',
         physicalDeliveryDate: '',
         fundType: 'Current' as FundType,
+        fundSource: null,
+        fundSourceUid: null,
         fundYear: new Date().getFullYear(),
         tier: 'Tier 1' as Tier,
         encodedBy: '',
@@ -179,6 +186,16 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         }
     }, [view, uacsCodes, currentUser, canViewAll]);
 
+    useEffect(() => {
+        if (view !== 'form' || fundSources.length === 0) return;
+        const defaultSource = getNewFundSourceDefault(fundSources);
+        if (defaultSource) {
+            setFormData(previous => previous.fundSourceUid || previous.fundSource
+                ? previous
+                : { ...previous, fundSourceUid: defaultSource.uid, fundSource: defaultSource.label });
+        }
+    }, [view, fundSources]);
+
     // --- Derived Data ---
     const uniqueValues = useMemo(() => {
         const values: { [key: string]: string[] } = {};
@@ -204,6 +221,10 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             for (const [key, values] of Object.entries(columnFilters)) {
                 const filterValues = values as string[];
                 if (filterValues.length > 0) {
+                    if (key === 'fundSourceUid') {
+                        if (!filterValues.includes(getFundSourceFilterValue(item, fundSources))) return false;
+                        continue;
+                    }
                     const itemValue = String(item[key as keyof OfficeRequirement] || '');
                     if (!filterValues.includes(itemValue)) return false;
                 }
@@ -211,8 +232,8 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
             return true;
         }).sort((a, b) => {
-            const aValue = sortConfig.key === 'budget' ? getOfficeBudget(a) : a[sortConfig.key as keyof OfficeRequirement];
-            const bValue = sortConfig.key === 'budget' ? getOfficeBudget(b) : b[sortConfig.key as keyof OfficeRequirement];
+            const aValue = sortConfig.key === 'budget' ? getOfficeBudget(a) : sortConfig.key === 'fundSourceUid' || sortConfig.key === 'fundSource' ? getFundSourceSortLabel(a, fundSources) : a[sortConfig.key as keyof OfficeRequirement];
+            const bValue = sortConfig.key === 'budget' ? getOfficeBudget(b) : sortConfig.key === 'fundSourceUid' || sortConfig.key === 'fundSource' ? getFundSourceSortLabel(b, fundSources) : b[sortConfig.key as keyof OfficeRequirement];
 
             if (aValue === bValue) return 0;
             if (aValue === undefined || aValue === null) return 1;
@@ -221,7 +242,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             const comparison = aValue < bValue ? -1 : 1;
             return sortConfig.direction === 'ascending' ? comparison : -comparison;
         });
-    }, [items, searchTerm, sortConfig, columnFilters]);
+    }, [items, searchTerm, sortConfig, columnFilters, fundSources]);
 
     const handleSort = (key: any, direction: 'ascending' | 'descending') => {
         setSortConfig({ key, direction });
@@ -318,6 +339,13 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             return;
         }
 
+        const selectedFundSource = getFundSourceByUid(formData.fundSourceUid, fundSources);
+        if (!selectedFundSource?.is_active) {
+            setValidationErrors(previous => [...previous, 'fundSourceUid']);
+            alert('Select an active Fund Source before saving a new office requirement.');
+            return;
+        }
+
         // Validate UACS Code
         const isValidUacs = availableUacsCodes.some(c => c.code === formData.uacsCode);
         if (!isValidUacs) {
@@ -332,6 +360,8 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             numberOfUnits: Number(formData.numberOfUnits),
             pricePerUnit: Number(formData.pricePerUnit),
             fundYear: Number(formData.fundYear),
+            fundSourceUid: selectedFundSource.uid,
+            fundSource: selectedFundSource.label,
             // Accomplishment fields default to 0 for new items
             actualAmount: 0,
             actualObligationAmount: 0,
@@ -460,16 +490,13 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         setSelectedIds([]);
     };
 
-    const handleClone = async () => {
-        const itemsToClone = items.filter(i => selectedIds.includes(i.id));
-        if (itemsToClone.length === 0) return;
-
-        if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} office requirements? This will create new entries with the same targets but reset accomplishments.`)) return;
-
+    const cloneItems = async (itemsToClone: OfficeRequirement[], replacementUid?: string) => {
         const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
         const currentTimestamp = new Date().toISOString();
         const newItemsPayload = itemsToClone.map((item, index) => {
             const { id, uid, created_at, updated_at, obligations, physical_accomplishment_submitted_at, ...rest } = item;
+            const fundSource = resolveClonedFundSource(item, fundSources, replacementUid);
+            if (!fundSource) throw new Error(`Select an active Fund Source before cloning ${item.uid}.`);
             const newUid = `OR-${item.fundYear}-${Date.now().toString().slice(-6)}${index}`;
             
             // Reset actuals
@@ -489,6 +516,8 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 ...rest,
                 ...resetActuals,
                 uid: newUid,
+                fundSourceUid: fundSource.uid,
+                fundSource: fundSource.label,
                 workflow_status: item_workflow_status,
                 encodedBy: currentUser?.fullName || 'System Clone',
                 created_at: currentTimestamp,
@@ -510,6 +539,36 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             setItems(prev => [...newLocalItems, ...prev]);
             resetSelection();
             alert(`Successfully cloned ${newLocalItems.length} items (Local).`);
+        }
+    };
+
+    const handleClone = async () => {
+        const itemsToClone = items.filter(i => selectedIds.includes(i.id));
+        if (itemsToClone.length === 0) return;
+        if (!fundSources.length) {
+            alert('Fund Source references are still loading. Try cloning again shortly.');
+            return;
+        }
+        if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} office requirements? This will create new entries with the same targets but reset accomplishments.`)) return;
+        if (itemsToClone.some(item => fundSourceNeedsCloneSelection(item, fundSources))) {
+            setPendingCloneItems(itemsToClone);
+            return;
+        }
+        try {
+            await cloneItems(itemsToClone);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Failed to clone office requirements.');
+        }
+    };
+
+    const handleCloneSourceConfirm = async (fundSourceUid: string) => {
+        const pending = pendingCloneItems;
+        setPendingCloneItems(null);
+        if (!pending) return;
+        try {
+            await cloneItems(pending, fundSourceUid);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Failed to clone office requirements.');
         }
     };
 
@@ -589,6 +648,8 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             'Price/Unit': item.pricePerUnit,
             'Total Amount': item.numberOfUnits * item.pricePerUnit,
             'Fund Type': item.fundType,
+            'Fund Source UID': item.fundSourceUid || '',
+            'Fund Source': getFundSourceLabel(item, fundSources),
             'Fund Year': item.fundYear,
             Tier: item.tier,
             'Obligation Date': item.obligationDate,
@@ -601,9 +662,10 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     };
 
     const handleDownloadTemplate = () => {
-        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'status', 'obligationDate', 'disbursementDate', 'uacsCode', 'equipment', 'specs', 'purpose', 'numberOfUnits', 'pricePerUnit'];
+        const defaultSource = getNewFundSourceDefault(fundSources);
+        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'status', 'obligationDate', 'disbursementDate', 'uacsCode', 'equipment', 'specs', 'purpose', 'numberOfUnits', 'pricePerUnit'];
         const exampleData = [{
-            operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', status: 'Proposed', obligationDate: '2024-01-15', disbursementDate: '2024-02-15', uacsCode: '50203010-00',
+            operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', fundSourceUid: defaultSource?.uid || '', fundSource: defaultSource?.label || '', status: 'Proposed', obligationDate: '2024-01-15', disbursementDate: '2024-02-15', uacsCode: '50203010-00',
             equipment: 'Laptop', specs: 'i7, 16GB RAM', purpose: 'For administrative use', numberOfUnits: 1, pricePerUnit: 50000
         }];
         const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers });
@@ -628,6 +690,12 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
 
                 const newItems = jsonData.map((row: any, index: number) => {
+                    const importedFundSource = resolveImportFundSource(
+                        String(row.fundSourceUid ?? row['Fund Source UID'] ?? row.fund_source_uid ?? '').trim(),
+                        String(row.fundSource ?? row['Fund Source'] ?? row.fund_source ?? '').trim(),
+                        fundSources
+                    );
+                    if (!importedFundSource) throw new Error(`Row ${index + 2}: Fund Source is unknown, inactive, ambiguous, or has no active 4K Fund default.`);
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();
                     const uid = `OR-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
                     const resolvedOU = row.operatingUnit ? resolveOperatingUnit(row.operatingUnit) : 'NPMO';
@@ -637,6 +705,8 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                         operatingUnit: resolvedOU,
                         fundYear: fundYear,
                         fundType: row.fundType || 'Current',
+                        fundSourceUid: importedFundSource.uid,
+                        fundSource: importedFundSource.label,
                         tier: resolveTier(row.tier) || 'Tier 1',
                         obligationDate: row.obligationDate || '',
                         disbursementDate: row.disbursementDate || '',
@@ -738,6 +808,17 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                         {tiers.map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
+                                <FundSourceField
+                                    uid={formData.fundSourceUid}
+                                    label={formData.fundSource}
+                                    references={fundSources}
+                                    required
+                                    invalid={validationErrors.includes('fundSourceUid')}
+                                    onChange={(fundSourceUid, fundSource) => {
+                                        setFormData(previous => ({ ...previous, fundSourceUid, fundSource }));
+                                        setValidationErrors(previous => previous.filter(field => field !== 'fundSourceUid'));
+                                    }}
+                                />
                                 <div className="form-check-group">
                                     <label className="form-check">
                                         <input type="checkbox" checked={formData.isRealignment || false} onChange={e => setFormData(prev => ({ ...prev, isRealignment: e.target.checked, isSavings: e.target.checked ? false : prev.isSavings }))} />
@@ -898,7 +979,8 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         { key: 'status', label: 'Status', values: uniqueValues.status || [] },
         { key: 'equipment', label: 'Equipment', values: uniqueValues.equipment || [] },
         { key: 'specs', label: 'Specifications', values: uniqueValues.specs || [] },
-        { key: 'numberOfUnits', label: 'Number of Units', values: uniqueValues.numberOfUnits || [] }
+        { key: 'numberOfUnits', label: 'Number of Units', values: uniqueValues.numberOfUnits || [] },
+        { key: 'fundSourceUid', label: 'Fund Source', values: getFundSourceFilterOptions(items, fundSources).map(option => option.value), options: getFundSourceFilterOptions(items, fundSources) }
     ];
 
     // Compact list view
@@ -906,6 +988,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         <div className="data-table-card major-table-card animate-fadeIn">
             {isDeleteModalOpen && <ConfirmDialog title="Confirm deletion" description="Delete this record? This action cannot be undone." confirmLabel="Delete record" onCancel={() => setIsDeleteModalOpen(false)} onConfirm={handleDelete} />}
             {isMultiDeleteModalOpen && <ConfirmDialog title={`Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'entry' : 'entries'}?`} description="This action cannot be undone. The selected records will be permanently removed." confirmLabel="Delete" onCancel={() => setIsMultiDeleteModalOpen(false)} onConfirm={handleMultiDelete} />}
+            {pendingCloneItems && <FundSourceCloneDialog count={pendingCloneItems.filter(item => fundSourceNeedsCloneSelection(item, fundSources)).length} references={fundSources} onCancel={() => setPendingCloneItems(null)} onConfirm={handleCloneSourceConfirm} />}
             <ColumnFilterDialog open={isColumnFilterOpen} fields={tableFilterFields} filters={columnFilters} onApply={setColumnFilters} onClose={() => setIsColumnFilterOpen(false)} />
             <MajorTableToolbar searchTerm={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Search office requirements..." activeFilterCount={Object.keys(columnFilters).length} onOpenFilters={() => setIsColumnFilterOpen(true)} actions={isSelectionMode ? <BulkSelectionBar intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} /> : <>
                 {canEdit && <button onClick={() => setView('form')} className="btn btn-primary"><Plus aria-hidden="true" /> Add New</button>}
@@ -922,14 +1005,15 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 <SortableTableHeader label="Fund Year" columnKey="fundYear" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableTableHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableTableHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableTableHeader label="Fund Source" columnKey="fundSourceUid" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableTableHeader label="Budget" columnKey="budget" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Workflow Status</th>
             </tr></thead><tbody>
                 {paginatedData.map(item => <tr key={item.id} className={isSelectionMode ? (selectedIds.includes(item.id) ? `data-table__row--selected${selectionIntent === 'delete' ? ' data-table__row--selected-danger' : ''}` : undefined) : 'data-table__row--interactive'} tabIndex={isSelectionMode ? undefined : 0} aria-label={isSelectionMode ? undefined : `View details for ${item.uid}`} onClick={isSelectionMode ? undefined : () => onSelect(item)} onKeyDown={isSelectionMode ? undefined : event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(item); } }}>
                     {isSelectionMode && <td className="data-table__cell--selection"><SelectionCheckbox aria-label={`Select ${item.uid}`} checked={selectedIds.includes(item.id)} onChange={() => handleSelectRow(item.id)} disabled={selectionIntent === 'delete' && !getDeleteDecision({ moduleKey: 'office_requirements', item, hasModuleAccess: canEdit }).allowed} /></td>}
-                    <td className="data-table__cell--mono"><TruncatedTableCell value={item.uid} /></td><td><TruncatedTableCell value={item.operatingUnit} /></td><td><span className={getStatusBadge(item.status)}>{item.status}</span></td><td className="data-table__cell--primary"><TruncatedTableCell value={item.equipment} /></td><td className="data-table__cell--numeric">{item.numberOfUnits}</td><td>{item.fundYear}</td><td>{item.fundType}</td><td>{item.tier}</td><td className="data-table__cell--numeric">{formatCurrency(getOfficeBudget(item))}</td><td>{getWorkflowStatusBadge(item.workflow_status)}</td>
+                    <td className="data-table__cell--mono"><TruncatedTableCell value={item.uid} /></td><td><TruncatedTableCell value={item.operatingUnit} /></td><td><span className={getStatusBadge(item.status)}>{item.status}</span></td><td className="data-table__cell--primary"><TruncatedTableCell value={item.equipment} /></td><td className="data-table__cell--numeric">{item.numberOfUnits}</td><td>{item.fundYear}</td><td>{item.fundType}</td><td>{item.tier}</td><td><TruncatedTableCell value={getFundSourceLabel(item, fundSources) || '—'} /></td><td className="data-table__cell--numeric">{formatCurrency(getOfficeBudget(item))}</td><td>{getWorkflowStatusBadge(item.workflow_status)}</td>
                 </tr>)}
-                {paginatedData.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 11 : 10}>No office requirements match the current filters.</td></tr>}
+                {paginatedData.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 12 : 11}>No office requirements match the current filters.</td></tr>}
             </tbody></table></div>
             <DataTablePagination currentPage={currentPage} itemsPerPage={itemsPerPage} totalItems={filteredItems.length} totalPages={totalPages} onPageChange={setCurrentPage} onItemsPerPageChange={setItemsPerPage} />
         </div>

@@ -1,7 +1,7 @@
 
 // Author: 4K 
-import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, philippineRegions, operatingUnits, ouToRegionMap } from '../constants';
+import React, { useState, FormEvent, useEffect, useMemo, useRef } from 'react';
+import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, RefFundSource, philippineRegions, operatingUnits, ouToRegionMap } from '../constants';
 import LocationPicker from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
@@ -26,6 +26,8 @@ import {
 } from '../lib/budgetLineAdjustments';
 import { getActualObligationValidationError, hasActualObligationRecords } from '../lib/financialObligationUtils';
 import { fetchFinancialObligationsForParent, replaceFinancialObligationRecords } from '../lib/financialObligationSync';
+import { getFundSourceByUid, getNewFundSourceDefault, resolveFundSourceUidFromLegacyLabel } from '../lib/fundSources';
+import { FundSourceField } from './ui/FundSourceField';
 
 interface ActivityEditProps {
     mode: 'create' | 'details' | 'expenses' | 'accomplishment';
@@ -35,6 +37,7 @@ interface ActivityEditProps {
     onUpdateActivity: (updatedActivity: Activity) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     referenceActivities?: ReferenceActivity[];
+    fundSources?: RefFundSource[];
     forcedType?: 'Training' | 'Activity';
 }
 
@@ -69,6 +72,8 @@ const defaultFormData: Activity = {
     expenses: [],
     fundingYear: new Date().getFullYear(),
     fundType: 'Current',
+    fundSource: null,
+    fundSourceUid: null,
     tier: 'Tier 1',
     operatingUnit: '',
     encodedBy: '',
@@ -89,7 +94,7 @@ const defaultFormData: Activity = {
 };
 
 const ActivityEdit: React.FC<ActivityEditProps> = ({ 
-    mode, activity, ipos, onBack, onUpdateActivity, uacsCodes, referenceActivities = [], forcedType 
+    mode, activity, ipos, onBack, onUpdateActivity, uacsCodes, referenceActivities = [], fundSources = [], forcedType
 }) => {
     const { currentUser, hasAccess } = useAuth();
     const { logAction } = useLogAction();
@@ -111,6 +116,22 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     
     // Filter state for IPO selection
     const [ipoRegionFilter, setIpoRegionFilter] = useState('All');
+    const fundSourceDefaultApplied = useRef(false);
+
+    useEffect(() => {
+        if (mode !== 'create' || activity) {
+            fundSourceDefaultApplied.current = false;
+            return;
+        }
+        if (fundSourceDefaultApplied.current || fundSources.length === 0) return;
+        fundSourceDefaultApplied.current = true;
+        const defaultSource = getNewFundSourceDefault(fundSources);
+        if (defaultSource) {
+            setFormData(previous => previous.fundSourceUid || previous.fundSource
+                ? previous
+                : { ...previous, fundSourceUid: defaultSource.uid, fundSource: defaultSource.label });
+        }
+    }, [mode, activity, fundSources]);
 
     // Expense Edit State
     const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
@@ -685,6 +706,15 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
 
         if (mode === 'create') {
+            const selectedUid = formData.fundSourceUid || resolveFundSourceUidFromLegacyLabel(formData.fundSource, fundSources);
+            const selectedSource = getFundSourceByUid(selectedUid, fundSources);
+            if (!selectedSource?.is_active) {
+                alert('Select an active Fund Source before saving a new activity.');
+                return;
+            }
+        }
+
+        if (mode === 'create') {
              if (conductType === 'Repeating') {
                 activitiesToSave = repeatingEntries.map((entry, idx) => ({
                     ...formData,
@@ -752,6 +782,16 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 updated_at: submittedAt,
                 history: [...(formData.history || []), { date: submittedAt, event: `Updated (${mode})`, user: currentUser?.fullName || "System" }]
             }];
+        }
+
+        const linkedFundSourceUid = formData.fundSourceUid || resolveFundSourceUidFromLegacyLabel(formData.fundSource, fundSources);
+        const linkedFundSource = getFundSourceByUid(linkedFundSourceUid, fundSources);
+        if (linkedFundSource) {
+            activitiesToSave = activitiesToSave.map(saved => ({
+                ...saved,
+                fundSourceUid: linkedFundSource.uid,
+                fundSource: linkedFundSource.label,
+            }));
         }
 
         if (supabase) {
@@ -1062,6 +1102,14 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                                 {tiers.map(t => <option key={t} value={t}>{t}</option>)}
                                             </select>
                                         </div>
+                                        <FundSourceField
+                                            uid={formData.fundSourceUid}
+                                            label={formData.fundSource}
+                                            references={fundSources}
+                                            required={mode === 'create'}
+                                            disabled={isDetailsLocked}
+                                            onChange={(fundSourceUid, fundSource) => setFormData(previous => ({ ...previous, fundSourceUid, fundSource }))}
+                                        />
                                         <div className="form-check-group">
                                             <label className="form-check">
                                                 <input type="checkbox" checked={formData.isRealignment || false} onChange={e => setFormData(prev => ({ ...prev, isRealignment: e.target.checked, isSavings: e.target.checked ? false : prev.isSavings }))} className="form-checkbox" />

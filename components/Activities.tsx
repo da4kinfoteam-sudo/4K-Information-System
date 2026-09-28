@@ -2,7 +2,7 @@
 // Author: 4K
 import React, { useState, useMemo, useEffect } from 'react';
 import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
-import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, philippineRegions, operatingUnits, ouToRegionMap, filterYears } from '../constants';
+import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, RefFundSource, philippineRegions, operatingUnits, ouToRegionMap, filterYears } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
@@ -17,6 +17,7 @@ import { DcfScopeFilterPanel, matchesDcfScope, useDcfScopeFilters } from './ui/D
 import { ConfirmDialog, DataTablePagination, SortableTableHeader } from './ui/enterprise';
 import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from './ui/MajorDataTable';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
+import { getFundSourceFilterOptions, getFundSourceFilterValue, getFundSourceLabel, getFundSourceSortLabel } from '../lib/fundSources';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -35,6 +36,7 @@ interface ActivitiesProps {
     onCreateActivity: () => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     referenceActivities?: ReferenceActivity[];
+    fundSources?: RefFundSource[];
     forcedType?: 'Training' | 'Activity';
     externalFilters?: { region?: string; year?: string; search?: string; status?: string } | null;
     onClearExternalFilters?: () => void;
@@ -69,6 +71,7 @@ const getStatusBadge = (status: Activity['status']) => {
 export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     ipos, activities, setActivities, onSelectIpo, onSelectActivity,
     onCreateActivity, uacsCodes, referenceActivities = [], forcedType,
+    fundSources = [],
     externalFilters, onClearExternalFilters,
     onDataScopeChange
 }) => {
@@ -203,9 +206,10 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             component: getUnique('component'),
             tier: getUnique('tier'),
             fundingYear: filterYears,
-            fundType: fundTypes
+            fundType: fundTypes,
+            fundSource: getFundSourceFilterOptions(initiallyFilteredActivities, fundSources)
         };
-    }, [initiallyFilteredActivities]);
+    }, [initiallyFilteredActivities, fundSources]);
 
     // 3. Apply Column Filters & Sort
     const processedActivities = useMemo(() => {
@@ -216,6 +220,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             const selectedValues = columnFilters[key];
             if (selectedValues.length > 0) {
                 filtered = filtered.filter(item => {
+                    if (key === 'fundSourceUid') {
+                        return selectedValues.includes(getFundSourceFilterValue(item, fundSources));
+                    }
                     const itemValue = String((item as any)[key] || '');
                     return selectedValues.includes(itemValue);
                 });
@@ -228,7 +235,10 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                 let aValue: any;
                 let bValue: any;
 
-                if (sortConfig.key === 'totalParticipants') {
+                if (sortConfig.key === 'fundSourceUid' || sortConfig.key === 'fundSource') {
+                    aValue = getFundSourceSortLabel(a, fundSources);
+                    bValue = getFundSourceSortLabel(b, fundSources);
+                } else if (sortConfig.key === 'totalParticipants') {
                     aValue = a.participantsMale + a.participantsFemale;
                     bValue = b.participantsMale + b.participantsFemale;
                 } else if (sortConfig.key === 'budget') {
@@ -245,7 +255,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             });
         }
         return filtered;
-    }, [initiallyFilteredActivities, columnFilters, sortConfig]);
+    }, [initiallyFilteredActivities, columnFilters, sortConfig, fundSources]);
 
     useEffect(() => {
         if (!isSelectionMode) return;
@@ -544,7 +554,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         { key: 'name', label: 'Activity Name', values: uniqueValues.name },
         { key: 'component', label: 'Component', values: uniqueValues.component },
         { key: 'status', label: 'Status', values: uniqueValues.status },
-        { key: 'date', label: 'Date', values: uniqueValues.date }
+        { key: 'date', label: 'Date', values: uniqueValues.date },
+        { key: 'fundSourceUid', label: 'Fund Source', values: uniqueValues.fundSource.map(option => option.value), options: uniqueValues.fundSource }
     ];
 
     const activityPageTitle = forcedType === 'Training' ? 'Trainings Management' : forcedType === 'Activity' ? 'Activities Management' : 'Activities Management';
@@ -571,11 +582,11 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                     actions={isSelectionMode
                         ? <BulkSelectionBar intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} />
                         : <>
-                        <button onClick={() => downloadActivitiesReport(processedActivities)} className="btn btn-secondary"><Download aria-hidden="true" /> Export</button>
+                        <button onClick={() => downloadActivitiesReport(processedActivities, fundSources)} className="btn btn-secondary"><Download aria-hidden="true" /> Export</button>
                         {canEdit && <>
-                            <button onClick={downloadActivitiesTemplate} className="btn btn-secondary"><FileSpreadsheet aria-hidden="true" /> Template</button>
+                            <button onClick={() => downloadActivitiesTemplate(fundSources)} className="btn btn-secondary"><FileSpreadsheet aria-hidden="true" /> Template</button>
                             <label htmlFor="activity-upload-major" className={`btn btn-secondary ${isUploading ? 'is-disabled' : 'cursor-pointer'}`}><Upload aria-hidden="true" /> {isUploading ? 'Uploading...' : 'Import'}</label>
-                            <input id="activity-upload-major" type="file" className="hidden" onChange={(event) => handleActivitiesUpload(event, activities, setActivities, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx,.xls" disabled={isUploading} />
+                            <input id="activity-upload-major" type="file" className="hidden" onChange={(event) => handleActivitiesUpload(event, activities, setActivities, ipos, logAction, setIsUploading, uacsCodes, currentUser, fundSources)} accept=".xlsx,.xls" disabled={isUploading} />
                             <button onClick={() => handleToggleMode('clone')} className="btn btn-secondary" aria-label="Clone multiple activities"><DuplicateIcon /> Clone</button>
                             <button onClick={() => handleToggleMode('delete')} className="btn btn-secondary" aria-label="Delete multiple activities"><TrashIcon /> Delete</button>
                         </>}
@@ -592,6 +603,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                             <SortableTableHeader label="Fund Year" columnKey="fundingYear" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="Fund Source" columnKey="fundSourceUid" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Budget" columnKey="budget" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Status" columnKey="status" sortConfig={sortConfig} onSort={handleSort} />
                             <th>Workflow Status</th>
@@ -616,13 +628,13 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     <td className="data-table__cell--primary"><TruncatedTableCell value={activity.name} /></td>
                                     <td><TruncatedTableCell value={activity.operatingUnit} /></td>
                                     <td><TruncatedTableCell value={ipoPreview} fullText={participatingIpos.join(', ') || 'No participating IPO'} /></td>
-                                    <td>{activity.fundingYear || '—'}</td><td>{activity.fundType || '—'}</td><td>{activity.tier || '—'}</td>
+                                    <td>{activity.fundingYear || '—'}</td><td>{activity.fundType || '—'}</td><td>{activity.tier || '—'}</td><td><TruncatedTableCell value={getFundSourceLabel(activity, fundSources) || '—'} /></td>
                                     <td className="data-table__cell--numeric">{currency.format(totalBudget)}</td>
                                     <td><span className={getStatusBadge(activity.status)}>{activity.status || 'Unknown'}</span></td>
                                     <td><div className="data-table__actions">{getWorkflowStatusBadge(activity.workflow_status)}{activity.workflow_status === 'PENDING' && canApprove(currentUser?.role) && <><button onClick={(event) => handleApprove(activity.id, event)} className="action-mini action-mini--approve" aria-label={`Approve ${activity.name}`}><Check aria-hidden="true" /></button><button onClick={(event) => handleReject(activity.id, event)} className="action-mini action-mini--reject" aria-label={`Reject ${activity.name}`}><X aria-hidden="true" /></button></>}</div></td>
                                 </tr>;
                             })}
-                            {paginatedActivities.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 11 : 10}>No activities match the current filters.</td></tr>}
+                            {paginatedActivities.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 12 : 11}>No activities match the current filters.</td></tr>}
                         </tbody>
                     </table>
                 </div>

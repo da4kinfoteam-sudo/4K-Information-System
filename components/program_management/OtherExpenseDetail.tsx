@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { getActualObligationValidationError } from '../../lib/financialObligationUtils';
-import { OtherProgramExpense, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
+import { OtherProgramExpense, operatingUnits, fundTypes, tiers, objectTypes, ObjectType, RefFundSource } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
@@ -13,25 +13,28 @@ import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 import { createDisbursementsFromMonthlyFields, summarizeDisbursements } from '../../lib/disbursementUtils';
 import { replaceFinancialObligationRecords } from '../../lib/financialObligationSync';
+import { FundSourceField } from '../ui/FundSourceField';
+import { getFundSourceByUid, getFundSourceLabel } from '../../lib/fundSources';
 
 interface OtherExpenseDetailProps {
     item: OtherProgramExpense;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    fundSources: RefFundSource[];
     onUpdate: (item: OtherProgramExpense) => void;
 }
 
 const commonInputClasses = "form-control";
 
-const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
+const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode; preserveBlank?: boolean }> = ({ label, value, preserveBlank }) => (
     <div className="detail-item">
         <dt className="detail-label">{label}</dt>
-        <dd className="detail-value detail-value--emphasis">{value || 'N/A'}</dd>
+        <dd className="detail-value detail-value--emphasis">{preserveBlank && !value ? '' : value || 'N/A'}</dd>
     </div>
 );
 
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes, onUpdate }) => {
+const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes, fundSources, onUpdate }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Program Management');
     const { logAction } = useLogAction();
@@ -349,6 +352,11 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
             actualDisbursementAmount: Number(formData.actualDisbursementAmount),
             updated_at: new Date().toISOString()
         };
+        const selectedFundSource = getFundSourceByUid(updatedItem.fundSourceUid, fundSources);
+        if (selectedFundSource) {
+            updatedItem.fundSourceUid = selectedFundSource.uid;
+            updatedItem.fundSource = selectedFundSource.label;
+        }
 
         // Ensure month fields are numbers
         months.forEach(m => {
@@ -479,6 +487,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
                                             {tiers.map(t => <option key={t} value={t}>{t}</option>)}
                                         </select>
                                     </div>
+                                    <FundSourceField uid={formData.fundSourceUid} label={formData.fundSource} references={fundSources} onChange={(fundSourceUid, fundSource) => setFormData(previous => ({ ...previous, fundSourceUid, fundSource }))} />
                                 </div>
 
                                 {/* UACS Row */}
@@ -733,7 +742,8 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
                                 {item.status}
                             </span>
                         } />
-                        <DetailItem label="Fund Source" value={`${item.fundType} ${item.fundYear} - ${item.tier}`} />
+                        <DetailItem label="Fund Source" value={getFundSourceLabel(item, fundSources)} preserveBlank />
+                        <DetailItem label="Funding" value={`${item.fundType} ${item.fundYear} - ${item.tier}`} />
                         <div className="detail-item--wide">
                             <DetailItem label="UACS Code" value={`${item.uacsCode} - ${selectedParticular || 'N/A'} - ${selectedUacsDesc || 'N/A'}`} />
                         </div>

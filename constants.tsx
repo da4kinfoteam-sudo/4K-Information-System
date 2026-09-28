@@ -345,6 +345,8 @@ export interface Activity extends BaseEntity {
     component: ActivityComponentType;
     fundingYear?: number;
     fundType?: FundType;
+    fundSource?: FundSource | null;
+    fundSourceUid?: string | null;
     isRealignment?: boolean;
     isSavings?: boolean;
     tier?: Tier;
@@ -386,6 +388,8 @@ export interface BaseProgramManagementItem extends BaseEntity {
     disbursementDate: string;
     physicalDeliveryDate?: string;
     fundType: FundType;
+    fundSource?: FundSource | null;
+    fundSourceUid?: string | null;
     isRealignment?: boolean;
     isSavings?: boolean;
     fundYear: number;

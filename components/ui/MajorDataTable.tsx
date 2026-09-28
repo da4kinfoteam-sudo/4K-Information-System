@@ -8,6 +8,7 @@ export interface TableFilterField {
     key: string;
     label: string;
     values: string[];
+    options?: Array<{ value: string; label: string }>;
 }
 
 interface ColumnFilterDialogProps {
@@ -119,7 +120,9 @@ export const ColumnFilterDialog: React.FC<ColumnFilterDialogProps> = ({
                                 <span>{field.label}</span>
                                 <select value={selected} onChange={event => setFieldValue(field.key, event.target.value)}>
                                     <option value="">All {field.label}</option>
-                                    {field.values.map(value => <option key={value} value={value}>{value || 'Not specified'}</option>)}
+                                    {field.options
+                                        ? field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)
+                                        : field.values.map(value => <option key={value} value={value}>{value || 'Not specified'}</option>)}
                                 </select>
                             </label>
                         );

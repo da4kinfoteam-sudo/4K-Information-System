@@ -18,12 +18,13 @@ import {
     Wallet,
     X
 } from 'lucide-react';
-import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, ReferenceActivity } from '../constants';
+import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, ReferenceActivity, RefFundSource } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
 import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 import { getBudgetLineAmount, getBudgetLineTag, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import { getActualDisbursementSummary, getActualObligationSummary } from '../lib/financialActualSummary';
+import { getFundSourceLabel } from '../lib/fundSources';
 import { supabase } from '../supabaseClient';
 import {
     ActivityDriveFile,
@@ -61,6 +62,7 @@ import {
 interface ActivityDetailProps {
     activity: Activity;
     ipos: IPO[];
+    fundSources: RefFundSource[];
     onUpdateActivity: (updatedActivity: Activity) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     referenceActivities?: ReferenceActivity[];
@@ -101,10 +103,10 @@ const getStatusBadge = (status: Activity['status']) => {
     }
 }
 
-const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
+const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode; preserveBlank?: boolean }> = ({ label, value, preserveBlank }) => (
     <div className="detail-item">
         <dt className="detail-label">{label}</dt>
-        <dd className="detail-value">{value || 'N/A'}</dd>
+        <dd className="detail-value">{preserveBlank && (value === null || value === undefined || value === '') ? '' : value || 'N/A'}</dd>
     </div>
 );
 
@@ -115,7 +117,7 @@ const MonitoringPreviewLine: React.FC<{ label: string; value?: string | null }> 
     </div>
 );
 
-export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onSelectIpo, onEdit, uacsCodes, referenceActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], onOpenMonitoringReport }) => {
+export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, fundSources, onSelectIpo, onEdit, uacsCodes, referenceActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], onOpenMonitoringReport }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Activities');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
@@ -495,6 +497,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                             <DetailItem label="Component" value={activity.component} />
                             <DetailItem label="Funding Year" value={activity.fundingYear} />
                             <DetailItem label="Tier" value={activity.tier} />
+                            <DetailItem label="Fund Source" value={getFundSourceLabel(activity, fundSources)} preserveBlank />
                             {activity.type === 'Training' && <DetailItem label="Facilitator" value={activity.facilitator} />}
                             <div className="detail-item detail-item--wide">
                                 <dt className="detail-label">Description</dt>
@@ -835,6 +838,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                             <div><dt>Component</dt><dd>{activity.component || 'N/A'}</dd></div>
                             <div><dt>Fund Year</dt><dd>{activity.fundingYear || 'N/A'}</dd></div>
                             <div><dt>Tier</dt><dd>{activity.tier || 'N/A'}</dd></div>
+                            <div><dt>Fund Source</dt><dd>{getFundSourceLabel(activity, fundSources)}</dd></div>
                             <div><dt>Target Budget</dt><dd>{formatCurrency(totalBudget)}</dd></div>
                             <div><dt>Participating IPOs</dt><dd>{participatingIpos.length}</dd></div>
                         </dl>
