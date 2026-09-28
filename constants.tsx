@@ -123,8 +123,19 @@ export type Tier = typeof tiers[number];
 export const fundTypes = ['Current', 'Continuing', 'Insertion'] as const;
 export type FundType = typeof fundTypes[number];
 
-export const fundSources = ['4K Fund', 'High Value Crops', 'Corn', 'Rice', 'Organic', 'Livestock'] as const;
-export type FundSource = typeof fundSources[number];
+export type FundSource = string;
+
+export interface RefFundSource {
+    id: number;
+    uid: string;
+    label: string;
+    is_active: boolean;
+    sort_order: number;
+    created_at?: string;
+    updated_at?: string;
+    created_by?: string | null;
+    updated_by?: string | null;
+}
 
 export const filterYears = ['2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028'];
 
@@ -227,6 +238,7 @@ export interface Subproject extends BaseEntity {
     fundingYear?: number;
     fundType?: FundType;
     fundSource?: FundSource | null;
+    fundSourceUid?: string | null;
     isRealignment?: boolean;
     isSavings?: boolean;
     tier?: Tier;

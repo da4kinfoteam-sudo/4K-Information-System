@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { 
     Deadline, PlanningSchedule, Subproject, Activity, IPO,
-    OfficeRequirement, StaffingRequirement, OtherProgramExpense
+    OfficeRequirement, StaffingRequirement, OtherProgramExpense, RefFundSource
 } from '../constants';
 import SystemHealthCard from './settings/SystemHealthCard';
 import UserProfileTab from './settings/UserProfileTab';
@@ -39,6 +39,7 @@ interface SettingsProps {
     setStaffingReqs: React.Dispatch<React.SetStateAction<StaffingRequirement[]>>;
     otherProgramExpenses: OtherProgramExpense[];
     setOtherProgramExpenses: React.Dispatch<React.SetStateAction<OtherProgramExpense[]>>;
+    fundSources: RefFundSource[];
     onSelectSubproject: (project: Subproject) => void;
     onSelectActivity: (activity: Activity) => void;
     onSelectIpo: (ipo: IPO) => void;
@@ -64,6 +65,7 @@ const Settings: React.FC<SettingsProps> = ({
     officeReqs, setOfficeReqs,
     staffingReqs, setStaffingReqs,
     otherProgramExpenses, setOtherProgramExpenses,
+    fundSources,
     onSelectSubproject,
     onSelectActivity,
     onSelectIpo
@@ -207,7 +209,7 @@ const Settings: React.FC<SettingsProps> = ({
                     )}
 
                     {activeTab === 'archive' && isAdmin && (
-                        <ArchiveManagementTab />
+                        <ArchiveManagementTab fundSources={fundSources} />
                     )}
                 </div>
              </section>

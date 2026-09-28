@@ -74,13 +74,13 @@ import {
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
     Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea, ElcacArea, RefCommodity, RefLivestock, RefEquipment,
-    RefInput, RefInfrastructure, RefTrainingReference, ActivityMonitoringAction, ActivityMonitoringReport, operatingUnits, ouToRegionMap
+    RefInput, RefInfrastructure, RefTrainingReference, RefFundSource, ActivityMonitoringAction, ActivityMonitoringReport, operatingUnits, ouToRegionMap
 } from './constants';
 import {
     sampleActivities, sampleMarketingPartners, sampleOfficeRequirements, sampleOtherProgramExpenses, sampleReferenceUacsList,
     sampleReferenceParticularList, sampleStaffingRequirements, sampleSubprojects, sampleRefCommodities,
     sampleRefLivestock, sampleRefEquipment, sampleRefInputs, sampleRefInfrastructure, sampleRefTrainings,
-    sampleGidaAreas, sampleElcacAreas
+    sampleGidaAreas, sampleElcacAreas, sampleFundSources
 } from './samples';
 import { sampleIPOs } from './sampleIPOs';
 import {
@@ -465,6 +465,7 @@ const AppContent: React.FC = () => {
     const [refInputs, setRefInputs, refInputsSync] = useSupabaseTable<RefInput>('ref_inputs', sampleRefInputs, scopedTableOptions);
     const [refInfrastructure, setRefInfrastructure, refInfrastructureSync] = useSupabaseTable<RefInfrastructure>('ref_infrastructure', sampleRefInfrastructure, scopedTableOptions);
     const [refTrainings, setRefTrainings, refTrainingsSync] = useSupabaseTable<RefTrainingReference>('ref_trainings', sampleRefTrainings, scopedTableOptions);
+    const [fundSources, , fundSourcesSync] = useSupabaseTable<RefFundSource>('ref_fund_sources', sampleFundSources, scopedTableOptions);
     const [referenceActivities, setReferenceActivities, referenceActivitiesSync] = useSupabaseTable<ReferenceActivity>('reference_activities', [], scopedTableOptions);
     const replaceReferenceUacs = referenceUacsSync.replaceLocalData;
     const replaceReferenceParticulars = referenceParticularsSync.replaceLocalData;
@@ -474,6 +475,7 @@ const AppContent: React.FC = () => {
     const replaceRefInputs = refInputsSync.replaceLocalData;
     const replaceRefInfrastructure = refInfrastructureSync.replaceLocalData;
     const replaceRefTrainings = refTrainingsSync.replaceLocalData;
+    const replaceFundSources = fundSourcesSync.replaceLocalData;
     const replaceReferenceActivities = referenceActivitiesSync.replaceLocalData;
     const [gidaAreas, setGidaAreas] = useState<GidaArea[]>(sampleGidaAreas);
     const [elcacAreas, setElcacAreas] = useState<ElcacArea[]>(sampleElcacAreas);
@@ -516,6 +518,7 @@ const AppContent: React.FC = () => {
         replaceRefInputs(data.refInputs);
         replaceRefInfrastructure(data.refInfrastructure);
         replaceRefTrainings(data.refTrainings);
+        replaceFundSources(data.fundSources || []);
         replaceReferenceActivities(data.referenceActivities);
         setDeadlines(data.deadlines as Deadline[]);
         setBudgetCeilings(data.budgetCeilings || []);
@@ -537,6 +540,7 @@ const AppContent: React.FC = () => {
         replaceRefInputs,
         replaceRefLivestock,
         replaceRefTrainings,
+        replaceFundSources,
         replaceReferenceActivities,
         replaceReferenceParticulars,
         replaceReferenceUacs,
@@ -1676,6 +1680,8 @@ const AppContent: React.FC = () => {
                 setRefInfrastructure={setRefInfrastructure}
                 refTrainings={refTrainings}
                 setRefTrainings={setRefTrainings}
+                fundSources={fundSources}
+                replaceFundSources={replaceFundSources}
                 gidaList={gidaAreas}
                 setGidaList={setGidaAreas}
                 elcacList={elcacAreas}
@@ -1708,6 +1714,7 @@ const AppContent: React.FC = () => {
                             ipos={ipos} 
                             subprojects={visibleSubprojects} 
                             setSubprojects={setSubprojects}
+                            replaceSubprojects={subprojectsSync.replaceLocalData}
                             setIpos={setIpos} 
                             onSelectIpo={handleSelectIpo}
                             onSelectSubproject={handleSelectSubproject}
@@ -1715,6 +1722,7 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             particularTypes={derivedParticularTypes}
                             commodityCategories={derivedCommodityCategories}
+                            fundSources={fundSources}
                             externalFilters={externalFilters}
                             onClearExternalFilters={clearExternalFilters}
                             onDataScopeChange={ensureDataScope}
@@ -1844,6 +1852,7 @@ const AppContent: React.FC = () => {
                 return <SubprojectEdit 
                             subproject={selectedSubproject || undefined}
                             ipos={subprojectWorkflowIpos}
+                            fundSources={fundSources}
                             setIpos={(action) => {
                                 setIpos(action);
                                 setSubprojectWorkflowIpos(action);
@@ -2069,6 +2078,7 @@ const AppContent: React.FC = () => {
                 return <SubprojectDetail 
                             subproject={latestSp} 
                             ipos={subprojectWorkflowIpos}
+                            fundSources={fundSources}
                             onEditModeChange={setSubprojectDetailMode}
                             onUpdateSubproject={(updated) => {
                                 setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
@@ -2214,6 +2224,7 @@ const AppContent: React.FC = () => {
                             officeReqs={officeReqs} setOfficeReqs={setOfficeReqs}
                             staffingReqs={staffingReqs} setStaffingReqs={setStaffingReqs}
                             otherProgramExpenses={otherProgramExpenses} setOtherProgramExpenses={setOtherProgramExpenses}
+                            fundSources={fundSources}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
                             onSelectIpo={handleSelectIpo}

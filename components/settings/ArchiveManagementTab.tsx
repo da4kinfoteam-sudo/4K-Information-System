@@ -2,13 +2,14 @@
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
-import { TrashItem } from '../../constants';
+import { RefFundSource, TrashItem } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { format } from 'date-fns';
 import { DataTablePagination } from '../ui/enterprise';
+import { getFundSourceByUid, resolveFundSourceUidFromLegacyLabel } from '../../lib/fundSources';
 
-const ArchiveManagementTab: React.FC = () => {
+const ArchiveManagementTab: React.FC<{ fundSources: RefFundSource[] }> = ({ fundSources }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const [items, setItems] = useState<TrashItem[]>([]);
@@ -53,6 +54,16 @@ const ArchiveManagementTab: React.FC = () => {
     }, [items, currentPage, itemsPerPage]);
 
     const totalPages = Math.ceil(items.length / itemsPerPage);
+
+    const prepareRestoreData = (item: TrashItem) => {
+        const data = { ...item.data };
+        if (item.entity_type === 'subproject') {
+            data.fundSourceUid = getFundSourceByUid(data.fundSourceUid, fundSources)?.uid
+                || resolveFundSourceUidFromLegacyLabel(data.fundSource, fundSources)
+                || null;
+        }
+        return data;
+    };
 
     const getItemName = (item: TrashItem) => {
         const data = item.data;
@@ -107,7 +118,7 @@ const ArchiveManagementTab: React.FC = () => {
             // 1. Insert back to original table
             const { error: insertError } = await supabase
                 .from(tableName)
-                .insert([item.data]);
+                .insert([prepareRestoreData(item)]);
 
             if (insertError) throw insertError;
 
@@ -172,7 +183,7 @@ const ArchiveManagementTab: React.FC = () => {
             }
 
             try {
-                const { error: insertError } = await supabase.from(tableName).insert([item.data]);
+                const { error: insertError } = await supabase.from(tableName).insert([prepareRestoreData(item)]);
                 if (insertError) throw insertError;
 
                 const { error: deleteError } = await supabase.from('trash_bin').delete().eq('id', item.id);

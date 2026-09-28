@@ -22,6 +22,7 @@ import {
   sampleRefInputs,
   sampleRefLivestock,
   sampleRefTrainings,
+  sampleFundSources,
   sampleStaffingRequirements,
   sampleSubprojects,
 } from '../samples';
@@ -56,6 +57,7 @@ export interface ScopedAppData {
   refInputs: any[];
   refInfrastructure: any[];
   refTrainings: any[];
+  fundSources: any[];
   referenceActivities: any[];
   deadlines: any[];
   budgetCeilings: any[];
@@ -163,6 +165,15 @@ async function fetchScopedBusinessTable(tableName: string, scope: DataScope, yea
 async function fetchReferenceTable(tableName: string, orderBy = 'id') {
   if (!supabase) return [];
   return fetchQuery(supabase.from(tableName).select('*').order(orderBy, { ascending: true }));
+}
+
+async function fetchFundSources() {
+  if (!supabase) return [];
+  return fetchQuery(supabase
+    .from('ref_fund_sources')
+    .select('id,uid,label,is_active,sort_order,created_at,updated_at,created_by,updated_by')
+    .order('sort_order', { ascending: true })
+    .order('uid', { ascending: true }));
 }
 
 async function fetchBudgetCeilings(scope: DataScope) {
@@ -531,6 +542,7 @@ function loadLocalSeedScopedData(scope: DataScope): ScopedAppData {
     refInputs: sampleRefInputs,
     refInfrastructure: sampleRefInfrastructure,
     refTrainings: sampleRefTrainings,
+    fundSources: sampleFundSources,
     referenceActivities: sampleReferenceActivities,
     deadlines: [],
     budgetCeilings: filterLocalBudgetCeilings(normalizedScope),
@@ -564,6 +576,7 @@ export async function loadScopedAppData(scope: DataScope): Promise<ScopedAppData
     refInputs,
     refInfrastructure,
     refTrainings,
+    fundSources,
     referenceActivities,
     deadlines,
     budgetCeilings,
@@ -585,6 +598,7 @@ export async function loadScopedAppData(scope: DataScope): Promise<ScopedAppData
     fetchReferenceTable('ref_inputs'),
     fetchReferenceTable('ref_infrastructure'),
     fetchReferenceTable('ref_trainings'),
+    fetchFundSources(),
     fetchReferenceTable('reference_activities'),
     fetchReferenceTable('deadlines', 'date'),
     fetchBudgetCeilings(normalizedScope),
@@ -627,6 +641,7 @@ export async function loadScopedAppData(scope: DataScope): Promise<ScopedAppData
     refInputs,
     refInfrastructure,
     refTrainings,
+    fundSources,
     referenceActivities,
     deadlines,
     budgetCeilings,
