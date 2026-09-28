@@ -596,8 +596,8 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
 
         const payload: any = {
             ...formData,
-            fundSourceUid: formData.fundSourceUid || null,
-            fundSource: getFundSourceByUid(formData.fundSourceUid, fundSources)?.label || formData.fundSource || null,
+            fundSourceUid: selectedFundSourceUid || null,
+            fundSource: getFundSourceByUid(selectedFundSourceUid, fundSources)?.label || formData.fundSource || null,
             operatingUnit: effectiveOperatingUnit,
             ipo_id: resolvedIpoId,
             physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
@@ -750,7 +750,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                 <div><label className="form-label">Fund Year</label><input type="number" name="fundingYear" value={formData.fundingYear} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 <div><label className="form-label">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                 <div><label className="form-label">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="form-label">Fund Source <span className="form-required">*</span></label><select name="fundSourceUid" value={selectedFundSourceUid} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('fundSourceUid') ? 'form-control--invalid' : ''}`} required={!subproject}><option value="">Select Fund Source</option>{!selectedFundSourceUid && formData.fundSource?.trim() && <option value="">Unmapped legacy value: {formData.fundSource}</option>}{fundSourceOptions.map(source => <option key={source.uid} value={source.uid}>{source.label}{!source.is_active ? ' (Inactive)' : ''}</option>)}</select></div>
+                                <div><label className="form-label">Fund Source <span className="form-required">*</span></label><select name="fundSourceUid" value={selectedFundSourceUid} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('fundSourceUid') ? 'form-control--invalid' : ''}`} required={!subproject}><option value="">{!selectedFundSourceUid && formData.fundSource?.trim() ? formData.fundSource : 'Select Fund Source'}</option>{selectedFundSourceUid && !fundSourceOptions.some(source => source.uid === selectedFundSourceUid) && <option value={selectedFundSourceUid}>{formData.fundSource || selectedFundSourceUid}</option>}{fundSourceOptions.map(source => <option key={source.uid} value={source.uid}>{source.label}{!source.is_active ? ' (Inactive)' : ''}</option>)}</select></div>
                             </div>
                             <div className="form-check-group subproject-adjustment-checks">
                                     <label className="form-check">

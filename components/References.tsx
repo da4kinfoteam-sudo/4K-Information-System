@@ -1,6 +1,6 @@
 
 // Author: 4K 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronRight, Download, Info, Plus, RefreshCw, Upload } from 'lucide-react';
 import { objectTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity, RefLivestock, RefEquipment, equipmentCategories, RefInput, RefInfrastructure, RefTrainingReference, RefFundSource } from '../constants';
 import { supabase } from '../supabaseClient';
@@ -9,6 +9,7 @@ import { usePagination, useUserAccess } from './mainfunctions/TableHooks';
 import { ConfirmDialog, DataTablePagination, SortableTableHeader } from './ui/enterprise';
 import type { ReferencePageKey } from '../lib/appNavigation';
 import { sortFundSources } from '../lib/fundSources';
+import { useAuth } from '../contexts/AuthContext';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -153,6 +154,9 @@ const TRAINING_TOOLTIPS = {
 
 const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList, setUacsList, particularList, setParticularList, refCommodities, setRefCommodities, refLivestock, setRefLivestock, refEquipment, setRefEquipment, refInputs, setRefInputs, refInfrastructure, setRefInfrastructure, refTrainings, setRefTrainings, fundSources, replaceFundSources, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
     const { canEdit, canDelete } = useUserAccess('References');
+    const { currentUser } = useAuth();
+    const fundSourceSavePending = useRef(false);
+    const [isSavingFundSource, setIsSavingFundSource] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -889,39 +893,50 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
         setIsModalOpen(true);
     };
 
+    const persistFundSource = async (changes: Partial<Pick<RefFundSource, 'id' | 'label' | 'sort_order' | 'is_active'>>) => {
+        if (!supabase || !currentUser?.id) {
+            throw new Error('Please sign in and connect to the database before saving Fund Sources.');
+        }
+        const { data, error } = await supabase.rpc('save_fund_source_reference', {
+            p_actor_id: currentUser.id,
+            p_actor_password: currentUser.password || '',
+            p_reference_id: changes.id ?? null,
+            p_label: changes.label ?? null,
+            p_sort_order: changes.sort_order ?? null,
+            p_is_active: changes.is_active ?? null,
+        }).single();
+        if (error) throw error;
+        if (!data) throw new Error('No saved Fund Source was returned. Refresh before trying again.');
+        return data as RefFundSource;
+    };
+
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!canEdit) return;
         if (activeTab === 'Fund Sources') {
             const label = fundSourceForm.label.trim();
-            if (!label) return;
-            if (!supabase) {
-                alert('Fund Source references require a database connection to save.');
-                return;
-            }
-
-            const payload = { label, sort_order: Math.max(0, Math.trunc(Number(fundSourceForm.sort_order) || 0)) };
-            const query = editingItem
-                ? supabase.from('ref_fund_sources').update(payload).eq('id', editingItem.id)
-                : supabase.from('ref_fund_sources').insert({ ...payload, is_active: true });
-            const { data, error } = await query
-                .select('id,uid,label,is_active,sort_order,created_at,updated_at,created_by,updated_by')
-                .single();
-
-            if (error || !data) {
-                console.error('Error saving Fund Source reference:', error);
+            if (!label || fundSourceSavePending.current) return;
+            fundSourceSavePending.current = true;
+            setIsSavingFundSource(true);
+            try {
+                const saved = await persistFundSource({
+                    id: editingItem?.id,
+                    label,
+                    sort_order: Math.max(0, Math.trunc(Number(fundSourceForm.sort_order) || 0)),
+                });
+                replaceFundSources(editingItem
+                    ? fundSources.map(source => source.id === saved.id ? saved : source)
+                    : [...fundSources, saved]);
+                setIsModalOpen(false);
+                setEditingItem(null);
+            } catch (error: any) {
                 alert(error?.code === '23505'
                     ? 'An active Fund Source already uses that label.'
-                    : `Failed to save Fund Source: ${error?.message || 'No reference record was returned.'}`);
-                return;
+                    : `Failed to save Fund Source: ${error?.message || 'Please try again.'}`);
+            } finally {
+                fundSourceSavePending.current = false;
+                setIsSavingFundSource(false);
             }
-
-            const saved = data as RefFundSource;
-            replaceFundSources(editingItem
-                ? fundSources.map(source => source.id === saved.id ? saved : source)
-                : [...fundSources, saved]);
-            setIsModalOpen(false);
-            setEditingItem(null);
             return;
         }
         const id = editingItem ? editingItem.id : crypto.randomUUID();
@@ -1179,26 +1194,22 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
     };
 
     const handleConfirmFundSourceStatus = async () => {
-        if (!canEdit || !fundSourceStatusItem || !supabase) return;
+        if (!canEdit || !fundSourceStatusItem || fundSourceSavePending.current) return;
         const item = fundSourceStatusItem;
-        const { data, error } = await supabase
-            .from('ref_fund_sources')
-            .update({ is_active: !item.is_active })
-            .eq('id', item.id)
-            .select('id,uid,label,is_active,sort_order,created_at,updated_at,created_by,updated_by')
-            .single();
-
-        if (error || !data) {
-            console.error('Error changing Fund Source status:', error);
+        fundSourceSavePending.current = true;
+        setIsSavingFundSource(true);
+        try {
+            const saved = await persistFundSource({ id: item.id, is_active: !item.is_active });
+            replaceFundSources(fundSources.map(source => source.id === saved.id ? saved : source));
+            setFundSourceStatusItem(null);
+        } catch (error: any) {
             alert(error?.code === '23505'
                 ? 'This Fund Source cannot be activated because another active reference has the same label.'
-                : `Failed to update Fund Source status: ${error?.message || 'No reference record was returned.'}`);
-            return;
+                : `Failed to update Fund Source status: ${error?.message || 'Please try again.'}`);
+        } finally {
+            fundSourceSavePending.current = false;
+            setIsSavingFundSource(false);
         }
-
-        const saved = data as RefFundSource;
-        replaceFundSources(fundSources.map(source => source.id === saved.id ? saved : source));
-        setFundSourceStatusItem(null);
     };
 
     const handleDeleteConfirm = async () => {
@@ -3144,6 +3155,7 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                                 <button 
                                     type="submit"
                                     className="btn btn-primary"
+                                    disabled={activeTab === 'Fund Sources' && isSavingFundSource}
                                 >
                                     Save
                                 </button>
@@ -3169,8 +3181,8 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                     description={fundSourceStatusItem.is_active
                         ? `“${fundSourceStatusItem.label}” will no longer be offered for new Subprojects. Existing Subprojects linked to ${fundSourceStatusItem.uid} will continue displaying it.`
                         : `“${fundSourceStatusItem.label}” will become available for new Subprojects again.`}
-                    confirmLabel={fundSourceStatusItem.is_active ? 'Deactivate' : 'Activate'}
-                    onCancel={() => setFundSourceStatusItem(null)}
+                    confirmLabel={isSavingFundSource ? 'Saving...' : fundSourceStatusItem.is_active ? 'Deactivate' : 'Activate'}
+                    onCancel={() => { if (!fundSourceSavePending.current) setFundSourceStatusItem(null); }}
                     onConfirm={handleConfirmFundSourceStatus}
                 />
             )}
