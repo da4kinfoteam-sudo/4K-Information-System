@@ -3,7 +3,7 @@ import { DataScope, getDataScopeKey, ScopedAppData } from './scopedDataFetch';
 
 const DB_NAME = '4kis-local-cache';
 const DB_VERSION = 1;
-export const LOCAL_CACHE_SCHEMA_VERSION = 2;
+export const LOCAL_CACHE_SCHEMA_VERSION = 3;
 
 export const SCOPED_CACHE_TABLES = [
   'subprojects',
@@ -23,6 +23,7 @@ export const SCOPED_CACHE_TABLES = [
   'refInputs',
   'refInfrastructure',
   'refTrainings',
+  'fundSources',
   'referenceActivities',
   'deadlines',
   'budgetCeilings',
@@ -130,6 +131,7 @@ const emptyScopedData = (): ScopedAppData => ({
   refInputs: [],
   refInfrastructure: [],
   refTrainings: [],
+  fundSources: [],
   referenceActivities: [],
   deadlines: [],
   budgetCeilings: [],

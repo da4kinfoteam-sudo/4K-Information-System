@@ -1,7 +1,7 @@
 ﻿
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Subproject, IPO, SubprojectDetail, operatingUnits, ouToRegionMap, filterYears } from '../constants';
+import { Subproject, IPO, SubprojectDetail, operatingUnits, ouToRegionMap, filterYears, RefFundSource } from '../constants';
 import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
@@ -16,6 +16,7 @@ import { ConfirmDialog, DataTablePagination, SortableTableHeader } from './ui/en
 import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from './ui/MajorDataTable';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import { isActiveSubprojectDetail } from '../lib/subprojectItemAdjustments';
+import { getFundSourceByUid, getFundSourceLabel, getNewSubprojectDefaultFundSource, resolveFundSourceUidFromLegacyLabel } from '../lib/fundSources';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -24,6 +25,7 @@ interface SubprojectsProps {
     ipos: IPO[];
     subprojects: Subproject[];
     setSubprojects: React.Dispatch<React.SetStateAction<Subproject[]>>;
+    replaceSubprojects?: (nextData: Subproject[]) => void;
     setIpos: React.Dispatch<React.SetStateAction<IPO[]>>;
     onSelectIpo: (ipo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
@@ -31,6 +33,7 @@ interface SubprojectsProps {
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     particularTypes: { [key: string]: string[] };
     commodityCategories: { [key: string]: string[] };
+    fundSources: RefFundSource[];
     externalFilters?: { region?: string; year?: string; search?: string; status?: string } | null;
     onClearExternalFilters?: () => void;
     onDataScopeChange?: (scope: Partial<DataScope>) => void;
@@ -65,9 +68,9 @@ const commonInputClasses = "form-control";
 const DCF_SCOPE_COLUMN_KEYS = new Set(['fundingYear', 'operatingUnit', 'fundType', 'tier']);
 
 const Subprojects: React.FC<SubprojectsProps> = ({ 
-    ipos, subprojects, setSubprojects, setIpos, onSelectIpo, onSelectSubproject, 
+    ipos, subprojects, setSubprojects, replaceSubprojects, setIpos, onSelectIpo, onSelectSubproject,
     onCreateSubproject, uacsCodes, particularTypes, commodityCategories, externalFilters, onClearExternalFilters,
-    onDataScopeChange
+    onDataScopeChange, fundSources
 }) => {
     const { currentUser } = useAuth();
     const tableStoragePrefix = `subprojects_${currentUser?.id || 'anonymous'}`;
@@ -173,6 +176,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 (s.location?.toLowerCase() || '').includes(lower) ||
                 (s.operatingUnit?.toLowerCase() || '').includes(lower) ||
                 (s.uid?.toLowerCase() || '').includes(lower) ||
+                getFundSourceLabel(s, fundSources).toLowerCase().includes(lower) ||
                 (s.details && s.details.some(d => 
                     (d.type?.toLowerCase() || '').includes(lower) || 
                     (d.particulars?.toLowerCase() || '').includes(lower)
@@ -180,7 +184,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             );
         }
         return filtered;
-    }, [subprojects, searchTerm, currentUser, canViewAll, dcfFilters.value]);
+    }, [subprojects, searchTerm, currentUser, canViewAll, dcfFilters.value, fundSources]);
 
     // 2. Extract Unique Values
     const uniqueValues = useMemo(() => {
@@ -193,12 +197,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             packageType: getUnique('packageType'),
             fundingYear: filterYears,
             fundType: getUnique('fundType'),
-            fundSource: getUnique('fundSource'),
+            fundSource: Array.from(new Set(initiallyFilteredSubprojects.map(item => getFundSourceLabel(item, fundSources)))).filter(Boolean).sort(),
             tier: getUnique('tier'),
             estimatedCompletionDate: getUnique('estimatedCompletionDate'),
             actualCompletionDate: getUnique('actualCompletionDate')
         };
-    }, [initiallyFilteredSubprojects]);
+    }, [initiallyFilteredSubprojects, fundSources]);
 
     const processedSubprojects = useMemo(() => {
         let filtered = [...initiallyFilteredSubprojects];
@@ -207,7 +211,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             const selectedValues = columnFilters[key];
             if (selectedValues && selectedValues.length > 0) {
                 filtered = filtered.filter(item => {
-                    const itemValue = String((item as any)[key] || '');
+                    const itemValue = key === 'fundSource'
+                        ? getFundSourceLabel(item, fundSources)
+                        : String((item as any)[key] || '');
                     return selectedValues.includes(itemValue);
                 });
             }
@@ -228,6 +234,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 const getCommodities = (s: Subproject) => s.subprojectCommodities?.map(c => c.name || '').join(', ') || '';
 
                 switch (sortConfig.key) {
+                    case 'fundSource':
+                        aValue = getFundSourceLabel(a, fundSources).toLocaleLowerCase();
+                        bValue = getFundSourceLabel(b, fundSources).toLocaleLowerCase();
+                        break;
                     case 'totalBudget':
                         aValue = getBudget(a);
                         bValue = getBudget(b);
@@ -265,7 +275,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             });
         }
         return filtered;
-    }, [initiallyFilteredSubprojects, columnFilters, sortConfig]);
+    }, [initiallyFilteredSubprojects, columnFilters, sortConfig, fundSources]);
 
     useEffect(() => {
         if (!isSelectionMode) return;
@@ -403,8 +413,14 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 income: 0
             }));
 
+            const sourceUid = item.fundSourceUid || resolveFundSourceUidFromLegacyLabel(item.fundSource, fundSources);
+            const existingSource = getFundSourceByUid(sourceUid, fundSources);
+            const newSource = existingSource?.is_active ? existingSource : getNewSubprojectDefaultFundSource(fundSources);
+
             return {
                 ...rest,
+                fundSourceUid: newSource?.uid || null,
+                fundSource: newSource?.label || null,
                 uid: newUid,
                 status: 'Proposed',
                 actualCompletionDate: undefined,
@@ -429,13 +445,15 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             if (error) {
                 alert('Failed to clone items: ' + error.message);
             } else if (data) {
-                setSubprojects(prev => [...data as Subproject[], ...prev]);
+                if (replaceSubprojects) replaceSubprojects([...(data as Subproject[]), ...subprojects]);
+                else setSubprojects(prev => [...data as Subproject[], ...prev]);
                 resetSelection();
                 alert(`Successfully cloned ${data.length} subprojects.`);
             }
         } else {
             const newLocalItems = newItemsPayload.map((item, idx) => ({ ...item, id: Date.now() + idx }));
-            setSubprojects(prev => [...(newLocalItems as Subproject[]), ...prev]);
+            if (replaceSubprojects) replaceSubprojects([...(newLocalItems as Subproject[]), ...subprojects]);
+            else setSubprojects(prev => [...(newLocalItems as Subproject[]), ...prev]);
             resetSelection();
             alert(`Successfully cloned ${newLocalItems.length} subprojects (Local).`);
         }
@@ -608,11 +626,11 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                     actions={isSelectionMode
                         ? <BulkSelectionBar intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} />
                         : <>
-                        <button onClick={() => downloadSubprojectsReport(processedSubprojects)} className="btn btn-secondary"><Download aria-hidden="true" /> Export</button>
+                        <button onClick={() => downloadSubprojectsReport(processedSubprojects, fundSources)} className="btn btn-secondary"><Download aria-hidden="true" /> Export</button>
                         {canEdit && <>
                             <button onClick={downloadSubprojectsTemplate} className="btn btn-secondary"><FileSpreadsheet aria-hidden="true" /> Template</button>
                             <label htmlFor="subproject-upload" className={`btn btn-secondary ${isUploading ? 'is-disabled' : 'cursor-pointer'}`}><Upload aria-hidden="true" /> {isUploading ? 'Uploading...' : 'Import'}</label>
-                            <input id="subproject-upload" type="file" className="hidden" onChange={(e) => handleSubprojectsUpload(e, subprojects, setSubprojects, ipos, logAction, setIsUploading, uacsCodes, currentUser, canChooseOperatingUnit)} accept=".xlsx, .xls" disabled={isUploading} />
+                            <input id="subproject-upload" type="file" className="hidden" onChange={(e) => handleSubprojectsUpload(e, subprojects, setSubprojects, ipos, logAction, setIsUploading, uacsCodes, currentUser, canChooseOperatingUnit, fundSources, replaceSubprojects)} accept=".xlsx, .xls" disabled={isUploading} />
                             <button onClick={() => handleToggleMode('clone')} className="btn btn-secondary" aria-label="Clone multiple subprojects"><DuplicateIcon /> Clone</button>
                             <button onClick={() => handleToggleMode('delete')} className="btn btn-secondary" aria-label="Delete multiple subprojects"><TrashIcon /> Delete</button>
                         </>}
@@ -656,7 +674,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                     <td className="data-table__cell--primary"><TruncatedTableCell value={s.name || 'Unnamed Subproject'} /></td>
                                     <td><TruncatedTableCell value={s.operatingUnit} /></td>
                                     <td><TruncatedTableCell value={s.indigenousPeopleOrganization} /></td>
-                                    <td>{s.fundingYear || '—'}</td><td>{s.fundType || '—'}</td><td>{s.fundSource || '—'}</td><td>{s.tier || '—'}</td>
+                                    <td>{s.fundingYear || '—'}</td><td>{s.fundType || '—'}</td><td>{getFundSourceLabel(s, fundSources) || '—'}</td><td>{s.tier || '—'}</td>
                                     <td><TruncatedTableCell value={commodities} /></td>
                                     <td className="data-table__cell--numeric">{formatCurrency(budget)}</td>
                                     <td><span className={getStatusBadge(s.status)}>{s.status || 'Unknown'}</span></td>

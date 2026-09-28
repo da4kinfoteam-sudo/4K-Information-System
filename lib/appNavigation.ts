@@ -21,6 +21,7 @@ export type ReferencePageKey =
     | 'Equipment Reference'
     | 'Infrastructure Reference'
     | 'Training Reference'
+    | 'Fund Sources'
     | 'GIDA'
     | 'ELCAC';
 
@@ -89,7 +90,8 @@ export const referenceNavigationGroups: readonly ReferenceNavigationGroup[] = [
         label: 'DCF References',
         pages: [
             { id: 'references-uacs', label: 'UACS Codes', page: 'UACS', route: '/references/uacs-codes' },
-            { id: 'references-subproject-items', label: 'Subproject Items', page: 'Items', route: '/references/subproject-items' }
+            { id: 'references-subproject-items', label: 'Subproject Items', page: 'Items', route: '/references/subproject-items' },
+            { id: 'references-fund-sources', label: 'Fund Sources', page: 'Fund Sources', route: '/references/fund-sources' }
         ]
     },
     {

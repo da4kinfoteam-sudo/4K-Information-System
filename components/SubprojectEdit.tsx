@@ -2,7 +2,7 @@
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Info, Pencil, Trash2 } from 'lucide-react';
 import { MonthYearPicker } from './ui/MonthYearPicker';
-import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, fundSources, tiers, SubprojectCommodity, philippineRegions, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock } from '../constants';
+import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, philippineRegions, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock, RefFundSource } from '../constants';
 import LocationPicker from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
@@ -14,6 +14,7 @@ import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/p
 import { isMonthTargetOverdue } from '../lib/dateStatus';
 import { ConfirmDialog } from './ui/enterprise';
 import { isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
+import { getFundSourceByUid, getFundSourceLabel, getNewSubprojectDefaultFundSource, resolveFundSourceUidFromLegacyLabel, sortFundSources } from '../lib/fundSources';
 
 interface SubprojectEditProps {
     subproject?: Subproject;
@@ -26,6 +27,7 @@ interface SubprojectEditProps {
     commodityCategories: { [key: string]: string[] };
     refCommodities: RefCommodity[];
     refLivestock: RefLivestock[];
+    fundSources: RefFundSource[];
 }
 
 const MONTH_NAMES = [
@@ -62,7 +64,8 @@ const defaultFormData: Subproject = {
     lng: 0,
     fundingYear: new Date().getFullYear(),
     fundType: 'Current',
-    fundSource: '4K Fund',
+    fundSourceUid: null,
+    fundSource: null,
     tier: 'Tier 1',
     operatingUnit: '',
     encodedBy: ''
@@ -84,7 +87,7 @@ const formatMonthYear = (dateString?: string) => {
 };
 
 const SubprojectEdit: React.FC<SubprojectEditProps> = ({ 
-    subproject, ipos, setIpos, onBack, onUpdateSubproject, uacsCodes, particularTypes, commodityCategories, refCommodities, refLivestock
+    subproject, ipos, setIpos, onBack, onUpdateSubproject, uacsCodes, particularTypes, commodityCategories, refCommodities, refLivestock, fundSources
 }): React.ReactNode => {
     const { currentUser, hasAccess, getVisibilityScope } = useAuth();
     const { logAction } = useLogAction();
@@ -123,12 +126,24 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         if (!effectiveOperatingUnit) errors.push('operatingUnit');
         if (!formData.indigenousPeopleOrganization) errors.push('indigenousPeopleOrganization');
         if (!formData.status) errors.push('status');
-        if (!formData.fundSource) errors.push('fundSource');
+        if (!subproject && !formData.fundSourceUid) errors.push('fundSourceUid');
         if (!formData.estimatedCompletionDate) errors.push('estimatedCompletionDate');
         if (!formData.details || formData.details.length === 0) errors.push('details');
         if (!formData.subprojectCommodities || formData.subprojectCommodities.length === 0) errors.push('commodities');
         return errors;
-    }, [effectiveOperatingUnit, formData]);
+    }, [effectiveOperatingUnit, formData, subproject]);
+
+    const selectedFundSourceUid = formData.fundSourceUid
+        || resolveFundSourceUidFromLegacyLabel(formData.fundSource, fundSources)
+        || '';
+    const fundSourceOptions = useMemo(() => {
+        const activeSources = fundSources.filter(source => source.is_active);
+        const selected = fundSources.find(source => source.uid === selectedFundSourceUid);
+        if (selected && !selected.is_active && !activeSources.some(source => source.uid === selected.uid)) {
+            activeSources.push(selected);
+        }
+        return sortFundSources(activeSources);
+    }, [fundSources, selectedFundSourceUid]);
 
     useEffect(() => {
         if (subproject) {
@@ -146,6 +161,15 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             setSelectedRegion(defaultRegion);
         }
     }, [subproject, ipos, currentUser]);
+
+    useEffect(() => {
+        if (subproject || formData.fundSourceUid || formData.fundSource) return;
+        const defaultSource = getNewSubprojectDefaultFundSource(fundSources);
+        if (!defaultSource) return;
+        setFormData(previous => previous.fundSourceUid || previous.fundSource
+            ? previous
+            : { ...previous, fundSourceUid: defaultSource.uid, fundSource: defaultSource.label });
+    }, [subproject, formData.fundSource, formData.fundSourceUid, fundSources]);
 
     const filteredIpos = useMemo(() => {
         if (!effectiveRegion) return [];
@@ -171,6 +195,10 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                 const mappedRegion = ouToRegionMap[value] || '';
                 setSelectedRegion(mappedRegion);
                 newData.indigenousPeopleOrganization = '';
+            } else if (name === 'fundSourceUid') {
+                const selectedSource = getFundSourceByUid(value, fundSources);
+                newData.fundSourceUid = value || null;
+                newData.fundSource = selectedSource?.label || (value ? prev.fundSource : null);
             } else if (name === 'fundingYear') {
                 const year = parseInt(value) || new Date().getFullYear();
                 newData.startDate = `${year}-01-01`;
@@ -568,6 +596,8 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
 
         const payload: any = {
             ...formData,
+            fundSourceUid: formData.fundSourceUid || null,
+            fundSource: getFundSourceByUid(formData.fundSourceUid, fundSources)?.label || formData.fundSource || null,
             operatingUnit: effectiveOperatingUnit,
             ipo_id: resolvedIpoId,
             physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
@@ -720,7 +750,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                 <div><label className="form-label">Fund Year</label><input type="number" name="fundingYear" value={formData.fundingYear} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 <div><label className="form-label">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                 <div><label className="form-label">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="form-label">Fund Source <span className="form-required">*</span></label><select name="fundSource" value={formData.fundSource || ''} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('fundSource') ? 'form-control--invalid' : ''}`}><option value="">Select Fund Source</option>{fundSources.map(source => <option key={source} value={source}>{source}</option>)}</select></div>
+                                <div><label className="form-label">Fund Source <span className="form-required">*</span></label><select name="fundSourceUid" value={selectedFundSourceUid} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('fundSourceUid') ? 'form-control--invalid' : ''}`} required={!subproject}><option value="">Select Fund Source</option>{!selectedFundSourceUid && formData.fundSource?.trim() && <option value="">Unmapped legacy value: {formData.fundSource}</option>}{fundSourceOptions.map(source => <option key={source.uid} value={source.uid}>{source.label}{!source.is_active ? ' (Inactive)' : ''}</option>)}</select></div>
                             </div>
                             <div className="form-check-group subproject-adjustment-checks">
                                     <label className="form-check">
@@ -1104,7 +1134,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                             <li key={field}>
                                                 {field === 'indigenousPeopleOrganization' ? 'IPO' : 
                                                  field === 'operatingUnit' ? 'Operating Unit' :
-                                                 field === 'fundSource' ? 'Fund Source' :
+                                                 field === 'fundSourceUid' ? 'Fund Source' :
                                                  field === 'details' ? 'Budget Items (at least one required)' :
                                                  field === 'commodities' ? 'Commodities (at least one required)' :
                                                  field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
@@ -1151,7 +1181,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                          <span className="form-summary-label">Fund Year:</span> <span className="form-summary-value">{formData.fundingYear}</span>
                                          <span className="form-summary-label">Fund Type:</span> <span className="form-summary-value">{formData.fundType}</span>
                                          <span className="form-summary-label">Tier:</span> <span className="form-summary-value">{formData.tier}</span>
-                                         <span className="form-summary-label">Fund Source:</span> <span className={`form-summary-value ${!formData.fundSource ? 'is-missing' : ''}`}>{formData.fundSource || 'Missing Fund Source'}</span>
+                                         <span className="form-summary-label">Fund Source:</span> <span className={`form-summary-value ${!getFundSourceLabel(formData, fundSources) ? 'is-missing' : ''}`}>{getFundSourceLabel(formData, fundSources) || 'Missing Fund Source'}</span>
                                     </div>
                                 </div>
 

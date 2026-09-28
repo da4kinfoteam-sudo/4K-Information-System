@@ -1,7 +1,7 @@
 
 // Author: 4K
 import React, { useState, FormEvent, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, fundSources, tiers, SubprojectCommodity, filterYears, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock, ObligationRecord, DisbursementRecord } from '../constants';
+import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, filterYears, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock, ObligationRecord, DisbursementRecord, RefFundSource } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
@@ -14,6 +14,7 @@ import { supabase } from '../supabaseClient';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
 import { resolveSubprojectCompletionRollup } from '../lib/subprojectCompletion';
 import { isMonthTargetOverdue } from '../lib/dateStatus';
+import { getFundSourceByUid, getFundSourceLabel, resolveFundSourceUidFromLegacyLabel, sortFundSources } from '../lib/fundSources';
 import { ConfirmDialog } from './ui/enterprise';
 import { getActualDisbursementSummary, getActualObligationSummary, hasFinancialActuals } from '../lib/financialActualSummary';
 import { getActualObligationValidationError, hasActualObligationRecords } from '../lib/financialObligationUtils';
@@ -104,6 +105,7 @@ interface SubprojectDetailProps {
     commodityCategories: { [key: string]: string[] };
     refCommodities: RefCommodity[];
     refLivestock: RefLivestock[];
+    fundSources: RefFundSource[];
 }
 
 // Extended interface for local editing including completion flag
@@ -212,7 +214,7 @@ const budgetItemFieldLabels: Record<string, string> = {
     numberOfUnits: 'Number of Units'
 };
 
-const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onEditModeChange, onUpdateSubproject, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock }) => {
+const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onEditModeChange, onUpdateSubproject, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock, fundSources }) => {
     const { currentUser, hasAccess, getVisibilityScope } = useAuth();
     const { canEdit } = useUserAccess('Subprojects');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
@@ -234,6 +236,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     useEffect(() => () => onEditModeChange?.('none'), [onEditModeChange]);
 
     const [editedSubproject, setEditedSubproject] = useState(subproject);
+    const selectedFundSourceUid = editedSubproject.fundSourceUid
+        || resolveFundSourceUidFromLegacyLabel(editedSubproject.fundSource, fundSources)
+        || '';
+    const fundSourceOptions = useMemo(() => {
+        const activeSources = fundSources.filter(source => source.is_active);
+        const selected = fundSources.find(source => source.uid === selectedFundSourceUid);
+        if (selected && !selected.is_active) activeSources.push(selected);
+        return sortFundSources(activeSources);
+    }, [fundSources, selectedFundSourceUid]);
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
     const [monthLockMessage, setMonthLockMessage] = useState('');
@@ -761,6 +772,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                  [name]: value,
                  location: selectedIpo ? selectedIpo.location : ''
              }));
+        } else if (name === 'fundSourceUid') {
+            const selectedSource = getFundSourceByUid(value, fundSources);
+            setEditedSubproject(prev => ({
+                ...prev,
+                fundSourceUid: value || null,
+                fundSource: selectedSource?.label || (value ? prev.fundSource : null)
+            }));
         } else if (name === 'fundingYear') {
             const year = parseInt(value) || new Date().getFullYear();
             setEditedSubproject(prev => {
@@ -1665,6 +1683,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
         const updatedSubprojectWithDetails = {
             ...editedSubproject,
+            fundSourceUid: editedSubproject.fundSourceUid || null,
+            fundSource: getFundSourceByUid(editedSubproject.fundSourceUid, fundSources)?.label || editedSubproject.fundSource || null,
             operatingUnit: effectiveOperatingUnit,
             ipo_id: resolvedIpoId,
             status: nextStatus,
@@ -1899,9 +1919,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             </div>
                                             <div>
                                                 <label className="form-label">Fund Source</label>
-                                                <select name="fundSource" value={editedSubproject.fundSource || ''} onChange={handleInputChange} className={commonInputClasses}>
+                                                <select name="fundSourceUid" value={selectedFundSourceUid} onChange={handleInputChange} className={commonInputClasses}>
                                                     <option value="">Select Fund Source</option>
-                                                    {fundSources.map(source => <option key={source} value={source}>{source}</option>)}
+                                                    {!selectedFundSourceUid && editedSubproject.fundSource?.trim() && <option value="">Unmapped legacy value: {editedSubproject.fundSource}</option>}
+                                                    {fundSourceOptions.map(source => <option key={source.uid} value={source.uid}>{source.label}{!source.is_active ? ' (Inactive)' : ''}</option>)}
                                                 </select>
                                             </div>
                                         </div>
@@ -3001,7 +3022,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                              <DetailItem label="Funding Year" value={subproject.fundingYear?.toString()} />
                              <DetailItem label="Fund Type" value={subproject.fundType} />
                              <DetailItem label="Tier" value={subproject.tier} />
-                             <DetailItem label="Fund Source" value={subproject.fundSource || '—'} />
+                             <DetailItem label="Fund Source" value={getFundSourceLabel(subproject, fundSources) || '—'} />
                          </dl>
 
                          {/* Completion Progress Bar */}
@@ -3363,7 +3384,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             <div><dt>Budget items</dt><dd>{subproject.details.length}</dd></div>
                              <div><dt>Fund Year</dt><dd>{subproject.fundingYear || 'N/A'}</dd></div>
                              <div><dt>Fund Type</dt><dd>{subproject.fundType || 'N/A'}</dd></div>
-                             <div><dt>Fund Source</dt><dd>{subproject.fundSource || '—'}</dd></div>
+                             <div><dt>Fund Source</dt><dd>{getFundSourceLabel(subproject, fundSources) || '—'}</dd></div>
                         </dl>
                     </RecordPanel>
 

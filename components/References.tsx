@@ -2,12 +2,13 @@
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Download, Info, Plus, RefreshCw, Upload } from 'lucide-react';
-import { objectTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity, RefLivestock, RefEquipment, equipmentCategories, RefInput, RefInfrastructure, RefTrainingReference } from '../constants';
+import { objectTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity, RefLivestock, RefEquipment, equipmentCategories, RefInput, RefInfrastructure, RefTrainingReference, RefFundSource } from '../constants';
 import { supabase } from '../supabaseClient';
 import { parseLocation } from './LocationPicker';
 import { usePagination, useUserAccess } from './mainfunctions/TableHooks';
 import { ConfirmDialog, DataTablePagination, SortableTableHeader } from './ui/enterprise';
 import type { ReferencePageKey } from '../lib/appNavigation';
+import { sortFundSources } from '../lib/fundSources';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -46,6 +47,8 @@ interface ReferencesProps {
     setRefInfrastructure: React.Dispatch<React.SetStateAction<RefInfrastructure[]>>;
     refTrainings: RefTrainingReference[];
     setRefTrainings: React.Dispatch<React.SetStateAction<RefTrainingReference[]>>;
+    fundSources: RefFundSource[];
+    replaceFundSources: (nextData: RefFundSource[]) => void;
     gidaList: GidaArea[];
     setGidaList: React.Dispatch<React.SetStateAction<GidaArea[]>>;
     elcacList: ElcacArea[];
@@ -148,12 +151,13 @@ const TRAINING_TOOLTIPS = {
     certification_type: "Type of certificate issued (e.g., Certificate of Completion, NC II)"
 };
 
-const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList, setUacsList, particularList, setParticularList, refCommodities, setRefCommodities, refLivestock, setRefLivestock, refEquipment, setRefEquipment, refInputs, setRefInputs, refInfrastructure, setRefInfrastructure, refTrainings, setRefTrainings, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
+const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList, setUacsList, particularList, setParticularList, refCommodities, setRefCommodities, refLivestock, setRefLivestock, refEquipment, setRefEquipment, refInputs, setRefInputs, refInfrastructure, setRefInfrastructure, refTrainings, setRefTrainings, fundSources, replaceFundSources, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
     const { canEdit, canDelete } = useUserAccess('References');
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [deleteItem, setDeleteItem] = useState<any>(null);
+    const [fundSourceStatusItem, setFundSourceStatusItem] = useState<RefFundSource | null>(null);
     const [isUploading, setIsUploading] = useState(false);
 
     // Sorting State
@@ -179,6 +183,10 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
         type: '',
         particular: ''
     });
+    const [fundSourceForm, setFundSourceForm] = useState({ label: '', sort_order: 1 });
+
+    const canDeleteActiveTab = canDelete && activeTab !== 'Fund Sources';
+    const hasActiveTabActions = canEdit || canDeleteActiveTab;
 
     // --- Crop References Form State ---
     const [refCommodityForm, setRefCommodityForm] = useState({
@@ -394,6 +402,7 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
         setIsModalOpen(false);
         setEditingItem(null);
         setDeleteItem(null);
+        setFundSourceStatusItem(null);
         setIsMultiDeleteModalOpen(false);
     }, [activeTab]);
 
@@ -653,6 +662,26 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
         return items;
     }, [elcacList, searchTerm, sortConfig]);
 
+    const processedFundSources = useMemo(() => {
+        let items = [...fundSources];
+        if (searchTerm) {
+            const lower = searchTerm.trim().toLocaleLowerCase();
+            items = items.filter(item => item.uid.toLocaleLowerCase().includes(lower) || item.label.toLocaleLowerCase().includes(lower));
+        }
+        if (sortConfig) {
+            items.sort((a, b) => {
+                const aValue = String((a as any)[sortConfig.key] ?? '').toLocaleLowerCase();
+                const bValue = String((b as any)[sortConfig.key] ?? '').toLocaleLowerCase();
+                if (aValue < bValue) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aValue > bValue) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        } else {
+            items = sortFundSources(items);
+        }
+        return items;
+    }, [fundSources, searchTerm, sortConfig]);
+
     const activeData = useMemo(() => {
         switch (activeTab) {
             case 'UACS': return processedUacs;
@@ -663,11 +692,12 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
             case 'Agricultural Input Reference': return processedRefInputs;
             case 'Infrastructure Reference': return processedRefInfrastructure;
             case 'Training Reference': return processedRefTrainings;
+            case 'Fund Sources': return processedFundSources;
             case 'GIDA': return processedGida;
             case 'ELCAC': return processedElcac;
             default: return [];
         }
-    }, [activeTab, processedUacs, processedParticulars, processedRefCommodities, processedRefLivestock, processedRefEquipment, processedRefInputs, processedRefInfrastructure, processedRefTrainings, processedGida, processedElcac]);
+    }, [activeTab, processedUacs, processedParticulars, processedRefCommodities, processedRefLivestock, processedRefEquipment, processedRefInputs, processedRefInfrastructure, processedRefTrainings, processedFundSources, processedGida, processedElcac]);
 
     const {
         currentPage,
@@ -684,6 +714,7 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
         setEditingItem(null);
         setUacsForm({ objectType: 'MOOE', particular: '', uacsCode: '', description: '' });
         setItemForm({ type: '', particular: '' });
+        setFundSourceForm({ label: '', sort_order: fundSources.reduce((max, source) => Math.max(max, source.sort_order), 0) + 1 });
         setRefCommodityForm({
             name: '', banner_program: '', commodity_group: '', min_elevation_masl: 0, max_elevation_masl: 0,
             max_slope_percent: 0, wet_season_start: '', dry_season_start: '', recommended_soil: '',
@@ -743,6 +774,8 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                 uacsCode: item.uacsCode,
                 description: item.description
             });
+        } else if (activeTab === 'Fund Sources') {
+            setFundSourceForm({ label: item.label, sort_order: item.sort_order });
         } else if (activeTab === 'Items') {
             setItemForm({
                 type: item.type,
@@ -859,6 +892,38 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!canEdit) return;
+        if (activeTab === 'Fund Sources') {
+            const label = fundSourceForm.label.trim();
+            if (!label) return;
+            if (!supabase) {
+                alert('Fund Source references require a database connection to save.');
+                return;
+            }
+
+            const payload = { label, sort_order: Math.max(0, Math.trunc(Number(fundSourceForm.sort_order) || 0)) };
+            const query = editingItem
+                ? supabase.from('ref_fund_sources').update(payload).eq('id', editingItem.id)
+                : supabase.from('ref_fund_sources').insert({ ...payload, is_active: true });
+            const { data, error } = await query
+                .select('id,uid,label,is_active,sort_order,created_at,updated_at,created_by,updated_by')
+                .single();
+
+            if (error || !data) {
+                console.error('Error saving Fund Source reference:', error);
+                alert(error?.code === '23505'
+                    ? 'An active Fund Source already uses that label.'
+                    : `Failed to save Fund Source: ${error?.message || 'No reference record was returned.'}`);
+                return;
+            }
+
+            const saved = data as RefFundSource;
+            replaceFundSources(editingItem
+                ? fundSources.map(source => source.id === saved.id ? saved : source)
+                : [...fundSources, saved]);
+            setIsModalOpen(false);
+            setEditingItem(null);
+            return;
+        }
         const id = editingItem ? editingItem.id : crypto.randomUUID();
 
         if (activeTab === 'UACS') {
@@ -1113,6 +1178,29 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
         setIsModalOpen(false);
     };
 
+    const handleConfirmFundSourceStatus = async () => {
+        if (!canEdit || !fundSourceStatusItem || !supabase) return;
+        const item = fundSourceStatusItem;
+        const { data, error } = await supabase
+            .from('ref_fund_sources')
+            .update({ is_active: !item.is_active })
+            .eq('id', item.id)
+            .select('id,uid,label,is_active,sort_order,created_at,updated_at,created_by,updated_by')
+            .single();
+
+        if (error || !data) {
+            console.error('Error changing Fund Source status:', error);
+            alert(error?.code === '23505'
+                ? 'This Fund Source cannot be activated because another active reference has the same label.'
+                : `Failed to update Fund Source status: ${error?.message || 'No reference record was returned.'}`);
+            return;
+        }
+
+        const saved = data as RefFundSource;
+        replaceFundSources(fundSources.map(source => source.id === saved.id ? saved : source));
+        setFundSourceStatusItem(null);
+    };
+
     const handleDeleteConfirm = async () => {
         if (!canDelete) return;
         if (!deleteItem) return;
@@ -1206,7 +1294,7 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
 
     // --- Multi-Delete Handlers ---
     const handleToggleSelectionMode = () => {
-        if (!canDelete) return;
+        if (!canDelete || activeTab === 'Fund Sources') return;
         if (isSelectionMode) {
             setIsSelectionMode(false);
             setSelectedIds([]);
@@ -1789,7 +1877,7 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
     return (
         <div className="data-list-page">
             {/* Multi Delete Modal */}
-            {isMultiDeleteModalOpen && canDelete && (
+            {isMultiDeleteModalOpen && canDeleteActiveTab && (
                 <ConfirmDialog
                     title="Confirm bulk deletion"
                     description={`Delete ${selectedIds.length} selected reference item${selectedIds.length === 1 ? '' : 's'}? This action cannot be undone.`}
@@ -1819,7 +1907,7 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                 </div>
 
                     <div className="data-toolbar-group data-toolbar-group--actions">
-                        {canDelete && isSelectionMode && selectedIds.length > 0 && (
+                        {canDeleteActiveTab && isSelectionMode && selectedIds.length > 0 && (
                             <button onClick={() => setIsMultiDeleteModalOpen(true)} className="btn btn-danger">
                                 Delete Selected ({selectedIds.length})
                             </button>
@@ -1828,21 +1916,21 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                             <button
                                 onClick={handleOpenAdd}
                                 className="btn btn-primary btn-responsive"
-                                title={`Add New ${activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}`}
+                                title={`Add New ${activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Fund Sources' ? 'Fund Source' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}`}
                             >
                                 <Plus className="btn-symbol" aria-hidden="true" />
-                                <span className="btn-text">Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}</span>
+                                <span className="btn-text">Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Fund Sources' ? 'Fund Source' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}</span>
                             </button>
                         )}
-                        <button
+                        {activeTab !== 'Fund Sources' && <button
                             onClick={handleDownloadTemplate}
                             className="btn btn-secondary btn-responsive"
                             title="Download Template"
                         >
                             <Download className="btn-symbol" aria-hidden="true" />
                             <span className="btn-text">Download Template</span>
-                        </button>
-                        {canEdit && (
+                        </button>}
+                        {canEdit && activeTab !== 'Fund Sources' && (
                             <>
                                 <label
                                     htmlFor="ref-upload"
@@ -1884,7 +1972,7 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                                 <span className="btn-text">Retroactive Update</span>
                             </button>
                         )}
-                        {canDelete && (
+                        {canDeleteActiveTab && (
                             <button
                                 onClick={handleToggleSelectionMode}
                                 className={`btn btn-secondary btn-icon ${isSelectionMode ? 'is-active-danger' : ''}`}
@@ -1913,6 +2001,12 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                                     <>
                                         <SortableHeader label="Item Type" sortKey="type" />
                                         <SortableHeader label="Item Particular" sortKey="particular" />
+                                    </>
+                                ) : activeTab === 'Fund Sources' ? (
+                                    <>
+                                        <SortableHeader label="UID" sortKey="uid" />
+                                        <SortableHeader label="Fund Source" sortKey="label" />
+                                        <SortableHeader label="Status" sortKey="is_active" />
                                     </>
                                 ) : activeTab === 'Crop Reference' ? (
                                     <>
@@ -1963,9 +2057,9 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                                         <SortableHeader label="Barangay" sortKey="barangay" />
                                     </>
                                 )}
-                                {(canEdit || canDelete) && (
+                                {hasActiveTabActions && (
                                     <th className="data-table__head--actions">
-                                        {canDelete && isSelectionMode ? (
+                                        {canDeleteActiveTab && isSelectionMode ? (
                                             <div className="data-table__select-all">
                                                 <span className="data-table__subline">Select All</span>
                                                 <input 
@@ -1998,6 +2092,12 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                                                 <>
                                                     <td className="data-table__cell--primary data-table__cell--nowrap">{item.type}</td>
                                                     <td className="data-table__cell--muted data-table__cell--nowrap">{item.particular}</td>
+                                                </>
+                                            ) : activeTab === 'Fund Sources' ? (
+                                                <>
+                                                    <td className="data-table__cell--mono data-table__cell--nowrap">{item.uid}</td>
+                                                    <td className="data-table__cell--primary data-table__cell--nowrap">{item.label}</td>
+                                                    <td className="data-table__cell--nowrap"><span className={`status-badge status-badge--compact ${item.is_active ? 'status-badge--approved' : 'status-badge--neutral'}`}>{item.is_active ? 'Active' : 'Inactive'}</span></td>
                                                 </>
                                             ) : activeTab === 'Crop Reference' ? (
                                                 <>
@@ -2102,9 +2202,19 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                                                     <td className="data-table__cell--muted data-table__cell--nowrap">{item.barangay}</td>
                                                 </>
                                             )}
-                                            {(canEdit || canDelete) && (
+                                            {hasActiveTabActions && (
                                                 <td className="data-table__cell--actions data-table__cell--nowrap">
-                                                    {canDelete && isSelectionMode ? (
+                                                    {activeTab === 'Fund Sources' ? (
+                                                    canEdit && <div className="data-table__actions">
+                                                        <button onClick={() => handleOpenEdit(item)} className="table-action table-action--primary">Edit</button>
+                                                        <button
+                                                            onClick={() => setFundSourceStatusItem(item)}
+                                                            className={item.is_active ? 'table-action table-action--danger' : 'table-action table-action--primary'}
+                                                        >
+                                                            {item.is_active ? 'Deactivate' : 'Activate'}
+                                                        </button>
+                                                    </div>
+                                                    ) : canDeleteActiveTab && isSelectionMode ? (
                                                         <input 
                                                             type="checkbox" 
                                                             checked={selectedIds.includes(item.id)} 
@@ -2116,7 +2226,7 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                                                         <>
                                                             <div className="data-table__actions">
                                                                 {canEdit && <button onClick={() => handleOpenEdit(item)} className="table-action table-action--primary">Edit</button>}
-                                                                {canDelete && <button onClick={() => setDeleteItem(item)} className="table-action table-action--danger">Delete</button>}
+                                                                {canDeleteActiveTab && <button onClick={() => setDeleteItem(item)} className="table-action table-action--danger">Delete</button>}
                                                             </div>
                                                         </>
                                                     )}
@@ -2354,7 +2464,7 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                                     </React.Fragment>
                                 ))
                             ) : (
-                                <tr><td colSpan={(canEdit || canDelete) ? (['UACS', 'GIDA', 'ELCAC', 'Crop Reference', 'Livestock Reference', 'Equipment Reference', 'Agricultural Input Reference', 'Infrastructure Reference', 'Training Reference'].includes(activeTab) ? 5 : 3) : (['UACS', 'GIDA', 'ELCAC', 'Crop Reference', 'Livestock Reference', 'Equipment Reference', 'Agricultural Input Reference', 'Infrastructure Reference'].includes(activeTab) ? 4 : activeTab === 'Training Reference' ? 3 : 2)} className="data-table__empty-cell">No items found.</td></tr>
+                                <tr><td colSpan={activeTab === 'Fund Sources' ? (hasActiveTabActions ? 4 : 3) : (hasActiveTabActions ? (['UACS', 'GIDA', 'ELCAC', 'Crop Reference', 'Livestock Reference', 'Equipment Reference', 'Agricultural Input Reference', 'Infrastructure Reference', 'Training Reference'].includes(activeTab) ? 5 : 3) : (['UACS', 'GIDA', 'ELCAC', 'Crop Reference', 'Livestock Reference', 'Equipment Reference', 'Agricultural Input Reference', 'Infrastructure Reference'].includes(activeTab) ? 4 : activeTab === 'Training Reference' ? 3 : 2))} className="data-table__empty-cell">No items found.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -2378,11 +2488,26 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                     <section className={`modal-card reference-editor-modal ${activeTab === 'Crop Reference' || activeTab === 'Livestock Reference' ? 'reference-editor-modal--wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby="reference-editor-title" onClick={event => event.stopPropagation()}>
                         <header className="modal-card__header">
                             <h3 id="reference-editor-title">
-                                {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
+                                {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : activeTab === 'Fund Sources' ? 'Fund Source' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
                             </h3>
                         </header>
                         <form onSubmit={handleSave} className="modal-card__body form-stack reference-editor-form">
-                            {activeTab === 'UACS' ? (
+                            {activeTab === 'Fund Sources' ? (
+                                <>
+                                    <div>
+                                        <label className="form-label">UID</label>
+                                        <input type="text" value={editingItem?.uid || 'Assigned when saved'} readOnly aria-readonly="true" className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Fund Source</label>
+                                        <input type="text" required maxLength={120} value={fundSourceForm.label} onChange={event => setFundSourceForm(previous => ({ ...previous, label: event.target.value }))} className={commonInputClasses} autoComplete="off" />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Sort Order</label>
+                                        <input type="number" min={0} step={1} value={fundSourceForm.sort_order} onChange={event => setFundSourceForm(previous => ({ ...previous, sort_order: Number(event.target.value) }))} className={commonInputClasses} />
+                                    </div>
+                                </>
+                            ) : activeTab === 'UACS' ? (
                                 <>
                                     <div>
                                         <label className="form-label">Object Type</label>
@@ -3036,6 +3161,17 @@ const References: React.FC<ReferencesProps> = ({ activePage: activeTab, uacsList
                     confirmLabel="Delete item"
                     onCancel={() => setDeleteItem(null)}
                     onConfirm={handleDeleteConfirm}
+                />
+            )}
+            {fundSourceStatusItem && canEdit && (
+                <ConfirmDialog
+                    title={`${fundSourceStatusItem.is_active ? 'Deactivate' : 'Activate'} Fund Source?`}
+                    description={fundSourceStatusItem.is_active
+                        ? `“${fundSourceStatusItem.label}” will no longer be offered for new Subprojects. Existing Subprojects linked to ${fundSourceStatusItem.uid} will continue displaying it.`
+                        : `“${fundSourceStatusItem.label}” will become available for new Subprojects again.`}
+                    confirmLabel={fundSourceStatusItem.is_active ? 'Deactivate' : 'Activate'}
+                    onCancel={() => setFundSourceStatusItem(null)}
+                    onConfirm={handleConfirmFundSourceStatus}
                 />
             )}
         </div>
