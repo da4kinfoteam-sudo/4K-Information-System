@@ -2088,8 +2088,12 @@ const AppContent: React.FC = () => {
                             ipos={subprojectWorkflowIpos}
                             fundSources={fundSources}
                             onEditModeChange={setSubprojectDetailMode}
-                            onUpdateSubproject={(updated) => {
-                                setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
+                            onUpdateSubproject={(updated, options) => {
+                                if (options?.persisted) {
+                                    subprojectsSync.replaceLocalData(subprojects.map(p => p.id === updated.id ? updated : p));
+                                } else {
+                                    setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                }
                                 setSelectedSubproject(updated);
 
                                 // Sync commodities to IPO
