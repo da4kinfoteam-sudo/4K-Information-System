@@ -20,6 +20,7 @@ import { getActualDisbursementSummary, getActualObligationSummary, hasFinancialA
 import { getActualObligationValidationError, hasActualObligationRecords } from '../lib/financialObligationUtils';
 import { fetchFinancialObligationsForParent, replaceFinancialObligationRecords } from '../lib/financialObligationSync';
 import { checkProposedBudgetItemDeletion } from '../lib/subprojectBudgetItemLifecycle';
+import { getSubprojectBudgetItemObligations } from '../lib/subprojectBudgetItemLifecycleRules';
 import {
     BudgetItemAdjustmentHistory,
     ensureOriginalBudgetSnapshot,
@@ -248,6 +249,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     }, [fundSources, selectedFundSourceUid]);
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
+    const [budgetItemRemovalError, setBudgetItemRemovalError] = useState<{ itemId: string; text: string } | null>(null);
+    const [checkingBudgetItemId, setCheckingBudgetItemId] = useState<string | null>(null);
+    const budgetItemRemovalLock = useRef(false);
     const [monthLockMessage, setMonthLockMessage] = useState('');
     const [accomplishmentRemarks, setAccomplishmentRemarks] = useState(subproject.accomplishmentRemarks || '');
     const [accomplishmentItemModalOpen, setAccomplishmentItemModalOpen] = useState(false);
@@ -456,26 +460,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setAccomplishmentItemFormMessage(null);
         setAccomplishmentItemNotice(null);
         setPendingAdjustmentHistory([]);
+        setBudgetItemRemovalError(null);
         const applyObligationRows = (centralRows: Awaited<ReturnType<typeof fetchFinancialObligationsForParent>> | null) => {
-            const hydratedDetails = (subproject.details || []).map(d => {
-                const centralObligations = centralRows?.filter(row => row.itemId === String(d.id)) || [];
-                return ensureOriginalBudgetSnapshot({
-                    ...d,
-                    obligations: centralObligations.length > 0
-                        ? centralObligations
-                        : (d.obligations && d.obligations.length > 0)
-                            ? d.obligations
-                            : (Number(d.actualObligationAmount) !== 0)
-                                ? [{
-                                    id: Date.now() + Math.random(),
-                                    date: d.actualObligationDate || '',
-                                    amount: d.actualObligationAmount || 0,
-                                    remarks: 'Legacy Record'
-                                }]
-                                : [],
-                });
-            });
-            if (!cancelled) setDetailItems(hydratedDetails);
+            if (cancelled) return;
+            // Preserve rows the user has already edited or removed while actuals were loading.
+            setDetailItems(previous => previous.map(d => ensureOriginalBudgetSnapshot({
+                ...d,
+                obligations: getSubprojectBudgetItemObligations(d, centralRows),
+            })));
         };
 
         setDetailItems((subproject.details || []).map(d => ensureOriginalBudgetSnapshot(d)));
@@ -1012,36 +1004,49 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     };
 
     const handleRemoveDetail = async (indexToRemove: number) => {
+        if (budgetItemRemovalLock.current) return;
         const item = detailItems[indexToRemove];
         if (!item || item.isSuperseded) return;
+        const itemId = String(item.id);
+        setBudgetItemRemovalError(null);
         const isSavedLine = !!(item.id && (subproject.details || []).some(detail => detail.id === item.id));
         const hasActuals = hasActualObligationRecords(item) || ((item.disbursements?.length || 0) > 0) || Number(item.actualDisbursementAmount) > 0;
 
         if (subproject.status === 'Proposed' && isSavedLine) {
             setBudgetItemFormMessage(null);
-            const blocker = await checkProposedBudgetItemDeletion(subproject.id, item as SubprojectDetailType);
-            if (blocker) {
-                setBudgetItemFormMessage({ type: 'error', text: blocker });
-                return;
-            }
-            setDetailItems(prev => prev.filter((_, index) => index !== indexToRemove));
-            if (editingDetailIndex === indexToRemove) {
-                handleCancelDetailEdit();
-            } else if (editingDetailIndex !== null && editingDetailIndex > indexToRemove) {
-                setEditingDetailIndex(editingDetailIndex - 1);
+            budgetItemRemovalLock.current = true;
+            setCheckingBudgetItemId(itemId);
+            try {
+                const blocker = await checkProposedBudgetItemDeletion(subproject.id, item as SubprojectDetailType);
+                if (blocker) {
+                    setBudgetItemRemovalError({ itemId, text: blocker });
+                    return;
+                }
+                setDetailItems(prev => prev.filter(detail => String(detail.id) !== itemId));
+                if (editingDetailIndex === indexToRemove) {
+                    handleCancelDetailEdit();
+                } else if (editingDetailIndex !== null && editingDetailIndex > indexToRemove) {
+                    setEditingDetailIndex(editingDetailIndex - 1);
+                }
+            } catch (error) {
+                console.error('Unable to check the proposed budget item for deletion:', error);
+                setBudgetItemRemovalError({ itemId, text: 'Unable to verify this item for deletion. Please try again.' });
+            } finally {
+                budgetItemRemovalLock.current = false;
+                setCheckingBudgetItemId(null);
             }
             return;
         }
 
         if (subproject.status === 'Ongoing' && item.isCancelled) {
-            setBudgetItemFormMessage({ type: 'error', text: 'This item is already cancelled and is retained for its adjustment history.' });
+            setBudgetItemRemovalError({ itemId, text: 'This item is already cancelled and is retained for its adjustment history.' });
             return;
         }
 
         if (isSavedLine || hasActuals) {
             if (subproject.status !== 'Ongoing') {
-                setBudgetItemFormMessage({
-                    type: 'error',
+                setBudgetItemRemovalError({
+                    itemId,
                     text: 'Saved budget items can only be deleted while Proposed or cancelled while Ongoing. This item was not changed.',
                 });
                 return;
@@ -1552,6 +1557,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
+        if (budgetItemRemovalLock.current) return;
 
         if (editMode === 'accomplishment') {
             const obligationError = detailItems
@@ -2257,6 +2263,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                 <span className="budget-line-exclusion-note">{d.adjustmentReason || 'No adjustment justification recorded.'}</span>
                                                             )}
                                                         </div>
+                                                        {budgetItemRemovalError?.itemId === String(d.id) && (
+                                                            <div className="budget-item-form-message budget-item-form-message--error" role="alert">
+                                                                {budgetItemRemovalError.text}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <div className="budget-item-card__actions">
                                                         <span className="budget-item-card__total">{formatCurrency(getBudgetLineAmount(d))}</span>
@@ -2267,16 +2278,21 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveDetail(index)}
-                                                                disabled={!!d.isSuperseded || (subproject.status !== 'Proposed' && subproject.status !== 'Ongoing' && !!(d.id && subproject.details.some(saved => String(saved.id) === String(d.id))))}
+                                                                disabled={checkingBudgetItemId !== null || !!d.isSuperseded || (subproject.status !== 'Proposed' && subproject.status !== 'Ongoing' && !!(d.id && subproject.details.some(saved => String(saved.id) === String(d.id))))}
+                                                                aria-busy={checkingBudgetItemId === String(d.id)}
                                                                 className="table-action table-action--danger"
-                                                                title={d.isSuperseded
+                                                                title={checkingBudgetItemId === String(d.id)
+                                                                    ? 'Checking budget item'
+                                                                    : d.isSuperseded
                                                                     ? 'Replaced item is read-only'
                                                                     : subproject.status === 'Ongoing'
                                                                         ? 'Cancel planned budget item'
                                                                         : subproject.status === 'Proposed'
                                                                             ? 'Delete proposed budget item'
                                                                             : 'Saved items cannot be removed at this status'}
-                                                            ><Trash2 className="btn-symbol" aria-hidden="true" /></button>
+                                                            >{checkingBudgetItemId === String(d.id)
+                                                                ? <Loader2 className="btn-symbol animate-spin" aria-hidden="true" />
+                                                                : <Trash2 className="btn-symbol" aria-hidden="true" />}</button>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2830,7 +2846,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                         </div>
                         <div className="detail-edit-footer">
                             <button type="button" onClick={() => setEditMode('none')} className="btn btn-secondary">Cancel</button>
-                            <button type="submit" className="btn btn-primary">Save Changes</button>
+                            <button type="submit" className="btn btn-primary" disabled={checkingBudgetItemId !== null}>Save Changes</button>
                         </div>
                     </form>
                 </div>

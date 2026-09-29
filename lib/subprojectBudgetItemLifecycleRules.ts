@@ -1,8 +1,24 @@
-import type { SubprojectDetail } from '../constants';
+import type { ObligationRecord, SubprojectDetail } from '../constants';
 
 const hasNonZeroValue = (value: unknown) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed !== 0;
+};
+
+export const getSubprojectBudgetItemObligations = (
+    item: Omit<SubprojectDetail, 'id'> & { id?: number },
+    centralRows: Array<ObligationRecord & { itemId: string | null }> | null,
+): ObligationRecord[] => {
+    const centralObligations = centralRows?.filter(row => row.itemId === String(item.id)) || [];
+    if (centralObligations.length > 0) return centralObligations;
+    if (item.obligations?.length) return item.obligations;
+    if (!hasNonZeroValue(item.actualObligationAmount)) return [];
+    return [{
+        id: Date.now() + Math.random(),
+        date: item.actualObligationDate || '',
+        amount: Number(item.actualObligationAmount),
+        remarks: 'Legacy Record',
+    }];
 };
 
 export const getProposedBudgetItemLocalBlocker = (item: SubprojectDetail) => {
@@ -31,8 +47,7 @@ export const getProposedBudgetItemLocalBlocker = (item: SubprojectDetail) => {
         || item.replacementReason
     ) return 'budget adjustment or replacement history';
     if (Object.entries(item as unknown as Record<string, unknown>).some(([key, value]) => (
-        key.startsWith('actualDisbursement')
-        && (hasNonZeroValue(value) || (typeof value === 'string' && value.trim() !== ''))
+        key.startsWith('actualDisbursement') && hasNonZeroValue(value)
     ))) return 'actual disbursement records';
     return null;
 };
