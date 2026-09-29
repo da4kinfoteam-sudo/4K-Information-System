@@ -331,9 +331,9 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         isLocked: false,
                         status: sp.status,
                         recordTag: parentRecordTag,
-                        lineTag: getBudgetLineTag(d),
+                        lineTag: getBudgetLineTag(d, sp.status),
                         isSuperseded: !!d.isSuperseded,
-                        targetExcluded: parentTargetExcluded || isBudgetLineExcludedFromTargets(d),
+                        targetExcluded: parentTargetExcluded || isBudgetLineExcludedFromTargets(d, sp.status),
                         ...getPhysicalDueStatus(d.deliveryDate, isCompleted)
                     };
                 });
@@ -653,7 +653,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         }
                         return d;
                     });
-                    const completionRollup = resolveSubprojectCompletionRollup(updatedDetails);
+                    const completionRollup = resolveSubprojectCompletionRollup(updatedDetails, sp.status);
                     const normalizedUpdatedDetails = completionRollup.details;
                     const newStatus = sp.status === 'Cancelled' ? 'Cancelled' : completionRollup.status;
                     const newActualCompletionDate = newStatus === 'Completed' ? completionRollup.actualCompletionDate : null;
@@ -704,7 +704,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         }
                         return d;
                     });
-                    const completionRollup = resolveSubprojectCompletionRollup(updatedDetails);
+                    const completionRollup = resolveSubprojectCompletionRollup(updatedDetails, sp.status);
                     const normalizedUpdatedDetails = completionRollup.details;
                     const newStatus = sp.status === 'Cancelled' ? 'Cancelled' : completionRollup.status;
                     const newActualCompletionDate = newStatus === 'Completed' ? completionRollup.actualCompletionDate : null;

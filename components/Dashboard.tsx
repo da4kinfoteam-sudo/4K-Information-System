@@ -376,8 +376,8 @@ const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 }
 
-const calculateTotalBudget = (details: SubprojectDetail[]) => {
-    return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)), 0);
+const calculateTotalBudget = (details: SubprojectDetail[], parentStatus?: Subproject['status']) => {
+    return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item, parentStatus) ? 0 : getBudgetLineAmount(item)), 0);
 }
 
 // ... Icons (FinancialsIcon, AdIcon) remain same ...

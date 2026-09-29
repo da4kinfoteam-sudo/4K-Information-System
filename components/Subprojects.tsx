@@ -51,15 +51,15 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const calculateTotalBudget = (details: SubprojectDetail[]) => {
+const calculateTotalBudget = (details: SubprojectDetail[], parentStatus?: Subproject['status']) => {
     return details.reduce(
-        (total, item) => total + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)),
+        (total, item) => total + (isBudgetLineExcludedFromTargets(item, parentStatus) ? 0 : getBudgetLineAmount(item)),
         0
     );
 };
 
-const calculateCompletionRate = (details: SubprojectDetail[]) => {
-    const activeDetails = details.filter(isActiveSubprojectDetail);
+const calculateCompletionRate = (details: SubprojectDetail[], parentStatus?: Subproject['status']) => {
+    const activeDetails = details.filter(detail => isActiveSubprojectDetail(detail, parentStatus));
     if (activeDetails.length === 0) return 0;
     return Math.round((activeDetails.filter(detail => detail.actualDeliveryDate).length / activeDetails.length) * 100);
 };
@@ -224,7 +224,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 let aValue: any = '';
                 let bValue: any = '';
 
-                const getBudget = (s: Subproject) => calculateTotalBudget(s.details || []);
+                const getBudget = (s: Subproject) => calculateTotalBudget(s.details || [], s.status);
                 const getObligated = (s: Subproject) => (s.details || []).reduce((sum, d) => sum + (d.actualObligationAmount || 0), 0);
                 const getDisbursed = (s: Subproject) => (s.details || []).reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
                 const getRate = (s: Subproject) => {
@@ -658,8 +658,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                         <tbody>
                             {paginatedSubprojects.map(s => {
                                 const details = s.details || [];
-                                const budget = calculateTotalBudget(details);
-                                const completionRate = calculateCompletionRate(details);
+                                const budget = calculateTotalBudget(details, s.status);
+                                const completionRate = calculateCompletionRate(details, s.status);
                                 const commodities = s.subprojectCommodities?.map(commodity => `${commodity.name} (${commodity.area} ${commodity.typeName === 'Livestock' ? 'heads' : 'ha'})`).join(', ') || 'N/A';
                                 return <tr
                                     key={s.id}

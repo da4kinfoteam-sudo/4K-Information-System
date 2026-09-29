@@ -87,7 +87,7 @@ const formatSetList = (values: Set<string>, emptyLabel = '-') => {
 
 const getSubprojectAmount = (subproject: Subproject) => {
     return (subproject.details || []).reduce((total, detail) => {
-        return total + (isBudgetLineExcludedFromTargets(detail) ? 0 : getBudgetLineAmount(detail));
+        return total + (isBudgetLineExcludedFromTargets(detail, subproject.status) ? 0 : getBudgetLineAmount(detail));
     }, 0);
 };
 

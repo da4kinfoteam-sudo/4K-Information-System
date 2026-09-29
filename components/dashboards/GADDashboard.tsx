@@ -308,7 +308,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
             if (!linked.length) return;
             targetedWomenSubprojects += 1;
             linked.forEach(ipo => targetedWomen.add(ipo.id));
-            const rollup = resolveSubprojectCompletionRollup(item.details || []);
+            const rollup = resolveSubprojectCompletionRollup(item.details || [], item.status);
             if (rollup.isComplete && getYear(rollup.actualCompletionDate || undefined) === year) {
                 completedWomenSubprojects += 1;
                 linked.forEach(ipo => assistedWomen.add(ipo.id));
@@ -337,7 +337,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         const training = { ...trainingTargets, ...trainingActuals };
 
         const completedSubprojects = scopedProgramData.subprojects.filter(item => {
-            const rollup = resolveSubprojectCompletionRollup(item.details || []);
+            const rollup = resolveSubprojectCompletionRollup(item.details || [], item.status);
             return rollup.isComplete && getYear(rollup.actualCompletionDate || undefined) === year;
         });
         const reportedBeneficiaries = completedSubprojects.filter(item => item.actualMaleBeneficiaries != null && item.actualFemaleBeneficiaries != null);
@@ -373,7 +373,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         ouSubprojects.forEach(item => {
             const linked = resolveSubprojectIpos(item).filter(ipo => ipo.isWomenLed);
             linked.forEach(ipo => targetedWomen.add(ipo.id));
-            const rollup = resolveSubprojectCompletionRollup(item.details || []);
+            const rollup = resolveSubprojectCompletionRollup(item.details || [], item.status);
             if (rollup.isComplete && getYear(rollup.actualCompletionDate || undefined) === year) linked.forEach(ipo => assistedWomen.add(ipo.id));
         });
         ouActivities.forEach(item => {
@@ -383,7 +383,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         });
         const conducted = ouActivities.filter(item => item.type === 'Training' && item.actualDate && getYear(item.actualDate) === year);
         const completedSubprojects = ouSubprojects.filter(item => {
-            const rollup = resolveSubprojectCompletionRollup(item.details || []);
+            const rollup = resolveSubprojectCompletionRollup(item.details || [], item.status);
             return rollup.isComplete && getYear(rollup.actualCompletionDate || undefined) === year;
         });
         const reported = completedSubprojects.filter(item => item.actualMaleBeneficiaries != null && item.actualFemaleBeneficiaries != null);

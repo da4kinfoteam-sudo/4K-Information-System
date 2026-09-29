@@ -760,7 +760,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
             // Subprojects always go to Production and Livelihood as per WFP report structure
             fSubprojects.forEach(s => {
-                const amt = getActiveSubprojectBudget(s.details || []);
+                const amt = getActiveSubprojectBudget(s.details || [], s.status);
                 componentAllocation['Production and Livelihood'] += amt;
             });
 
@@ -906,7 +906,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             // Consolidation logic (same as Targets but for financial actuals)
             fSubprojects.forEach(s => {
                 const cat = 'Production and Livelihood';
-                const alloc = getActiveSubprojectBudget(s.details || []);
+                const alloc = getActiveSubprojectBudget(s.details || [], s.status);
                 const obli = s.details?.reduce((ds, d) => ds + (d.actualObligationAmount || 0), 0) || 0;
                 const disb = s.details?.reduce((ds, d) => ds + (d.actualDisbursementAmount || 0), 0) || 0;
                 componentAllocation[cat] += alloc;

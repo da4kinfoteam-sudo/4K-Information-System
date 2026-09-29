@@ -733,7 +733,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
 
         // 2. Investment Calculation
         const subprojectInvestment = completedSubprojects.reduce((sum, sp) => {
-            return sum + getActiveSubprojectBudget(sp.details || []);
+            return sum + getActiveSubprojectBudget(sp.details || [], sp.status);
         }, 0);
 
         const trainingInvestment = completedTrainings.reduce((sum, t) => {
@@ -744,7 +744,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
 
         // 4. Total Allocation (regardless of status)
         const subprojectAllocation = (subprojects || []).reduce((sum, sp) => {
-            return sum + getActiveSubprojectBudget(sp.details || []);
+            return sum + getActiveSubprojectBudget(sp.details || [], sp.status);
         }, 0);
 
         const trainingAllocation = (trainings || []).reduce((sum, t) => {
@@ -1054,8 +1054,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
         }
     };
 
-    const calculateTotalBudget = (details?: Subproject['details'] | null) => {
-        return getActiveSubprojectBudget(details || []);
+    const calculateTotalBudget = (details?: Subproject['details'] | null, status?: Subproject['status']) => {
+        return getActiveSubprojectBudget(details || [], status);
     }
     
     const commonInputClasses = "form-control";
@@ -1806,7 +1806,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                                 <td title={formatDate(project.estimatedCompletionDate)}>{formatDate(project.estimatedCompletionDate)}</td>
                                                 <td title={formatDate(project.actualCompletionDate)}>{formatDate(project.actualCompletionDate)}</td>
                                                 <td className="data-table__numeric" title={`${getSubprojectPhysicalRate(project)}%`}>{getSubprojectPhysicalRate(project)}%</td>
-                                                <td className="data-table__numeric" title={formatCurrency(calculateTotalBudget(project.details))}>{formatCompactCurrency(calculateTotalBudget(project.details))}</td>
+                                                <td className="data-table__numeric" title={formatCurrency(calculateTotalBudget(project.details, project.status))}>{formatCompactCurrency(calculateTotalBudget(project.details, project.status))}</td>
                                             </tr>
                                         ))}
                                     </tbody>

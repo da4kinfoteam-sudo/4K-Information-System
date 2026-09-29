@@ -345,7 +345,8 @@ const addLineItem = (
     }
 ) => {
     const fallbackYear = getRecordYear(record);
-    const isTaggedExclusion = isRecordOrLineExcludedFromTargets(record, line);
+    const lineParentStatus = metadata.sourceType === 'subproject' ? record.status : undefined;
+    const isTaggedExclusion = isRecordOrLineExcludedFromTargets(record, line, lineParentStatus);
     const isTargetScope = isTargetScopeRecord(record, filters);
     const isTarget = isTargetRecord(record, filters);
     const includeTarget = isTarget && !isTaggedExclusion;
@@ -380,8 +381,8 @@ const addLineItem = (
         workflowStatus: record.workflow_status,
         isRealignment: record.isRealignment,
         isSavings: record.isSavings,
-        isCancelledLine: !!line.isCancelled,
-        lineTag: getBudgetLineTag(line),
+        isCancelledLine: !!line.isCancelled && lineParentStatus !== 'Proposed',
+        lineTag: getBudgetLineTag(line, lineParentStatus),
         excludedTargetAllocation,
         operatingUnit: metadata.operatingUnit,
         location: metadata.location,

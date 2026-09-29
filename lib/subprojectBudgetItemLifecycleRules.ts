@@ -1,4 +1,4 @@
-import type { ObligationRecord, SubprojectDetail } from '../constants';
+import type { ObligationRecord, Subproject, SubprojectDetail } from '../constants';
 
 const hasNonZeroValue = (value: unknown) => {
     const parsed = Number(value);
@@ -21,33 +21,35 @@ export const getSubprojectBudgetItemObligations = (
     }];
 };
 
-export const getProposedBudgetItemLocalBlocker = (item: SubprojectDetail) => {
-    if ((item.obligations?.length || 0) > 0 || hasNonZeroValue(item.actualObligationAmount) || item.actualObligationDate) {
-        return 'actual obligation records';
-    }
-    if ((item.disbursements?.length || 0) > 0 || hasNonZeroValue(item.actualDisbursementAmount) || item.actualDisbursementDate) {
-        return 'actual disbursement records';
-    }
-    if (
-        item.actualDeliveryDate
-        || hasNonZeroValue(item.actualNumberOfUnits)
-        || item.isCompleted
-        || hasNonZeroValue(item.actualAmount)
-    ) return 'physical accomplishment records';
-    if (
-        item.isCancelled
-        || item.isRealignment
-        || item.isSavings
-        || item.isSuperseded
-        || item.isAdjustmentItem
-        || item.adjustmentType === 'Replacement'
-        || item.adjustmentType === 'Additional Item'
-        || item.replacementOfItemId !== undefined && item.replacementOfItemId !== null
-        || (item.replacedByItemIds?.length || 0) > 0
-        || item.replacementReason
-    ) return 'budget adjustment or replacement history';
-    if (Object.entries(item as unknown as Record<string, unknown>).some(([key, value]) => (
-        key.startsWith('actualDisbursement') && hasNonZeroValue(value)
-    ))) return 'actual disbursement records';
+export type SubprojectBudgetItemRemovalAction = 'delete' | 'cancel' | 'block';
+
+export const getSubprojectBudgetItemRemovalAction = (
+    status: Subproject['status'] | undefined,
+    isSavedLine: boolean,
+    hasActuals: boolean,
+): SubprojectBudgetItemRemovalAction => {
+    if (status === 'Proposed') return 'delete';
+    if (status === 'Ongoing' && (isSavedLine || hasActuals)) return 'cancel';
+    if (isSavedLine || hasActuals) return 'block';
+    return 'delete';
+};
+
+export const canEditSubprojectBudgetItem = (
+    status: Subproject['status'] | undefined,
+    isSuperseded: boolean,
+) => status === 'Proposed' || !isSuperseded;
+
+export const removeSubprojectBudgetItemById = <T extends { id?: number | string | null }>(
+    items: T[],
+    itemId: number | string,
+) => items.filter(item => item.id === undefined || item.id === null || String(item.id) !== String(itemId));
+
+export const getSubprojectBudgetSaveExpectedStatus = (
+    status: Subproject['status'] | undefined,
+    hasProposedBudgetChanges: boolean,
+    hasOngoingCancellationChanges: boolean,
+): Subproject['status'] | null => {
+    if (status === 'Proposed' && hasProposedBudgetChanges) return 'Proposed';
+    if (status === 'Ongoing' && hasOngoingCancellationChanges) return 'Ongoing';
     return null;
 };

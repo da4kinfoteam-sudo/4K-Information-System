@@ -139,8 +139,8 @@ const parseMonthToDate = (input: any): string => {
 // --- SUBPROJECTS ---
 
 export const downloadSubprojectsReport = (subprojects: Subproject[], fundSources: RefFundSource[] = []) => {
-    const calculateTotalBudget = (details: SubprojectDetail[]) => {
-        return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item) ? 0 : item.pricePerUnit * item.numberOfUnits), 0);
+    const calculateTotalBudget = (details: SubprojectDetail[], status?: Subproject['status']) => {
+        return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item, status) ? 0 : item.pricePerUnit * item.numberOfUnits), 0);
     };
 
     const data = subprojects.map(s => ({
@@ -154,7 +154,7 @@ export const downloadSubprojectsReport = (subprojects: Subproject[], fundSources
         'Fund Source UID': s.fundSourceUid ?? '',
         'Fund Source': getFundSourceLabel(s, fundSources),
         'Tier': s.tier,
-        Budget: calculateTotalBudget(s.details),
+        Budget: calculateTotalBudget(s.details, s.status),
         'End Date': s.estimatedCompletionDate,
         'Actual Male Beneficiaries': s.actualMaleBeneficiaries ?? '',
         'Actual Female Beneficiaries': s.actualFemaleBeneficiaries ?? '',

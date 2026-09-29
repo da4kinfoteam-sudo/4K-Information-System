@@ -19,8 +19,13 @@ import { ConfirmDialog } from './ui/enterprise';
 import { getActualDisbursementSummary, getActualObligationSummary, hasFinancialActuals } from '../lib/financialActualSummary';
 import { getActualObligationValidationError, hasActualObligationRecords } from '../lib/financialObligationUtils';
 import { fetchFinancialObligationsForParent, replaceFinancialObligationRecords } from '../lib/financialObligationSync';
-import { checkProposedBudgetItemDeletion } from '../lib/subprojectBudgetItemLifecycle';
-import { getSubprojectBudgetItemObligations } from '../lib/subprojectBudgetItemLifecycleRules';
+import {
+    canEditSubprojectBudgetItem,
+    getSubprojectBudgetItemObligations,
+    getSubprojectBudgetItemRemovalAction,
+    getSubprojectBudgetSaveExpectedStatus,
+    removeSubprojectBudgetItemById,
+} from '../lib/subprojectBudgetItemLifecycleRules';
 import {
     BudgetItemAdjustmentHistory,
     ensureOriginalBudgetSnapshot,
@@ -109,6 +114,8 @@ interface SubprojectDetailProps {
     refLivestock: RefLivestock[];
     fundSources: RefFundSource[];
 }
+
+type SubprojectDetailEditMode = 'none' | 'full' | 'details' | 'commodity' | 'budget' | 'accomplishment';
 
 // Extended interface for local editing including completion flag
 interface SubprojectDetailInput extends Omit<SubprojectDetailType, 'id'> {
@@ -229,7 +236,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const canDeleteDriveFiles = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
 
     // Edit Modes: 'full' (legacy), 'details' (exclusive), 'commodity' (exclusive), 'budget' (exclusive), 'accomplishment'
-    const [editMode, setEditMode] = useState<'none' | 'full' | 'details' | 'commodity' | 'budget' | 'accomplishment'>('none');
+    const [editMode, setEditMode] = useState<SubprojectDetailEditMode>('none');
 
     useEffect(() => {
         onEditModeChange?.(editMode === 'full' ? 'details' : editMode);
@@ -250,8 +257,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
     const [budgetItemRemovalError, setBudgetItemRemovalError] = useState<{ itemId: string; text: string } | null>(null);
-    const [checkingBudgetItemId, setCheckingBudgetItemId] = useState<string | null>(null);
-    const budgetItemRemovalLock = useRef(false);
+    const draftContextRef = useRef<{
+        subprojectId: number;
+        editMode: SubprojectDetailEditMode;
+        status: Subproject['status'];
+    } | null>(null);
     const [monthLockMessage, setMonthLockMessage] = useState('');
     const [accomplishmentRemarks, setAccomplishmentRemarks] = useState(subproject.accomplishmentRemarks || '');
     const [accomplishmentItemModalOpen, setAccomplishmentItemModalOpen] = useState(false);
@@ -451,6 +461,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     }, []);
 
     useEffect(() => {
+        const sameDraftContext = draftContextRef.current?.subprojectId === subproject.id
+            && draftContextRef.current?.editMode === editMode;
+        if (sameDraftContext && editMode !== 'none') return;
+        draftContextRef.current = { subprojectId: subproject.id, editMode, status: subproject.status };
+
         let cancelled = false;
         setEditedSubproject(subproject);
         setAccomplishmentRemarks(subproject.accomplishmentRemarks || '');
@@ -584,16 +599,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const galleryFiles = useMemo(() => driveFiles.filter(file => getPersistedDriveUploadSection(file) === 'gallery'), [driveFiles]);
     const documentFiles = useMemo(() => driveFiles.filter(file => getPersistedDriveUploadSection(file) === 'files'), [driveFiles]);
 
+    const workingDetails = editMode !== 'none'
+        ? detailItems as SubprojectDetailType[]
+        : subproject.details;
     const projectCompletionStats = useMemo(() => {
-        const rollup = resolveSubprojectCompletionRollup(subproject.details);
+        const rollup = resolveSubprojectCompletionRollup(workingDetails, subproject.status);
         if (rollup.activeCount === 0) return { percent: 0, text: '0%' };
         const percent = (rollup.completedCount / rollup.activeCount) * 100;
         return { percent, text: `${percent.toFixed(0)}%` };
-    }, [subproject.details]);
+    }, [workingDetails, subproject.status]);
 
     useEffect(() => {
         if (editMode !== 'accomplishment' || detailItems.length === 0) return;
-        const rollup = resolveSubprojectCompletionRollup(detailItems as SubprojectDetailType[]);
+        const rollup = resolveSubprojectCompletionRollup(detailItems as SubprojectDetailType[], subproject.status);
         setEditedSubproject(prev => {
             if (prev.status === 'Cancelled') return prev;
             const nextStatus = rollup.isComplete ? 'Completed' : 'Ongoing';
@@ -601,26 +619,23 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             if (prev.status === nextStatus && (prev.actualCompletionDate || '') === nextCompletionDate) return prev;
             return { ...prev, status: nextStatus, actualCompletionDate: nextCompletionDate };
         });
-    }, [detailItems, editMode]);
+    }, [detailItems, editMode, subproject.status]);
 
-    const workingDetails = editMode !== 'none'
-        ? detailItems as SubprojectDetailType[]
-        : subproject.details;
     const totalBudget = useMemo(
-        () => getActiveSubprojectBudget(workingDetails),
-        [workingDetails]
+        () => getActiveSubprojectBudget(workingDetails, subproject.status),
+        [workingDetails, subproject.status]
     );
     const actualObligationTotal = useMemo(
-        () => getSubprojectActualObligation(subproject.details),
-        [subproject.details]
+        () => getSubprojectActualObligation(workingDetails),
+        [workingDetails]
     );
     const actualDisbursementTotal = useMemo(
-        () => getSubprojectActualDisbursement(subproject.details),
-        [subproject.details]
+        () => getSubprojectActualDisbursement(workingDetails),
+        [workingDetails]
     );
     const deliveredItemCount = useMemo(
-        () => subproject.details.filter(item => isActiveSubprojectDetail(item) && !!item.actualDeliveryDate).length,
-        [subproject.details]
+        () => workingDetails.filter(item => isActiveSubprojectDetail(item, subproject.status) && !!item.actualDeliveryDate).length,
+        [workingDetails, subproject.status]
     );
     const linkedIpo = useMemo(
         () => ipos.find(ipo => Number(ipo.id) === Number(subproject.ipo_id))
@@ -628,16 +643,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         [ipos, subproject.indigenousPeopleOrganization, subproject.ipo_id]
     );
 
-    const calculateTotalBudget = (details: SubprojectDetailType[]) => getActiveSubprojectBudget(details);
+    const calculateTotalBudget = (details: SubprojectDetailType[]) => getActiveSubprojectBudget(details, subproject.status);
 
-    const budgetAdjustmentSummary = useMemo(() => summarizeBudgetAdjustments(detailItems), [detailItems]);
+    const budgetAdjustmentSummary = useMemo(
+        () => summarizeBudgetAdjustments(detailItems, subproject.status),
+        [detailItems, subproject.status]
+    );
     const originalApprovedBudget = useMemo(
         () => getOriginalSubprojectBudget(workingDetails),
         [workingDetails]
     );
     const adjustedBudget = useMemo(
-        () => getActiveSubprojectBudget(workingDetails),
-        [workingDetails]
+        () => getActiveSubprojectBudget(workingDetails, subproject.status),
+        [workingDetails, subproject.status]
     );
     const adjustedBudgetVariance = adjustedBudget - originalApprovedBudget;
     const budgetOverage = Math.max(adjustedBudget, budgetAdjustmentSummary.actualObligated) - originalApprovedBudget;
@@ -749,7 +767,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         if (name === 'status') {
             const newStatus = value as Subproject['status'];
             if (newStatus === 'Completed') {
-                const rollup = resolveSubprojectCompletionRollup(detailItems as SubprojectDetailType[]);
+                const rollup = resolveSubprojectCompletionRollup(detailItems as SubprojectDetailType[], subproject.status);
                 if (!rollup.isComplete) {
                     alert('A subproject can only be marked Completed after all non-cancelled delivery items have an actual delivery date and are marked completed.');
                     return;
@@ -903,7 +921,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
             // Removed start date validation
 
-            if ((currentDetail.isCancelled || currentDetail.isRealignment || currentDetail.isSavings) && !currentDetail.adjustmentReason.trim()) {
+            if (subproject.status !== 'Proposed'
+                && (currentDetail.isCancelled || currentDetail.isRealignment || currentDetail.isSavings)
+                && !currentDetail.adjustmentReason.trim()) {
                 setBudgetItemFormMessage({
                     type: 'error',
                     text: 'A short reason is required when adding a cancelled, realignment, or savings budget item.',
@@ -912,7 +932,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             }
 
             const originalEditingDetail = editingDetailIndex === null ? null : detailItems[editingDetailIndex];
-            if (currentDetail.isCancelled && subproject.status !== 'Ongoing' && !originalEditingDetail?.isCancelled) {
+            const preserveProposedActuals = subproject.status === 'Proposed' && originalEditingDetail !== null;
+            if (subproject.status !== 'Proposed' && currentDetail.isCancelled && subproject.status !== 'Ongoing' && !originalEditingDetail?.isCancelled) {
                 setBudgetItemFormMessage({ type: 'error', text: 'Budget items can only be marked Cancelled while the subproject is Ongoing.' });
                 return;
             }
@@ -924,13 +945,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 // Ensure ID is generated for new items so tracking works later
                 id: Date.now() + Math.random(),
                 // Default accomplishment fields
-                actualNumberOfUnits: 0,
-                actualDeliveryDate: '',
-                actualObligationDate: '',
-                actualDisbursementDate: '',
-                actualAmount: 0,
-                actualObligationAmount: 0,
-                actualDisbursementAmount: 0
+                actualNumberOfUnits: preserveProposedActuals ? originalEditingDetail?.actualNumberOfUnits : 0,
+                actualDeliveryDate: preserveProposedActuals ? originalEditingDetail?.actualDeliveryDate : '',
+                actualObligationDate: preserveProposedActuals ? originalEditingDetail?.actualObligationDate : '',
+                actualDisbursementDate: preserveProposedActuals ? originalEditingDetail?.actualDisbursementDate : '',
+                actualAmount: preserveProposedActuals ? originalEditingDetail?.actualAmount : 0,
+                actualObligationAmount: preserveProposedActuals ? originalEditingDetail?.actualObligationAmount : 0,
+                actualDisbursementAmount: preserveProposedActuals ? originalEditingDetail?.actualDisbursementAmount : 0,
+                obligations: preserveProposedActuals ? originalEditingDetail?.obligations : currentDetail.obligations || [],
+                disbursements: preserveProposedActuals ? originalEditingDetail?.disbursements : currentDetail.disbursements || [],
             }));
 
             let updatedDetailItems: SubprojectDetailInput[] = [];
@@ -938,7 +961,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             if (editingDetailIndex !== null) {
                 const beforeItem = detailItems[editingDetailIndex];
                 updatedDetailItems = detailItems.map((item, index) => index === editingDetailIndex ? { ...item, ...newItem, id: item.id } : item);
-                if (currentDetail.isCancelled || currentDetail.isRealignment || currentDetail.isSavings || beforeItem.isRealignment || beforeItem.isSavings || beforeItem.isCancelled) {
+                if (subproject.status !== 'Proposed'
+                    && (currentDetail.isCancelled || currentDetail.isRealignment || currentDetail.isSavings || beforeItem.isRealignment || beforeItem.isSavings || beforeItem.isCancelled)) {
                     const action: BudgetItemAdjustmentHistory['action'] = currentDetail.isCancelled ? 'cancel'
                         : currentDetail.isRealignment ? 'tag_realignment'
                             : currentDetail.isSavings ? 'tag_savings'
@@ -955,7 +979,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 setEditingDetailIndex(null);
             } else {
                 updatedDetailItems = [...detailItems, newItem];
-                if (newItem.isRealignment || newItem.isSavings) {
+                if (subproject.status !== 'Proposed' && (newItem.isRealignment || newItem.isSavings)) {
                     await persistBudgetAdjustmentHistory(
                         'create_adjustment_item',
                         null,
@@ -1003,54 +1027,29 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }
     };
 
-    const handleRemoveDetail = async (indexToRemove: number) => {
-        if (budgetItemRemovalLock.current) return;
+    const handleRemoveDetail = (indexToRemove: number) => {
         const item = detailItems[indexToRemove];
-        if (!item || item.isSuperseded) return;
+        if (!item || !canEditSubprojectBudgetItem(subproject.status, !!item.isSuperseded)) return;
         const itemId = String(item.id);
         setBudgetItemRemovalError(null);
-        const isSavedLine = !!(item.id && (subproject.details || []).some(detail => detail.id === item.id));
+        const isSavedLine = (subproject.details || []).some(detail => String(detail.id) === itemId);
         const hasActuals = hasActualObligationRecords(item) || ((item.disbursements?.length || 0) > 0) || Number(item.actualDisbursementAmount) > 0;
+        const removalAction = getSubprojectBudgetItemRemovalAction(subproject.status, isSavedLine, hasActuals);
 
-        if (subproject.status === 'Proposed' && isSavedLine) {
-            setBudgetItemFormMessage(null);
-            budgetItemRemovalLock.current = true;
-            setCheckingBudgetItemId(itemId);
-            try {
-                const blocker = await checkProposedBudgetItemDeletion(subproject.id, item as SubprojectDetailType);
-                if (blocker) {
-                    setBudgetItemRemovalError({ itemId, text: blocker });
-                    return;
-                }
-                setDetailItems(prev => prev.filter(detail => String(detail.id) !== itemId));
-                if (editingDetailIndex === indexToRemove) {
-                    handleCancelDetailEdit();
-                } else if (editingDetailIndex !== null && editingDetailIndex > indexToRemove) {
-                    setEditingDetailIndex(editingDetailIndex - 1);
-                }
-            } catch (error) {
-                console.error('Unable to check the proposed budget item for deletion:', error);
-                setBudgetItemRemovalError({ itemId, text: 'Unable to verify this item for deletion. Please try again.' });
-            } finally {
-                budgetItemRemovalLock.current = false;
-                setCheckingBudgetItemId(null);
-            }
-            return;
-        }
-
-        if (subproject.status === 'Ongoing' && item.isCancelled) {
+        if (removalAction === 'cancel' && subproject.status === 'Ongoing' && item.isCancelled) {
             setBudgetItemRemovalError({ itemId, text: 'This item is already cancelled and is retained for its adjustment history.' });
             return;
         }
 
-        if (isSavedLine || hasActuals) {
-            if (subproject.status !== 'Ongoing') {
-                setBudgetItemRemovalError({
-                    itemId,
-                    text: 'Saved budget items can only be deleted while Proposed or cancelled while Ongoing. This item was not changed.',
-                });
-                return;
-            }
+        if (removalAction === 'block') {
+            setBudgetItemRemovalError({
+                itemId,
+                text: 'Saved budget items can only be deleted while Proposed or cancelled while Ongoing. This item was not changed.',
+            });
+            return;
+        }
+
+        if (removalAction === 'cancel') {
             const reason = requestAdjustmentReason('cancelling this budget item');
             if (!reason) return;
             const afterItem = { ...item, isCancelled: true, isRealignment: false, isSavings: false, adjustmentReason: reason };
@@ -1059,17 +1058,21 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             return;
         }
 
-        setDetailItems(prev => prev.filter((_, index) => index !== indexToRemove));
-        if (editingDetailIndex === indexToRemove) {
+        const currentIndex = detailItems.findIndex(detail => String(detail.id) === itemId);
+        if (currentIndex < 0) return;
+        setDetailItems(prev => item.id === undefined || item.id === null
+            ? prev.filter(detail => detail !== item)
+            : removeSubprojectBudgetItemById(prev, item.id as number));
+        if (editingDetailIndex === currentIndex) {
             handleCancelDetailEdit();
-        } else if (editingDetailIndex !== null && editingDetailIndex > indexToRemove) {
+        } else if (editingDetailIndex !== null && editingDetailIndex > currentIndex) {
             setEditingDetailIndex(editingDetailIndex - 1);
         }
     };
 
     const handleEditParticular = (indexToEdit: number) => {
         const itemToEdit = normalizeBudgetLineStatus(detailItems[indexToEdit]);
-        if (!itemToEdit || itemToEdit.isSuperseded) return;
+        if (!itemToEdit || !canEditSubprojectBudgetItem(subproject.status, !!itemToEdit.isSuperseded)) return;
         setCurrentDetail({
             ...itemToEdit,
             pricePerUnit: String(itemToEdit.pricePerUnit),
@@ -1557,7 +1560,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
-        if (budgetItemRemovalLock.current) return;
 
         if (editMode === 'accomplishment') {
             const obligationError = detailItems
@@ -1668,28 +1670,33 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             if (cleanD.actualDeliveryDate === '') (cleanD as any).actualDeliveryDate = null;
             if (cleanD.obligationMonth === '') (cleanD as any).obligationMonth = null;
             if (cleanD.disbursementMonth === '') (cleanD as any).disbursementMonth = null;
-            if (cleanD.obligations && cleanD.obligations.length === 0) {
-                 cleanD.actualObligationAmount = 0;
-                 cleanD.actualObligationDate = undefined;
-            } else if (cleanD.obligations && cleanD.obligations.length > 0) {
-                 const latestOb = [...cleanD.obligations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-                 cleanD.actualObligationAmount = cleanD.obligations.reduce((sum, o) => sum + (o.amount || 0), 0);
-                 cleanD.actualObligationDate = latestOb.date;
-            }
-            if (cleanD.disbursements && cleanD.disbursements.length === 0) {
-                 cleanD.actualDisbursementAmount = 0;
-                 cleanD.actualDisbursementDate = undefined;
-            } else if (cleanD.disbursements && cleanD.disbursements.length > 0) {
-                 const latestDb = [...cleanD.disbursements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-                 cleanD.actualDisbursementAmount = cleanD.disbursements.reduce((sum, d) => sum + (d.amount || 0), 0);
-                 cleanD.actualDisbursementDate = latestDb.date;
+            const preserveProposedBudgetActuals = editMode === 'budget' && subproject.status === 'Proposed';
+            if (!preserveProposedBudgetActuals) {
+                if (cleanD.obligations && cleanD.obligations.length === 0) {
+                     cleanD.actualObligationAmount = 0;
+                     cleanD.actualObligationDate = undefined;
+                } else if (cleanD.obligations && cleanD.obligations.length > 0) {
+                     const latestOb = [...cleanD.obligations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                     cleanD.actualObligationAmount = cleanD.obligations.reduce((sum, o) => sum + (o.amount || 0), 0);
+                     cleanD.actualObligationDate = latestOb.date;
+                }
+                if (cleanD.disbursements && cleanD.disbursements.length === 0) {
+                     cleanD.actualDisbursementAmount = 0;
+                     cleanD.actualDisbursementDate = undefined;
+                } else if (cleanD.disbursements && cleanD.disbursements.length > 0) {
+                     const latestDb = [...cleanD.disbursements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                     cleanD.actualDisbursementAmount = cleanD.disbursements.reduce((sum, d) => sum + (d.amount || 0), 0);
+                     cleanD.actualDisbursementDate = latestDb.date;
+                }
             }
             return cleanD;
         });
 
-        const completionRollup = resolveSubprojectCompletionRollup(cleanDetails as SubprojectDetailType[]);
+        const completionRollup = resolveSubprojectCompletionRollup(cleanDetails as SubprojectDetailType[], subproject.status);
         const normalizedCleanDetails = completionRollup.details;
-        const nextStatus = editedSubproject.status === 'Cancelled'
+        const nextStatus = editMode === 'budget' && subproject.status === 'Proposed'
+            ? 'Proposed'
+            : editedSubproject.status === 'Cancelled'
             ? 'Cancelled'
             : completionRollup.isComplete
                 ? 'Completed'
@@ -1747,19 +1754,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             history: [...(subproject.history || []), historyEntry]
         };
 
-        const hasProposedBudgetItemDeletion = editMode === 'budget'
-            && subproject.status === 'Proposed'
-            && (subproject.details || []).some(savedDetail => (
-                !normalizedCleanDetails.some(detail => String(detail.id) === String(savedDetail.id))
-            ));
         const hasOngoingBudgetItemCancellation = editMode === 'budget'
             && subproject.status === 'Ongoing'
             && pendingAdjustmentHistory.some(entry => entry.action === 'cancel' || entry.action === 'restore');
-        const guardedBudgetStatus = hasProposedBudgetItemDeletion
-            ? 'Proposed'
-            : hasOngoingBudgetItemCancellation
-                ? 'Ongoing'
-                : null;
+        const budgetEditStartStatus = draftContextRef.current?.subprojectId === subproject.id
+            && draftContextRef.current.editMode === editMode
+            ? draftContextRef.current.status
+            : subproject.status;
+        const guardedBudgetStatus = getSubprojectBudgetSaveExpectedStatus(
+            budgetEditStartStatus,
+            editMode === 'budget',
+            hasOngoingBudgetItemCancellation,
+        );
 
         const dateFields = ['startDate', 'estimatedCompletionDate', 'actualCompletionDate'];
         dateFields.forEach(field => {
@@ -1780,9 +1786,21 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     .maybeSingle();
                 if (error) throw error;
                 if (!data) {
+                    const { data: latestRecord, error: refreshError } = await supabase
+                        .from('subprojects')
+                        .select('*')
+                        .eq('id', subproject.id)
+                        .maybeSingle();
+                    if (refreshError) throw refreshError;
+                    if (latestRecord && latestRecord.status !== guardedBudgetStatus) {
+                        onUpdateSubproject(latestRecord as Subproject, { persisted: true });
+                        window.alert(`The subproject status changed to ${latestRecord.status}. Your draft was discarded and the current record was refreshed; reopen it to use the correct budget-item workflow.`);
+                        onEditModeChange('none');
+                        return;
+                    }
                     setBudgetItemFormMessage({
                         type: 'error',
-                        text: `This subproject is no longer ${guardedBudgetStatus}. Reload it before changing its budget items; no changes were saved.`,
+                        text: `The subproject could not be saved while it was ${guardedBudgetStatus}. No changes were saved.`,
                     });
                     return;
                 }
@@ -1791,7 +1809,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 console.error('Unable to save Proposed subproject budget item changes:', error);
                 setBudgetItemFormMessage({
                     type: 'error',
-                    text: error instanceof Error ? `Unable to save the budget changes: ${error.message}` : 'Unable to save the budget changes. No deletion was confirmed.',
+                    text: error instanceof Error ? `Unable to save the budget changes: ${error.message}` : 'Unable to save the budget changes.',
                 });
                 return;
             }
@@ -2245,13 +2263,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         <legend>Budget Items</legend>
                                         <div className="budget-item-list">
                                             {detailItems.map((d, index) => (
-                                                <div key={index} className={`budget-item-card ${editingDetailIndex === index ? 'budget-item-card--editing' : ''} ${isBudgetLineExcludedFromTargets(d) ? 'budget-item-card--excluded' : ''} ${d.isCancelled ? 'budget-item-card--cancelled' : ''} ${d.isRealignment ? 'budget-item-card--realignment' : ''} ${d.isSavings ? 'budget-item-card--savings' : ''}`}>
+                                                <div key={index} className={`budget-item-card ${editingDetailIndex === index ? 'budget-item-card--editing' : ''} ${isBudgetLineExcludedFromTargets(d, subproject.status) ? 'budget-item-card--excluded' : ''} ${subproject.status !== 'Proposed' && d.isCancelled ? 'budget-item-card--cancelled' : ''} ${d.isRealignment ? 'budget-item-card--realignment' : ''} ${d.isSavings ? 'budget-item-card--savings' : ''}`}>
                                                     <div className="budget-item-card__summary">
                                                         <span className="budget-item-card__title">
                                                             {d.particulars}
-                                                            {getBudgetLineTag(d) && (
-                                                                <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(d)?.toLowerCase()}`}>
-                                                                    {getBudgetLineTag(d)}
+                                                            {getBudgetLineTag(d, subproject.status) && (
+                                                                <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(d, subproject.status)?.toLowerCase()}`}>
+                                                                    {getBudgetLineTag(d, subproject.status)}
                                                                 </span>
                                                             )}
                                                         </span>
@@ -2259,7 +2277,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                             <div>{d.uacsCode} {availableUacsCodes.find(c => c.code === d.uacsCode)?.desc ? `- ${availableUacsCodes.find(c => c.code === d.uacsCode)?.desc}` : ''}</div>
                                                             <div>{d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}</div>
                                                             <span className="block mt-1">Obligation: {formatMonthYear(d.obligationMonth)} | Disbursement: {formatMonthYear(d.disbursementMonth)}</span>
-                                                            {isBudgetLineExcludedFromTargets(d) && (
+                                                            {isBudgetLineExcludedFromTargets(d, subproject.status) && (
                                                                 <span className="budget-line-exclusion-note">{d.adjustmentReason || 'No adjustment justification recorded.'}</span>
                                                             )}
                                                         </div>
@@ -2272,27 +2290,22 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     <div className="budget-item-card__actions">
                                                         <span className="budget-item-card__total">{formatCurrency(getBudgetLineAmount(d))}</span>
                                                         <div className="budget-item-card__buttons">
-                                                            <button type="button" onClick={() => handleEditParticular(index)} disabled={!!d.isSuperseded} className="table-action table-action--primary" title={d.isSuperseded ? 'Replaced item is read-only' : 'Edit item'}>
+                                                                <button type="button" onClick={() => handleEditParticular(index)} disabled={!canEditSubprojectBudgetItem(subproject.status, !!d.isSuperseded)} className="table-action table-action--primary" title={d.isSuperseded && subproject.status !== 'Proposed' ? 'Replaced item is read-only' : 'Edit item'}>
                                                                 <Pencil className="btn-symbol" aria-hidden="true" />
                                                             </button>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveDetail(index)}
-                                                                disabled={checkingBudgetItemId !== null || !!d.isSuperseded || (subproject.status !== 'Proposed' && subproject.status !== 'Ongoing' && !!(d.id && subproject.details.some(saved => String(saved.id) === String(d.id))))}
-                                                                aria-busy={checkingBudgetItemId === String(d.id)}
+                                                                disabled={!canEditSubprojectBudgetItem(subproject.status, !!d.isSuperseded) || (subproject.status !== 'Proposed' && subproject.status !== 'Ongoing' && !!(d.id && subproject.details.some(saved => String(saved.id) === String(d.id))))}
                                                                 className="table-action table-action--danger"
-                                                                title={checkingBudgetItemId === String(d.id)
-                                                                    ? 'Checking budget item'
-                                                                    : d.isSuperseded
+                                                                title={d.isSuperseded && subproject.status !== 'Proposed'
                                                                     ? 'Replaced item is read-only'
                                                                     : subproject.status === 'Ongoing'
                                                                         ? 'Cancel planned budget item'
                                                                         : subproject.status === 'Proposed'
                                                                             ? 'Delete proposed budget item'
                                                                             : 'Saved items cannot be removed at this status'}
-                                                            >{checkingBudgetItemId === String(d.id)
-                                                                ? <Loader2 className="btn-symbol animate-spin" aria-hidden="true" />
-                                                                : <Trash2 className="btn-symbol" aria-hidden="true" />}</button>
+                                                            ><Trash2 className="btn-symbol" aria-hidden="true" /></button>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2846,7 +2859,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                         </div>
                         <div className="detail-edit-footer">
                             <button type="button" onClick={() => setEditMode('none')} className="btn btn-secondary">Cancel</button>
-                            <button type="submit" className="btn btn-primary" disabled={checkingBudgetItemId !== null}>Save Changes</button>
+                            <button type="submit" className="btn btn-primary">Save Changes</button>
                         </div>
                     </form>
                 </div>
@@ -3112,7 +3125,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 <RecordKpiCard label="Disbursed" value={formatRecordMetricCurrency(actualDisbursementTotal)} title={formatCurrency(actualDisbursementTotal)} note={`${totalBudget > 0 ? Math.round((actualDisbursementTotal / totalBudget) * 100) : 0}% of budget`} icon={<Banknote />} />
                 <RecordKpiCard label="Physical" value={projectCompletionStats.text} note="Items delivered" icon={<PackageCheck />} />
                 <RecordKpiCard label="Commodities" value={formatRecordMetricNumber((subproject.subprojectCommodities || []).length)} title={(subproject.subprojectCommodities || []).length.toLocaleString()} note="Target production lines" icon={<Sprout />} />
-                <RecordKpiCard label="Deliveries" value={formatRecordMetricNumber(deliveredItemCount)} title={deliveredItemCount.toLocaleString()} note={`${subproject.details.length.toLocaleString()} budget items`} icon={<Layers />} />
+                <RecordKpiCard label="Deliveries" value={formatRecordMetricNumber(deliveredItemCount)} title={deliveredItemCount.toLocaleString()} note={`${workingDetails.length.toLocaleString()} budget items`} icon={<Layers />} />
             </RecordKpiGrid>
 
             {/* Main Content Grid */}
@@ -3235,12 +3248,12 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         const completionPct = (actualUnits / targetUnits) * 100;
 
                                         return (
-                                            <tr key={detail.id} className={`${isBudgetLineExcludedFromTargets(detail) ? 'budget-item-card--excluded' : ''} ${detail.isCancelled ? 'budget-item-card--cancelled' : ''} ${detail.isRealignment ? 'budget-item-card--realignment' : ''} ${detail.isSavings ? 'budget-item-card--savings' : ''}`}>
+                                            <tr key={detail.id} className={`${isBudgetLineExcludedFromTargets(detail, subproject.status) ? 'budget-item-card--excluded' : ''} ${subproject.status !== 'Proposed' && detail.isCancelled ? 'budget-item-card--cancelled' : ''} ${detail.isRealignment ? 'budget-item-card--realignment' : ''} ${detail.isSavings ? 'budget-item-card--savings' : ''}`}>
                                                 <td className="data-table__primary">{detail.particulars}</td>
                                                 <td>
-                                                    {getBudgetLineTag(detail) ? (
-                                                        <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(detail)?.toLowerCase()}`}>
-                                                            {getBudgetLineTag(detail)}
+                                                    {getBudgetLineTag(detail, subproject.status) ? (
+                                                        <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(detail, subproject.status)?.toLowerCase()}`}>
+                                                            {getBudgetLineTag(detail, subproject.status)}
                                                         </span>
                                                     ) : (
                                                         <span>-</span>
