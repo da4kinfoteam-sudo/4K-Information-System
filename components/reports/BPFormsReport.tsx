@@ -220,7 +220,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     itemParticular: d.particulars,
                     isRealignment: sp.isRealignment || d.isRealignment,
                     isSavings: sp.isSavings || d.isSavings,
-                    isCancelled: sp.status === 'Cancelled' || d.isCancelled,
+                    isCancelled: sp.status === 'Cancelled' || (sp.status === 'Ongoing' && d.isCancelled),
                     isSuperseded: d.isSuperseded
                 });
             });

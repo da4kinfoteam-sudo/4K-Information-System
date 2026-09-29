@@ -135,7 +135,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             // Cost Aggregation
             const cost = isParentRealignmentOrSavings(sp)
                 ? 0
-                : sp.details.reduce((sum, d) => sum + (isBudgetLineExcludedFromTargets(d) ? 0 : getBudgetLineAmount(d)), 0);
+                : sp.details.reduce((sum, d) => sum + (isBudgetLineExcludedFromTargets(d, sp.status) ? 0 : getBudgetLineAmount(d)), 0);
             structure['Production and Livelihood'].cost += cost;
         });
 

@@ -15,8 +15,8 @@ export const isSupersededSubprojectDetail = (detail?: Pick<SubprojectDetail, 'is
     !!detail?.isSuperseded
 );
 
-export const isActiveSubprojectDetail = (detail: SubprojectDetail) => (
-    !detail.isCancelled && !isSupersededSubprojectDetail(detail)
+export const isActiveSubprojectDetail = (detail: SubprojectDetail, parentStatus?: string) => (
+    (parentStatus === 'Proposed' || !detail.isCancelled) && !isSupersededSubprojectDetail(detail)
 );
 
 export const isSubprojectAdjustmentItem = (detail: SubprojectDetail) => (
@@ -31,10 +31,10 @@ export const getOriginalSubprojectBudget = (details: SubprojectDetail[] = []) =>
             : getBudgetLineAmount(detail)
     ), 0);
 
-export const getActiveSubprojectBudget = (details: SubprojectDetail[] = []) => details
-    .filter(isActiveSubprojectDetail)
+export const getActiveSubprojectBudget = (details: SubprojectDetail[] = [], parentStatus?: string) => details
+    .filter(detail => isActiveSubprojectDetail(detail, parentStatus))
     .reduce((total, detail) => total + (
-        isBudgetLineExcludedFromTargets(detail) ? 0 : getBudgetLineAmount(detail)
+        isBudgetLineExcludedFromTargets(detail, parentStatus) ? 0 : getBudgetLineAmount(detail)
     ), 0);
 
 /** Posted actuals remain part of the financial record even after a physical item is superseded. */

@@ -1865,9 +1865,13 @@ const AppContent: React.FC = () => {
                             onBack={() => navigateTo(selectedSubproject
                                 ? buildContextualRecordPath('/subproject-detail', selectedSubproject.id)
                                 : '/subprojects')}
-                            onUpdateSubproject={(updated) => {
+                            onUpdateSubproject={(updated, options) => {
                                 if (selectedSubproject) {
-                                     setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                     if (options?.persisted) {
+                                         subprojectsSync.replaceLocalData(subprojects.map(p => p.id === updated.id ? updated : p));
+                                     } else {
+                                         setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                     }
                                      setSelectedSubproject(updated);
                                 } else {
                                      setSubprojects(prev => [updated, ...prev]);

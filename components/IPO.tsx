@@ -201,7 +201,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         // Calculate from subprojects
         (subprojects || []).forEach(sp => {
             if (sp.status === 'Completed') {
-                const budget = getActiveSubprojectBudget(sp.details || []);
+                const budget = getActiveSubprojectBudget(sp.details || [], sp.status);
                 const currentInvestment = investmentMap.get(sp.indigenousPeopleOrganization) || 0;
                 investmentMap.set(sp.indigenousPeopleOrganization, currentInvestment + budget);
             }
@@ -224,7 +224,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
         // Calculate from subprojects (regardless of status)
         (subprojects || []).forEach(sp => {
-            const budget = getActiveSubprojectBudget(sp.details || []);
+            const budget = getActiveSubprojectBudget(sp.details || [], sp.status);
             const currentAllocation = allocationMap.get(sp.indigenousPeopleOrganization) || 0;
             allocationMap.set(sp.indigenousPeopleOrganization, currentAllocation + budget);
         });

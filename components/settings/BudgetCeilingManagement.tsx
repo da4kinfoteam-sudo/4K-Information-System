@@ -72,7 +72,7 @@ const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
             (!fundType || s.fundType === fundType)
         ).forEach(s => {
             s.details.forEach(d => {
-                if (!isBudgetLineExcludedFromTargets(d)) total += (d.pricePerUnit * d.numberOfUnits);
+                if (!isBudgetLineExcludedFromTargets(d, s.status)) total += (d.pricePerUnit * d.numberOfUnits);
             });
         });
 

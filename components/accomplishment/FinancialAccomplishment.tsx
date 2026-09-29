@@ -527,7 +527,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  status: sp.status,
   isRealignment: sp.isRealignment || d.isRealignment,
   isSavings: sp.isSavings || d.isSavings,
-  isCancelled: sp.status === 'Cancelled' || d.isCancelled,
+  isCancelled: sp.status === 'Cancelled' || (sp.status === 'Ongoing' && d.isCancelled),
   isSuperseded: d.isSuperseded,
  ...defaultMonthly,
  isConfirmed: false

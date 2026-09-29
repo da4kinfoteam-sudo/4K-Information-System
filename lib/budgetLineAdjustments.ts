@@ -76,17 +76,17 @@ export const getBudgetLineAmount = (line?: AdjustableBudgetLine | null) => {
     return toFiniteNumber(line.pricePerUnit) * toFiniteNumber(line.numberOfUnits);
 };
 
-export const getBudgetLineTag = (line?: AdjustableBudgetLine | null): BudgetLineTag => {
+export const getBudgetLineTag = (line?: AdjustableBudgetLine | null, parentStatus?: string): BudgetLineTag => {
     if (!line) return null;
-    if (line.isCancelled) return 'Cancelled';
+    if (line.isCancelled && parentStatus !== 'Proposed') return 'Cancelled';
     if (line.isSuperseded) return 'Replaced';
     if (line.isRealignment) return 'Realignment';
     if (line.isSavings) return 'Savings';
     return null;
 };
 
-export const normalizeBudgetLineStatus = <T extends AdjustableBudgetLine>(line: T): T => {
-    const tag = getBudgetLineTag(line);
+export const normalizeBudgetLineStatus = <T extends AdjustableBudgetLine>(line: T, parentStatus?: string): T => {
+    const tag = getBudgetLineTag(line, parentStatus);
     return {
         ...line,
         isCancelled: tag === 'Cancelled',
@@ -95,16 +95,17 @@ export const normalizeBudgetLineStatus = <T extends AdjustableBudgetLine>(line: 
     };
 };
 
-export const isBudgetLineExcludedFromTargets = (line?: AdjustableBudgetLine | null) =>
-    !!(line?.isCancelled || line?.isRealignment || line?.isSavings || line?.isSuperseded);
+export const isBudgetLineExcludedFromTargets = (line?: AdjustableBudgetLine | null, parentStatus?: string) =>
+    getBudgetLineTag(line, parentStatus) !== null;
 
 export const isParentExcludedFromTargets = (record?: { status?: string; isRealignment?: boolean; isSavings?: boolean } | null) =>
     !!(record?.status === 'Cancelled' || record?.isRealignment || record?.isSavings);
 
 export const isRecordOrLineExcludedFromTargets = (
     record?: { status?: string; isRealignment?: boolean; isSavings?: boolean } | null,
-    line?: AdjustableBudgetLine | null
-) => isParentExcludedFromTargets(record) || isBudgetLineExcludedFromTargets(line);
+    line?: AdjustableBudgetLine | null,
+    lineParentStatus?: string,
+) => isParentExcludedFromTargets(record) || isBudgetLineExcludedFromTargets(line, lineParentStatus);
 
 export const ensureOriginalBudgetSnapshot = <T extends AdjustableBudgetLine>(line: T): T => {
     const normalizedLine = normalizeBudgetLineStatus(line);
@@ -139,7 +140,7 @@ export const getBudgetLineActualDisbursement = (line?: AdjustableBudgetLine | nu
     return monthlyActual > 0 ? monthlyActual : toFiniteNumber(line.actualDisbursementAmount);
 };
 
-export const summarizeBudgetAdjustments = (lines: AdjustableBudgetLine[] = []) => {
+export const summarizeBudgetAdjustments = (lines: AdjustableBudgetLine[] = [], parentStatus?: string) => {
     const summary = lines.reduce(
         (summary, rawLine) => {
             const line = ensureOriginalBudgetSnapshot(rawLine);
@@ -152,7 +153,7 @@ export const summarizeBudgetAdjustments = (lines: AdjustableBudgetLine[] = []) =
             summary.actualObligated += actualObligated;
             summary.actualDisbursed += actualDisbursed;
 
-            if (line.isCancelled) {
+            if (line.isCancelled && parentStatus !== 'Proposed') {
                 summary.cancelledAmount += amount;
             } else if (line.isSuperseded) {
                 summary.replacedAmount += amount;
