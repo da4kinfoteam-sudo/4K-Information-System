@@ -13,7 +13,8 @@ import { supabase } from '../supabaseClient';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
 import { isMonthTargetOverdue } from '../lib/dateStatus';
 import { ConfirmDialog } from './ui/enterprise';
-import { isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
+import { isBudgetLineExcludedFromTargets, requestAdjustmentReason, writeBudgetItemAdjustmentHistory } from '../lib/budgetLineAdjustments';
+import { checkProposedBudgetItemDeletion } from '../lib/subprojectBudgetItemLifecycle';
 import { getFundSourceByUid, getFundSourceLabel, getNewSubprojectDefaultFundSource, resolveFundSourceUidFromLegacyLabel, sortFundSources } from '../lib/fundSources';
 
 interface SubprojectEditProps {
@@ -110,6 +111,11 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     const [missingFields, setMissingFields] = useState<string[]>([]);
     const [confirmBudgetItemDate, setConfirmBudgetItemDate] = useState<{field: 'deliveryDate' | 'obligationMonth', dateStr: string} | null>(null);
     const [budgetItemErrorFields, setBudgetItemErrorFields] = useState<string[]>([]);
+    const [pendingBudgetCancellations, setPendingBudgetCancellations] = useState<Array<{
+        itemId: number;
+        beforeSnapshot: SubprojectDetail;
+        reason: string;
+    }>>([]);
 
     const canChooseOperatingUnit = currentUser?.role === 'Super Admin'
         || (hasAccess('Subprojects', 'edit') && getVisibilityScope('Subprojects') === 'All');
@@ -406,9 +412,44 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         }
     };
 
-    const handleRemoveDetail = (id: number): void => {
+    const handleRemoveDetail = async (id: number): Promise<void> => {
         const detail = formData.details.find(d => d.id === id);
-        if (detail?.isSuperseded) return;
+        if (!detail || detail.isSuperseded) return;
+
+        const isSavedLine = !!subproject?.details.some(saved => String(saved.id) === String(id));
+        if (isSavedLine && subproject?.status === 'Proposed') {
+            const blocker = await checkProposedBudgetItemDeletion(subproject.id, detail);
+            if (blocker) {
+                window.alert(blocker);
+                return;
+            }
+        } else if (isSavedLine && subproject?.status === 'Ongoing') {
+            if (detail.isCancelled) {
+                window.alert('This item is already cancelled and is retained for its adjustment history.');
+                return;
+            }
+            const reason = requestAdjustmentReason('cancelling this budget item');
+            if (!reason) return;
+            setFormData(prev => ({
+                ...prev,
+                details: prev.details.map(item => item.id === id
+                    ? { ...item, isCancelled: true, isRealignment: false, isSavings: false, adjustmentReason: reason }
+                    : item),
+            }));
+            setPendingBudgetCancellations(prev => [
+                ...prev.filter(entry => String(entry.itemId) !== String(id)),
+                { itemId: id, beforeSnapshot: detail, reason },
+            ]);
+            if (editingDetailId === id) {
+                setEditingDetailId(null);
+                setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: 0, numberOfUnits: 0, objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
+            }
+            return;
+        } else if (isSavedLine) {
+            window.alert('Saved budget items can only be deleted while Proposed or cancelled while Ongoing. This item was not changed.');
+            return;
+        }
+
         setFormData(prev => ({ ...prev, details: prev.details.filter(d => d.id !== id) }));
         if (editingDetailId === id) {
             setEditingDetailId(null);
@@ -618,6 +659,15 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             payload.history = [...(subproject.history || []), historyEntry];
         }
 
+        const removedPersistedBudgetItems = subproject
+            ? subproject.details.filter(saved => !(payload.details || []).some((item: SubprojectDetail) => String(item.id) === String(saved.id)))
+            : [];
+        const guardedBudgetStatus = subproject?.status === 'Proposed' && removedPersistedBudgetItems.length > 0
+            ? 'Proposed'
+            : subproject?.status === 'Ongoing' && pendingBudgetCancellations.length > 0
+                ? 'Ongoing'
+                : null;
+
         if (supabase) {
             const { id, ...dbPayload } = payload; 
             
@@ -648,13 +698,40 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                     if (resolvedIpoId) addIpoHistory(resolvedIpoId, `Subproject Created: ${data.name}`);
                 }
             } else {
-                const { data, error } = await supabase.from('subprojects').update(dbPayload).eq('id', subproject.id).select().single();
+                let updateQuery = supabase.from('subprojects').update(dbPayload).eq('id', subproject.id);
+                if (guardedBudgetStatus) updateQuery = updateQuery.eq('status', guardedBudgetStatus);
+                const { data, error } = await updateQuery.select().maybeSingle();
                 if (error) { alert("Error saving: " + error.message); return; }
-                if (data) {
-                    onUpdateSubproject(data);
-                    const metadata = getMonetaryChanges(subproject, data, 'Subproject');
-                    logAction('Updated Subproject', data.name, data.indigenousPeopleOrganization, 'Subproject', String(data.id), metadata);
+                if (!data) {
+                    alert(guardedBudgetStatus
+                        ? `This subproject is no longer ${guardedBudgetStatus}. Reload it before changing its budget items; no changes were saved.`
+                        : 'The subproject could not be found. No changes were saved.');
+                    return;
                 }
+                onUpdateSubproject(data);
+                const metadata = getMonetaryChanges(subproject, data, 'Subproject');
+                logAction('Updated Subproject', data.name, data.indigenousPeopleOrganization, 'Subproject', String(data.id), metadata);
+
+                for (const entry of pendingBudgetCancellations) {
+                    const afterSnapshot = (data.details || []).find((item: SubprojectDetail) => String(item.id) === String(entry.itemId));
+                    if (!afterSnapshot) continue;
+                    try {
+                        await writeBudgetItemAdjustmentHistory({
+                            sourceType: 'subproject_detail',
+                            parentId: data.id,
+                            itemId: entry.itemId,
+                            action: 'cancel',
+                            beforeSnapshot: entry.beforeSnapshot,
+                            afterSnapshot,
+                            reason: entry.reason,
+                            currentUser,
+                        });
+                    } catch (historyError) {
+                        console.error('Subproject was saved, but its budget cancellation history could not be recorded:', historyError);
+                        alert('The subproject was saved, but a budget cancellation history entry could not be recorded. Contact an administrator before relying on that history.');
+                    }
+                }
+                setPendingBudgetCancellations([]);
             }
         } else {
              const offlinePayload = { ...payload, id: subproject ? subproject.id : Date.now() };
@@ -1005,11 +1082,15 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                              {formData.details.map((d, index) => (
                                 <div key={d.id} className={`form-record-card ${editingDetailId === d.id ? 'is-editing' : ''}`}>
                                     <div>
-                                        <span className="form-record-card__title">{d.particulars}</span>
+                                        <span className="form-record-card__title">
+                                            {d.particulars}
+                                            {d.isCancelled && <span className="budget-line-badge budget-line-badge--cancelled">Cancelled</span>}
+                                        </span>
                                         <div className="form-record-card__meta">
                                             <div>{d.uacsCode} {availableUacsCodes.find(c => c.code === d.uacsCode)?.desc ? `- ${availableUacsCodes.find(c => c.code === d.uacsCode)?.desc}` : ''}</div>
                                             <div>{d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}</div>
                                             <span className="block mt-1">Obligation: {formatMonthYear(d.obligationMonth)} | Disbursement: {formatMonthYear(d.disbursementMonth)}</span>
+                                            {d.isCancelled && d.adjustmentReason && <span className="block mt-1">Reason: {d.adjustmentReason}</span>}
                                         </div>
                                     </div>
                                     <div className="form-record-card__actions">
@@ -1018,7 +1099,20 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                             <button type="button" onClick={() => handleEditDetail(d.id)} disabled={!!d.isSuperseded} className="table-action table-action--primary" aria-label={d.isSuperseded ? 'Replaced item is read-only' : 'Edit budget item'}>
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                             </button>
-                                            <button type="button" onClick={() => handleRemoveDetail(d.id)} disabled={!!d.isSuperseded} className="table-action table-action--danger" aria-label={d.isSuperseded ? 'Replaced item is read-only' : 'Remove budget item'}>&times;</button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemoveDetail(d.id)}
+                                                disabled={!!d.isSuperseded || (!!subproject && subproject.status !== 'Proposed' && subproject.status !== 'Ongoing' && subproject.details.some(saved => String(saved.id) === String(d.id)))}
+                                                className="table-action table-action--danger"
+                                                aria-label={d.isSuperseded
+                                                    ? 'Replaced item is read-only'
+                                                    : subproject?.status === 'Ongoing'
+                                                        ? 'Cancel budget item'
+                                                        : subproject?.status === 'Proposed'
+                                                            ? 'Delete proposed budget item'
+                                                            : 'Remove unsaved budget item'}
+                                                title={subproject?.status === 'Ongoing' ? 'Cancel budget item' : subproject?.status === 'Proposed' ? 'Delete proposed budget item' : 'Remove unsaved budget item'}
+                                            >&times;</button>
                                         </div>
                                     </div>
                                 </div>
