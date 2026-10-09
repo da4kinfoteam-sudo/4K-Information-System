@@ -9,6 +9,7 @@ import {
     Training,
 } from '../constants';
 import { collectFinancialLineItems } from './financialAggregation';
+import { isTransferAccomplishmentActive } from './budgetItemTransferRules';
 
 export type AwardPeriod = 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'Year End';
 export type AwardQuarter = Exclude<AwardPeriod, 'Year End'>;
@@ -243,13 +244,13 @@ const getPmTargetDate = (item: OfficeRequirement | StaffingRequirement) => item.
 
 const getPmActualDate = (item: OfficeRequirement | StaffingRequirement) => item.actualDate || item.actualObligationDate;
 
-const isTargetRecord = (record: { status?: string; isRealignment?: boolean; isSavings?: boolean }) =>
-    record.status !== 'Cancelled' && !record.isRealignment && !record.isSavings;
+const isTargetRecord = (record: { status?: string; isRealignment?: boolean; isSavings?: boolean; isTransferTargetExcluded?: boolean }) =>
+    record.status !== 'Cancelled' && !record.isRealignment && !record.isSavings && !record.isTransferTargetExcluded;
 
-const isCompletedActivity = (activity: Training | OtherActivity) => activity.status !== 'Cancelled' && !!activity.actualDate;
+const isCompletedActivity = (activity: Training | OtherActivity) => isTransferAccomplishmentActive(activity) && activity.status !== 'Cancelled' && !!activity.actualDate;
 
 const isCompletedSubproject = (subproject: Subproject) =>
-    subproject.status === 'Completed' && !!subproject.actualCompletionDate;
+    isTransferAccomplishmentActive(subproject) && subproject.status === 'Completed' && !!subproject.actualCompletionDate;
 
 const recordYearMatches = (recordYear: number | undefined, year: number) => recordYear === year;
 

@@ -6,6 +6,7 @@ import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequire
 import { ReportExcelRequest, ReportPrintRequest, isParentRealignmentOrSavings, withReportYearLabel } from './ReportUtils';
 import { collectFinancialLineItems, getActualDisbursementTotalAsOf, getActualObligationTotalInWindow } from '../../lib/financialAggregation';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
+import { isTransferAccomplishmentActive } from '../../lib/budgetItemTransferRules';
 
 interface MonthlyReportMatrixProps {
     data: {
@@ -161,8 +162,8 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const targetCountMonth = subList.filter(sp => !isParentRealignmentOrSavings(sp) && isTargetDueMonthly(sp.estimatedCompletionDate)).length;
             const targetCountCum = subList.filter(sp => !isParentRealignmentOrSavings(sp) && isTargetDueCumulative(sp.estimatedCompletionDate)).length;
             
-            const actualCountMonth = subList.filter(sp => sp.status === 'Completed' && isTargetDueMonthly(sp.actualCompletionDate)).length;
-            const actualCountCum = subList.filter(sp => sp.status === 'Completed' && isTargetDueCumulative(sp.actualCompletionDate)).length;
+            const actualCountMonth = subList.filter(sp => isTransferAccomplishmentActive(sp) && sp.status === 'Completed' && isTargetDueMonthly(sp.actualCompletionDate)).length;
+            const actualCountCum = subList.filter(sp => isTransferAccomplishmentActive(sp) && sp.status === 'Completed' && isTargetDueCumulative(sp.actualCompletionDate)).length;
 
             subList.forEach(sp => {
                 const ad = ipoAdMap.get(sp.indigenousPeopleOrganization);
@@ -172,7 +173,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                     targetIpoSetCum.add(sp.indigenousPeopleOrganization);
                     if (ad) targetAdSetCum.add(ad);
                 }
-                if (sp.status === 'Completed' && isTargetDueCumulative(sp.actualCompletionDate)) {
+                if (isTransferAccomplishmentActive(sp) && sp.status === 'Completed' && isTargetDueCumulative(sp.actualCompletionDate)) {
                     actualIpoSetCum.add(sp.indigenousPeopleOrganization);
                     if (ad) actualAdSetCum.add(ad);
                 }
@@ -182,7 +183,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                     targetIpoSetMonth.add(sp.indigenousPeopleOrganization);
                     if (ad) targetAdSetMonth.add(ad);
                 }
-                if (sp.status === 'Completed' && isTargetDueMonthly(sp.actualCompletionDate)) {
+                if (isTransferAccomplishmentActive(sp) && sp.status === 'Completed' && isTargetDueMonthly(sp.actualCompletionDate)) {
                     actualIpoSetMonth.add(sp.indigenousPeopleOrganization);
                     if (ad) actualAdSetMonth.add(ad);
                 }
@@ -200,8 +201,9 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const isExcluded = isParentRealignmentOrSavings(act);
             const tMonth = (!isExcluded && isTargetDueMonthly(act.date)) ? 1 : 0;
             const tCum = (!isExcluded && isTargetDueCumulative(act.date)) ? 1 : 0;
-            const aMonth = (act.actualDate && isTargetDueMonthly(act.actualDate)) ? 1 : 0;
-            const aCum = (act.actualDate && isTargetDueCumulative(act.actualDate)) ? 1 : 0;
+            const actualIsLive = isTransferAccomplishmentActive(act);
+            const aMonth = (actualIsLive && act.actualDate && isTargetDueMonthly(act.actualDate)) ? 1 : 0;
+            const aCum = (actualIsLive && act.actualDate && isTargetDueCumulative(act.actualDate)) ? 1 : 0;
             
             const item = createRow(act.name, 'Number', tMonth, aMonth, tCum, aCum);
             

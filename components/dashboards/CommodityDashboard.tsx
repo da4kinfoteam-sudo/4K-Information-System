@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { ChevronDown, Download, Layers3, PackageSearch, Search, Sprout, UsersRound, WalletCards } from 'lucide-react';
 import { Subproject } from '../../constants';
 import { XLSX } from '../reports/ReportUtils';
-import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
+import { getBudgetLineAmount, isBudgetLineExcludedFromTargets, isParentExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 
 interface Props {
     subprojects: Subproject[];
@@ -86,6 +86,7 @@ const formatSetList = (values: Set<string>, emptyLabel = '-') => {
 };
 
 const getSubprojectAmount = (subproject: Subproject) => {
+    if (isParentExcludedFromTargets(subproject)) return 0;
     return (subproject.details || []).reduce((total, detail) => {
         return total + (isBudgetLineExcludedFromTargets(detail, subproject.status) ? 0 : getBudgetLineAmount(detail));
     }, 0);
@@ -182,7 +183,7 @@ const CommodityDashboard: React.FC<Props> = ({ subprojects, onSelectSubproject }
                 .map(commodity => ({
                     type: normalizeText(commodity.typeName),
                     name: normalizeText(commodity.name),
-                    quantity: Math.max(0, Number(commodity.area) || 0),
+                    quantity: isParentExcludedFromTargets(subproject) ? 0 : Math.max(0, Number(commodity.area) || 0),
                 }))
                 .filter(commodity => commodity.type && commodity.name);
 

@@ -13,7 +13,7 @@ import { supabase } from '../supabaseClient';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
 import { isMonthTargetOverdue } from '../lib/dateStatus';
 import { ConfirmDialog } from './ui/enterprise';
-import { isBudgetLineExcludedFromTargets, requestAdjustmentReason, writeBudgetItemAdjustmentHistory } from '../lib/budgetLineAdjustments';
+import { isBudgetLineExcludedFromTargets, isParentExcludedFromTargets, requestAdjustmentReason, writeBudgetItemAdjustmentHistory } from '../lib/budgetLineAdjustments';
 import {
     canEditSubprojectBudgetItem,
     getSubprojectBudgetItemRemovalAction,
@@ -77,7 +77,8 @@ const defaultFormData: Subproject = {
     encodedBy: ''
 };
 
-const calculateTotalBudget = (details: SubprojectDetail[], parentStatus?: Subproject['status']) => {
+const calculateTotalBudget = (details: SubprojectDetail[], parentStatus?: Subproject['status'], parent?: Subproject) => {
+    if (isParentExcludedFromTargets(parent)) return 0;
     return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item, parentStatus) ? 0 : item.pricePerUnit * item.numberOfUnits), 0);
 };
 
@@ -1148,7 +1149,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                     </div>
                                 </div>
                              ))}
-                             <div className="form-record-total">Total: {formatCurrency(calculateTotalBudget(formData.details, formData.status))}</div>
+                             <div className="form-record-total">Total: {formatCurrency(calculateTotalBudget(formData.details, formData.status, formData))}</div>
                              
                              <div className="form-grid form-grid--compact form-grid--align-end form-divider">
                                 <div><label className="form-label form-label--compact">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses + " form-control--compact"}><option value="">Select Type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
@@ -1349,7 +1350,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                                 ))}
                                                 <tr className="data-table__total-row">
                                                     <td colSpan={2} className="data-table__numeric">Grand Total:</td>
-                                                    <td className="data-table__numeric">{formatCurrency(calculateTotalBudget(formData.details, formData.status))}</td>
+                                                    <td className="data-table__numeric">{formatCurrency(calculateTotalBudget(formData.details, formData.status, formData))}</td>
                                                 </tr>
                                             </tbody>
                                         </table>

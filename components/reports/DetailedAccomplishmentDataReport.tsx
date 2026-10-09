@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { parseLocation } from '../LocationPicker';
 import { ReportExcelRequest, ReportPrintRequest, isDateInReportingYear, withReportYearLabel } from './ReportUtils';
+import { isTransferAccomplishmentActive } from '../../lib/budgetItemTransferRules';
 
 interface DetailedAccomplishmentDataReportProps {
     data: {
@@ -453,7 +454,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
 
     const rows = useMemo<DetailedAccomplishmentRow[]>(() => {
         const subprojectRows = (data.subprojects || [])
-            .filter(subproject => !!subproject.actualCompletionDate)
+            .filter(subproject => isTransferAccomplishmentActive(subproject) && !!subproject.actualCompletionDate)
             .map(subproject => {
                 const linkedIpos = getSubprojectLinkedIpos(subproject, ipoRegistry);
                 const beneficiary = buildBeneficiaryFields(linkedIpos);
@@ -501,7 +502,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
             });
 
         const activityRows = [...(data.trainings || []), ...(data.otherActivities || [])]
-            .filter(activity => !!activity.actualDate && activity.component !== 'Program Management')
+            .filter(activity => isTransferAccomplishmentActive(activity) && !!activity.actualDate && activity.component !== 'Program Management')
             .map(activity => {
                 const idMatches = (activity.participating_ipo_ids || []).map(id => findIpoById(ipoRegistry, id));
                 const nameMatches = (activity.participatingIpos || []).map(name => findIpoByName(ipoRegistry, name));
@@ -555,7 +556,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
         }>();
 
         (data.subprojects || [])
-            .filter(subproject => !!subproject.actualCompletionDate)
+            .filter(subproject => isTransferAccomplishmentActive(subproject) && !!subproject.actualCompletionDate)
             .filter(subproject => isDateInReportingYear(subproject.actualCompletionDate, selectedReportingYear, subproject.fundingYear?.toString() || ''))
             .forEach(subproject => {
                 const linkedIpos = getSubprojectLinkedIpos(subproject, ipoRegistry);

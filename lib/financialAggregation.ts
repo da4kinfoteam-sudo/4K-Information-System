@@ -1,5 +1,6 @@
 import type { Activity, OtherProgramExpense, OfficeRequirement, StaffingRequirement, Subproject } from '../constants';
 import { getBudgetLineTag, isRecordOrLineExcludedFromTargets } from './budgetLineAdjustments';
+import { isTransferAccomplishmentActive } from './budgetItemTransferRules';
 import { normalizeStaffingExpenses } from './staffingExpenseIdentity';
 import { bucketActualObligationRecords, hasActualObligationRecords, sumActualObligationRecords } from './financialObligationUtils';
 
@@ -72,6 +73,7 @@ export type FinancialLine = {
     isCancelled?: boolean;
     isRealignment?: boolean;
     isSavings?: boolean;
+    isTransferTargetExcluded?: boolean;
     isSuperseded?: boolean;
     originalPlannedAmount?: number;
     originalPricePerUnit?: number;
@@ -103,6 +105,8 @@ type ScopedRecord = {
     fundType?: string;
     isRealignment?: boolean;
     isSavings?: boolean;
+    isTransferTargetExcluded?: boolean;
+    budgetItemTransferId?: string | null;
     status?: string;
 };
 
@@ -344,6 +348,7 @@ const addLineItem = (
         targetDate?: string;
     }
 ) => {
+    if (!isTransferAccomplishmentActive(record)) return;
     const fallbackYear = getRecordYear(record);
     const lineParentStatus = metadata.sourceType === 'subproject' ? record.status : undefined;
     const isTaggedExclusion = isRecordOrLineExcludedFromTargets(record, line, lineParentStatus);

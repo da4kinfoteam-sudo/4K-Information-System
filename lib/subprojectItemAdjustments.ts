@@ -31,11 +31,18 @@ export const getOriginalSubprojectBudget = (details: SubprojectDetail[] = []) =>
             : getBudgetLineAmount(detail)
     ), 0);
 
-export const getActiveSubprojectBudget = (details: SubprojectDetail[] = [], parentStatus?: string) => details
-    .filter(detail => isActiveSubprojectDetail(detail, parentStatus))
-    .reduce((total, detail) => total + (
-        isBudgetLineExcludedFromTargets(detail, parentStatus) ? 0 : getBudgetLineAmount(detail)
-    ), 0);
+export const getActiveSubprojectBudget = (
+    details: SubprojectDetail[] = [],
+    parentStatus?: string,
+    parent?: { status?: string; isRealignment?: boolean; isSavings?: boolean; isTransferTargetExcluded?: boolean },
+) => {
+    if (parent?.isTransferTargetExcluded) return 0;
+    return details
+        .filter(detail => isActiveSubprojectDetail(detail, parentStatus))
+        .reduce((total, detail) => total + (
+            isBudgetLineExcludedFromTargets(detail, parentStatus) ? 0 : getBudgetLineAmount(detail)
+        ), 0);
+};
 
 /** Posted actuals remain part of the financial record even after a physical item is superseded. */
 export const getSubprojectActualObligation = (details: SubprojectDetail[] = []) => details

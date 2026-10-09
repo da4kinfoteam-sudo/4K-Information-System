@@ -17,6 +17,7 @@ import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheck
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import { isActiveSubprojectDetail } from '../lib/subprojectItemAdjustments';
 import { getFundSourceByUid, getFundSourceLabel, getNewSubprojectDefaultFundSource, resolveFundSourceUidFromLegacyLabel } from '../lib/fundSources';
+import { resolveBudgetItemTransfer, type BudgetItemTransferResult } from '../lib/budgetItemTransfer';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -26,6 +27,8 @@ interface SubprojectsProps {
     subprojects: Subproject[];
     setSubprojects: React.Dispatch<React.SetStateAction<Subproject[]>>;
     replaceSubprojects?: (nextData: Subproject[]) => void;
+    upsertSubprojectsLocally?: (records: Subproject[]) => void;
+    onTransferResolved?: (result: BudgetItemTransferResult) => void;
     setIpos: React.Dispatch<React.SetStateAction<IPO[]>>;
     onSelectIpo: (ipo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
@@ -51,7 +54,8 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const calculateTotalBudget = (details: SubprojectDetail[], parentStatus?: Subproject['status']) => {
+const calculateTotalBudget = (details: SubprojectDetail[], parentStatus?: Subproject['status'], parent?: Subproject) => {
+    if (parent?.isTransferTargetExcluded) return 0;
     return details.reduce(
         (total, item) => total + (isBudgetLineExcludedFromTargets(item, parentStatus) ? 0 : getBudgetLineAmount(item)),
         0
@@ -68,9 +72,9 @@ const commonInputClasses = "form-control";
 const DCF_SCOPE_COLUMN_KEYS = new Set(['fundingYear', 'operatingUnit', 'fundType', 'tier']);
 
 const Subprojects: React.FC<SubprojectsProps> = ({ 
-    ipos, subprojects, setSubprojects, replaceSubprojects, setIpos, onSelectIpo, onSelectSubproject,
+    ipos, subprojects, setSubprojects, replaceSubprojects, upsertSubprojectsLocally, setIpos, onSelectIpo, onSelectSubproject,
     onCreateSubproject, uacsCodes, particularTypes, commodityCategories, externalFilters, onClearExternalFilters,
-    onDataScopeChange, fundSources
+    onDataScopeChange, fundSources, onTransferResolved
 }) => {
     const { currentUser } = useAuth();
     const tableStoragePrefix = `subprojects_${currentUser?.id || 'anonymous'}`;
@@ -224,7 +228,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 let aValue: any = '';
                 let bValue: any = '';
 
-                const getBudget = (s: Subproject) => calculateTotalBudget(s.details || [], s.status);
+                const getBudget = (s: Subproject) => calculateTotalBudget(s.details || [], s.status, s);
                 const getObligated = (s: Subproject) => (s.details || []).reduce((sum, d) => sum + (d.actualObligationAmount || 0), 0);
                 const getDisbursed = (s: Subproject) => (s.details || []).reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
                 const getRate = (s: Subproject) => {
@@ -564,6 +568,28 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     const handleApprove = async (id: number, e: React.MouseEvent) => {
         e.stopPropagation();
         if (!window.confirm('Are you sure you want to approve this subproject?')) return;
+
+        const transferDestination = subprojects.find(item => item.id === id);
+        if (transferDestination?.budgetItemTransferId) {
+            if (!currentUser) return;
+            try {
+                const result = await resolveBudgetItemTransfer(transferDestination.budgetItemTransferId, 'approve', undefined, {
+                    id: currentUser.id,
+                    password: currentUser.password || '',
+                });
+                onTransferResolved?.(result);
+                const updatedRecords = [result.source as Subproject, result.destination as Subproject];
+                if (upsertSubprojectsLocally) upsertSubprojectsLocally(updatedRecords);
+                else if (replaceSubprojects) {
+                    const next = new Map(subprojects.map(item => [item.id, item]));
+                    updatedRecords.forEach(item => next.set(item.id, item));
+                    replaceSubprojects(Array.from(next.values()));
+                } else setSubprojects(previous => previous.map(item => updatedRecords.find(updated => updated.id === item.id) || item));
+            } catch (error) {
+                alert(`Failed to approve transfer: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+            return;
+        }
         
         if (supabase) {
             const { error } = await supabase.from('subprojects').update({ workflow_status: 'APPROVED' }).eq('id', id);
@@ -581,6 +607,32 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         e.stopPropagation();
         const reason = window.prompt('Please provide a reason for rejection:');
         if (reason === null) return;
+
+        const transferDestination = subprojects.find(item => item.id === id);
+        if (transferDestination?.budgetItemTransferId) {
+            if (!currentUser) return;
+            if (!reason.trim()) {
+                alert('A rejection reason is required.');
+                return;
+            }
+            try {
+                const result = await resolveBudgetItemTransfer(transferDestination.budgetItemTransferId, 'reject', reason.trim(), {
+                    id: currentUser.id,
+                    password: currentUser.password || '',
+                });
+                onTransferResolved?.(result);
+                const updatedRecords = [result.source as Subproject, result.destination as Subproject];
+                if (upsertSubprojectsLocally) upsertSubprojectsLocally(updatedRecords);
+                else if (replaceSubprojects) {
+                    const next = new Map(subprojects.map(item => [item.id, item]));
+                    updatedRecords.forEach(item => next.set(item.id, item));
+                    replaceSubprojects(Array.from(next.values()));
+                } else setSubprojects(previous => previous.map(item => updatedRecords.find(updated => updated.id === item.id) || item));
+            } catch (error) {
+                alert(`Failed to reject transfer: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+            return;
+        }
 
         if (supabase) {
             const { error } = await supabase.from('subprojects').update({ 
@@ -658,7 +710,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                         <tbody>
                             {paginatedSubprojects.map(s => {
                                 const details = s.details || [];
-                                const budget = calculateTotalBudget(details, s.status);
+                                const budget = calculateTotalBudget(details, s.status, s);
                                 const completionRate = calculateCompletionRate(details, s.status);
                                 const commodities = s.subprojectCommodities?.map(commodity => `${commodity.name} (${commodity.area} ${commodity.typeName === 'Livestock' ? 'heads' : 'ha'})`).join(', ') || 'N/A';
                                 return <tr

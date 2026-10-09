@@ -36,6 +36,7 @@ type ScopedRecord = {
     fundType?: string;
     isRealignment?: boolean;
     isSavings?: boolean;
+    isTransferTargetExcluded?: boolean;
     status?: string;
 };
 
@@ -62,7 +63,7 @@ const matchesBaseFilters = (record: ScopedRecord, filters: PhysicalAggregationFi
 const isTargetRecord = (record: ScopedRecord, filters: PhysicalAggregationFilters) => {
     if (!matchesBaseFilters(record, filters)) return false;
     if (record.status === 'Cancelled') return false;
-    if (record.isRealignment || record.isSavings) return false;
+    if (record.isRealignment || record.isSavings || record.isTransferTargetExcluded) return false;
     return matchesSelectedYear(getRecordYear(record), filters.year);
 };
 
