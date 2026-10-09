@@ -1,6 +1,8 @@
 -- Additive schema and trusted transfer operations for Activity/Subproject budget lines.
 -- This migration does not rewrite existing business records or execute any transfers.
 
+begin;
+
 set local lock_timeout = '5s';
 set local statement_timeout = '60s';
 
@@ -927,3 +929,5 @@ begin
   raise notice 'Verified: existing business-record counts and checksums are unchanged.';
 end;
 $$;
+
+commit;

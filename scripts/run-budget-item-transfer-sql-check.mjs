@@ -44,7 +44,7 @@ try {
   await db.exec(`insert into subprojects (name,status,"operatingUnit",details) values ('Unchanged legacy row','Proposed','NPMO','[]');
     insert into activities (name,status,"operatingUnit",expenses) values ('Unchanged legacy activity','Proposed','NPMO','[]');`);
   const originalSubproject = (await db.query('select to_jsonb(record_value) as record from subprojects record_value')).rows[0].record;
-  await db.exec(`begin; ${migration} commit;`);
+  await db.exec(migration);
   const afterMigration = (await db.query(`select to_jsonb(record_value) - 'isTransferTargetExcluded' - 'budgetItemTransferId' as record
     from subprojects record_value where id=$1`, [originalSubproject.id])).rows[0].record;
   assert.deepEqual(afterMigration, originalSubproject);
