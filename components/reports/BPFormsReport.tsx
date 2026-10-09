@@ -206,7 +206,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
         const lineItems: any[] = [];
         const addLineItem = (item: any) => {
-            if (item.amount <= 0 || item.isRealignment || item.isSavings || item.isCancelled || item.isSuperseded) return;
+            if (item.amount <= 0 || item.isRealignment || item.isSavings || item.isTransferTargetExcluded || item.isCancelled || item.isSuperseded) return;
             ensureHeader(item.objectType, item.particularName, item.uacsCode, item.amount);
             lineItems.push(item);
         };
@@ -220,6 +220,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     itemParticular: d.particulars,
                     isRealignment: sp.isRealignment || d.isRealignment,
                     isSavings: sp.isSavings || d.isSavings,
+                    isTransferTargetExcluded: sp.isTransferTargetExcluded || d.isTransferTargetExcluded,
                     isCancelled: sp.status === 'Cancelled' || (sp.status === 'Ongoing' && d.isCancelled),
                     isSuperseded: d.isSuperseded
                 });
@@ -234,6 +235,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     isTraining: true, particularName: e.expenseParticular,
                     isRealignment: t.isRealignment || e.isRealignment,
                     isSavings: t.isSavings || e.isSavings,
+                    isTransferTargetExcluded: t.isTransferTargetExcluded || e.isTransferTargetExcluded,
                     isCancelled: t.status === 'Cancelled' || e.isCancelled
                 });
             });
@@ -248,6 +250,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     particularName: e.expenseParticular,
                     isRealignment: oa.isRealignment || e.isRealignment,
                     isSavings: oa.isSavings || e.isSavings,
+                    isTransferTargetExcluded: oa.isTransferTargetExcluded || e.isTransferTargetExcluded,
                     isCancelled: oa.status === 'Cancelled' || e.isCancelled
                 });
             });
@@ -340,7 +343,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         };
         
         lineItems.forEach(item => {
-            if (item.amount <= 0 || item.isRealignment || item.isSavings || item.isCancelled || item.isSuperseded) return;
+            if (item.amount <= 0 || item.isRealignment || item.isSavings || item.isTransferTargetExcluded || item.isCancelled || item.isSuperseded) return;
 
             let targetList;
             const packageKey = item.packageType || (item.isTraining ? 'Trainings' : 'Activities');

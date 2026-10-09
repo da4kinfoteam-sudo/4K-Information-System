@@ -1,5 +1,6 @@
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO, HistoryEntry } from '../../constants';
 import { countPhysicalActual, countPhysicalTarget, getReportingMonthIndex, isParentRealignmentOrSavings } from './ReportUtils';
+import { isTransferAccomplishmentActive } from '../../lib/budgetItemTransferRules';
 
 export interface BAR1DataGroup {
     indicator: string;
@@ -167,8 +168,10 @@ export const calculateBAR1ReportData = (data: {
         history?: HistoryEntry[];
         updated_at?: string;
         created_at?: string;
+        budgetItemTransferId?: string | null;
+        workflow_status?: string | null;
     }>(item: T, actualDate?: string) => {
-        if (!actualDate) return undefined;
+        if (!actualDate || !isTransferAccomplishmentActive(item)) return undefined;
         return isSubmittedByAsOf(item) ? actualDate : undefined;
     };
 

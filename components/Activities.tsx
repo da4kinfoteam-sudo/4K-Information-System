@@ -18,19 +18,25 @@ import { ConfirmDialog, DataTablePagination, SortableTableHeader } from './ui/en
 import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from './ui/MajorDataTable';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import { getFundSourceFilterOptions, getFundSourceFilterValue, getFundSourceLabel, getFundSourceSortLabel } from '../lib/fundSources';
+import { resolveBudgetItemTransfer, type BudgetItemTransferResult } from '../lib/budgetItemTransfer';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
 
-const calculateActivityBudget = (activity: Activity) => (activity.expenses || []).reduce(
-    (total, expense) => total + (isBudgetLineExcludedFromTargets(expense) ? 0 : getBudgetLineAmount(expense)),
-    0
-);
+const calculateActivityBudget = (activity: Activity) => {
+    if (activity.isTransferTargetExcluded) return 0;
+    return (activity.expenses || []).reduce(
+        (total, expense) => total + (isBudgetLineExcludedFromTargets(expense) ? 0 : getBudgetLineAmount(expense)),
+        0
+    );
+};
 
 interface ActivitiesProps {
     ipos: IPO[];
     activities: Activity[];
     setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
+    upsertActivitiesLocally?: (records: Activity[]) => void;
+    onTransferResolved?: (result: BudgetItemTransferResult) => void;
     onSelectIpo: (ipo: IPO) => void;
     onSelectActivity: (activity: Activity) => void;
     onCreateActivity: () => void;
@@ -69,7 +75,7 @@ const getStatusBadge = (status: Activity['status']) => {
 }
 
 export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
-    ipos, activities, setActivities, onSelectIpo, onSelectActivity,
+    ipos, activities, setActivities, upsertActivitiesLocally, onTransferResolved, onSelectIpo, onSelectActivity,
     onCreateActivity, uacsCodes, referenceActivities = [], forcedType,
     fundSources = [],
     externalFilters, onClearExternalFilters,
@@ -518,6 +524,24 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         e.stopPropagation();
         if (!window.confirm('Are you sure you want to approve this activity?')) return;
 
+        const transferDestination = activities.find(item => item.id === id);
+        if (transferDestination?.budgetItemTransferId) {
+            if (!currentUser) return;
+            try {
+                const result = await resolveBudgetItemTransfer(transferDestination.budgetItemTransferId, 'approve', undefined, {
+                    id: currentUser.id,
+                    password: currentUser.password || '',
+                });
+                onTransferResolved?.(result);
+                const updatedRecords = [result.source as Activity, result.destination as Activity];
+                if (upsertActivitiesLocally) upsertActivitiesLocally(updatedRecords);
+                else setActivities(previous => previous.map(item => updatedRecords.find(updated => updated.id === item.id) || item));
+            } catch (error) {
+                alert(`Failed to approve transfer: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+            return;
+        }
+
         if (supabase) {
             const { error } = await supabase.from('activities').update({ workflow_status: 'APPROVED' }).eq('id', id);
             if (error) {
@@ -534,6 +558,28 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         e.stopPropagation();
         const reason = window.prompt('Please provide a reason for rejection:');
         if (reason === null) return;
+
+        const transferDestination = activities.find(item => item.id === id);
+        if (transferDestination?.budgetItemTransferId) {
+            if (!currentUser) return;
+            if (!reason.trim()) {
+                alert('A rejection reason is required.');
+                return;
+            }
+            try {
+                const result = await resolveBudgetItemTransfer(transferDestination.budgetItemTransferId, 'reject', reason.trim(), {
+                    id: currentUser.id,
+                    password: currentUser.password || '',
+                });
+                onTransferResolved?.(result);
+                const updatedRecords = [result.source as Activity, result.destination as Activity];
+                if (upsertActivitiesLocally) upsertActivitiesLocally(updatedRecords);
+                else setActivities(previous => previous.map(item => updatedRecords.find(updated => updated.id === item.id) || item));
+            } catch (error) {
+                alert(`Failed to reject transfer: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+            return;
+        }
 
         if (supabase) {
             const { error } = await supabase.from('activities').update({

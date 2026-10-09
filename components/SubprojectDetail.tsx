@@ -65,6 +65,7 @@ import {
     RefreshCw,
     Sprout,
     Trash2,
+    ArrowRightLeft,
     UploadCloud,
     Wallet,
     X
@@ -89,6 +90,8 @@ import {
     GalleryViewToggle,
     getPersistedDriveUploadSection
 } from './ui/DriveMediaSections';
+import { BudgetItemTransferDialog } from './ui/BudgetItemTransferDialog';
+import { canTransferBudgetItems, getTransferEligibleLines, BudgetItemTransferResult } from '../lib/budgetItemTransfer';
 import {
     RecordDetailAside,
     RecordDetailGrid,
@@ -107,6 +110,7 @@ interface SubprojectDetailProps {
     ipos: IPO[];
     onEditModeChange?: (mode: 'none' | 'details' | 'commodity' | 'budget' | 'accomplishment') => void;
     onUpdateSubproject: (updatedSubproject: Subproject, options?: { persisted?: boolean }) => void;
+    onBudgetTransferComplete?: (source: Subproject, destination: Subproject, status: BudgetItemTransferResult['status'], selectedItemIds: string[]) => void;
     particularTypes: { [key: string]: string[] };
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     commodityCategories: { [key: string]: string[] };
@@ -223,8 +227,8 @@ const budgetItemFieldLabels: Record<string, string> = {
     numberOfUnits: 'Number of Units'
 };
 
-const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onEditModeChange, onUpdateSubproject, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock, fundSources }) => {
-    const { currentUser, hasAccess, getVisibilityScope } = useAuth();
+const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onEditModeChange, onUpdateSubproject, onBudgetTransferComplete, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock, fundSources }) => {
+    const { currentUser, rolesConfigs, hasAccess, getVisibilityScope } = useAuth();
     const { canEdit } = useUserAccess('Subprojects');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
     const { canEdit: canEditPhysical } = useUserAccess('Accomplishment - Physical');
@@ -320,6 +324,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const [driveFilePendingDelete, setDriveFilePendingDelete] = useState<SubprojectDriveFile | null>(null);
     const [uploadModal, setUploadModal] = useState<'gallery' | 'files' | null>(null);
     const [galleryView, setGalleryView] = useState<GalleryViewMode>('thumbnail');
+    const [selectedTransferItemIds, setSelectedTransferItemIds] = useState<string[]>([]);
+    const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+    const [transferNotice, setTransferNotice] = useState<string | null>(null);
 
     const isUserRole = currentUser?.role === 'User';
 
@@ -354,6 +361,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const canEditProjectDetails = detailsDecision.allowed;
     const canEditCommodity = commodityDecision.allowed;
     const canEditBudget = budgetDecision.allowed;
+    const transferPermission = canTransferBudgetItems(currentUser?.role, 'Subprojects', rolesConfigs, currentUser?.permissions_override);
+    const canStartBudgetTransfer = !!currentUser && transferPermission && canEdit
+        && subproject.status !== 'Cancelled'
+        && (!subproject.workflow_status || subproject.workflow_status === 'APPROVED');
+    const eligibleTransferLines = useMemo(() => getTransferEligibleLines('subproject', subproject), [subproject]);
+    const eligibleTransferIds = useMemo(() => new Set(eligibleTransferLines.map(line => String(line.id))), [eligibleTransferLines]);
+    const selectedTransferLines = useMemo(() => eligibleTransferLines.filter(line => selectedTransferItemIds.includes(String(line.id))), [eligibleTransferLines, selectedTransferItemIds]);
+
+    useEffect(() => {
+        setSelectedTransferItemIds([]);
+        setTransferNotice(null);
+    }, [subproject.id]);
     const canEditAccomplishment = physicalAccomplishmentDecision.allowed || financialAccomplishmentDecision.allowed;
     const canAddAccomplishmentItem = physicalAccomplishmentDecision.allowed
         && (subproject.status === 'Ongoing' || ['Administrator', 'Super Admin'].includes(currentUser?.role || '') || physicalAccomplishmentDecision.code === 'allowed_by_override');
@@ -383,6 +402,33 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             entityType: 'subproject',
         });
         if (allowed) setEditMode(mode);
+    };
+
+    const handleBudgetTransferComplete = (result: BudgetItemTransferResult) => {
+        const source = result.source as Subproject;
+        const destination = result.destination as Subproject;
+        if (onBudgetTransferComplete) onBudgetTransferComplete(source, destination, result.status, selectedTransferItemIds);
+        else {
+            onUpdateSubproject(source, { persisted: true });
+            onUpdateSubproject(destination, { persisted: true });
+        }
+        setSelectedTransferItemIds([]);
+        setTransferDialogOpen(false);
+        setTransferNotice(result.status === 'pending'
+            ? 'Transfer request submitted for approval. The source budget remains unchanged until it is approved.'
+            : 'Selected items and actuals were transferred.');
+    };
+
+    const toggleTransferItem = (itemId: string) => {
+        setSelectedTransferItemIds(previous => previous.includes(itemId)
+            ? previous.filter(id => id !== itemId)
+            : [...previous, itemId]);
+    };
+
+    const toggleAllTransferItems = () => {
+        setSelectedTransferItemIds(previous => previous.length === eligibleTransferLines.length
+            ? []
+            : eligibleTransferLines.map(line => String(line.id)));
     };
 
     const validateSubprojectActualMonth = async (month?: string) => {
@@ -622,8 +668,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     }, [detailItems, editMode, subproject.status]);
 
     const totalBudget = useMemo(
-        () => getActiveSubprojectBudget(workingDetails, subproject.status),
-        [workingDetails, subproject.status]
+        () => subproject.isTransferTargetExcluded ? 0 : getActiveSubprojectBudget(workingDetails, subproject.status),
+        [workingDetails, subproject.status, subproject.isTransferTargetExcluded]
     );
     const actualObligationTotal = useMemo(
         () => getSubprojectActualObligation(workingDetails),
@@ -643,19 +689,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         [ipos, subproject.indigenousPeopleOrganization, subproject.ipo_id]
     );
 
-    const calculateTotalBudget = (details: SubprojectDetailType[]) => getActiveSubprojectBudget(details, subproject.status);
+    const calculateTotalBudget = (details: SubprojectDetailType[]) => subproject.isTransferTargetExcluded ? 0 : getActiveSubprojectBudget(details, subproject.status);
 
     const budgetAdjustmentSummary = useMemo(
         () => summarizeBudgetAdjustments(detailItems, subproject.status),
         [detailItems, subproject.status]
     );
     const originalApprovedBudget = useMemo(
-        () => getOriginalSubprojectBudget(workingDetails),
-        [workingDetails]
+        () => subproject.isTransferTargetExcluded ? 0 : getOriginalSubprojectBudget(workingDetails),
+        [workingDetails, subproject.isTransferTargetExcluded]
     );
     const adjustedBudget = useMemo(
-        () => getActiveSubprojectBudget(workingDetails, subproject.status),
-        [workingDetails, subproject.status]
+        () => subproject.isTransferTargetExcluded ? 0 : getActiveSubprojectBudget(workingDetails, subproject.status),
+        [workingDetails, subproject.status, subproject.isTransferTargetExcluded]
     );
     const adjustedBudgetVariance = adjustedBudget - originalApprovedBudget;
     const budgetOverage = Math.max(adjustedBudget, budgetAdjustmentSummary.actualObligated) - originalApprovedBudget;
@@ -3100,6 +3146,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     onClose={() => setUploadModal(null)}
                 />
             )}
+            {transferDialogOpen && currentUser && (
+                <BudgetItemTransferDialog
+                    sourceType="subproject"
+                    source={subproject}
+                    selectedLines={selectedTransferLines}
+                    ipos={ipos}
+                    fundSources={fundSources}
+                    currentUser={currentUser}
+                    canChangeOperatingUnit={getVisibilityScope('Subprojects') === 'All'}
+                    onClose={() => setTransferDialogOpen(false)}
+                    onComplete={handleBudgetTransferComplete}
+                />
+            )}
 
             <RecordHeader
                 title={subproject.name}
@@ -3219,17 +3278,25 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                      <RecordPanel
                         title="Budget Breakdown"
                         description="Target financial schedule and expense lines"
-                        actions={(canEdit || canEditBudget) ? (
-                                <button onClick={() => handlePolicyEditMode('budget')} disabled={!canEditBudget} className={`table-action table-action--primary ${!canEditBudget ? 'is-disabled' : ''}`} title={canEditBudget ? 'Edit Budget' : budgetDecision.message}>
+                        actions={(canEdit || canEditBudget || canStartBudgetTransfer) ? (
+                            <div className="budget-transfer-actions">
+                                {canStartBudgetTransfer && <button type="button" onClick={() => setTransferDialogOpen(true)} disabled={selectedTransferLines.length === 0} className="table-action" title="Create a same-type record from the selected budget items">
+                                    <ArrowRightLeft className="btn-symbol" aria-hidden="true" />
+                                    Transfer{selectedTransferLines.length > 0 ? ` (${selectedTransferLines.length})` : ''}
+                                </button>}
+                                {(canEdit || canEditBudget) && <button onClick={() => handlePolicyEditMode('budget')} disabled={!canEditBudget} className={`table-action table-action--primary ${!canEditBudget ? 'is-disabled' : ''}`} title={canEditBudget ? 'Edit Budget' : budgetDecision.message}>
                                     <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Budget
-                                </button>
-                            ) : null}
+                                </button>}
+                            </div>
+                        ) : null}
                      >
+                        {transferNotice && <p className="budget-transfer-notice" role="status">{transferNotice}</p>}
                         <div className="data-table-scroll">
                            <table className="data-table">
                                 <thead>
                                     <tr>
+                                        {canStartBudgetTransfer && <th className="data-table__cell--selection"><input type="checkbox" className="form-checkbox" aria-label="Select all eligible budget items for transfer" checked={eligibleTransferLines.length > 0 && selectedTransferLines.length === eligibleTransferLines.length} disabled={eligibleTransferLines.length === 0} onChange={toggleAllTransferItems} /></th>}
                                         <th>Particulars</th>
                                         <th>Status</th>
                                         <th>Delivery Date</th>
@@ -3249,6 +3316,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
                                         return (
                                             <tr key={detail.id} className={`${isBudgetLineExcludedFromTargets(detail, subproject.status) ? 'budget-item-card--excluded' : ''} ${subproject.status !== 'Proposed' && detail.isCancelled ? 'budget-item-card--cancelled' : ''} ${detail.isRealignment ? 'budget-item-card--realignment' : ''} ${detail.isSavings ? 'budget-item-card--savings' : ''}`}>
+                                                {canStartBudgetTransfer && <td className="data-table__cell--selection"><input type="checkbox" className="form-checkbox" aria-label={`Select ${detail.particulars} for transfer`} checked={selectedTransferItemIds.includes(String(detail.id))} disabled={!eligibleTransferIds.has(String(detail.id))} onChange={() => toggleTransferItem(String(detail.id))} /></td>}
                                                 <td className="data-table__primary">{detail.particulars}</td>
                                                 <td>
                                                     {getBudgetLineTag(detail, subproject.status) ? (
@@ -3276,7 +3344,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 </tbody>
                                 <tfoot>
                                     <tr className="data-table__total-row">
-                                        <td colSpan={7} className="data-table__numeric">Total Budget</td>
+                                        <td colSpan={canStartBudgetTransfer ? 8 : 7} className="data-table__numeric">Total Budget</td>
                                         <td className="data-table__numeric">{formatCurrency(calculateTotalBudget(subproject.details))}</td>
                                         <td></td>
                                     </tr>

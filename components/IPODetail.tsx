@@ -35,6 +35,8 @@ import { getLodEffectiveState } from '../lib/lodScoring';
 import { subscribeToLodDataChanges } from '../lib/lodDataSync';
 import { commodityCapacityToFormValue, getCommodityCapacityValues } from '../lib/commodityProfile';
 import { getActiveSubprojectBudget } from '../lib/subprojectItemAdjustments';
+import { getBudgetLineAmount, isBudgetLineExcludedFromTargets, isParentExcludedFromTargets } from '../lib/budgetLineAdjustments';
+import { isTransferAccomplishmentActive } from '../lib/budgetItemTransferRules';
 import {
     deleteIpoDriveFile,
     formatFileSize,
@@ -728,27 +730,27 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
     // Calculate Statistics for Overview
     const overviewStats = useMemo(() => {
         // 1. Completed Counts
-        const completedSubprojects = (subprojects || []).filter(s => s.status === 'Completed');
-        const completedTrainings = (trainings || []).filter(t => !!t.actualDate); // Assuming actualDate implies completion
+        const completedSubprojects = (subprojects || []).filter(s => isTransferAccomplishmentActive(s) && s.status === 'Completed');
+        const completedTrainings = (trainings || []).filter(t => isTransferAccomplishmentActive(t) && !!t.actualDate); // Assuming actualDate implies completion
 
         // 2. Investment Calculation
         const subprojectInvestment = completedSubprojects.reduce((sum, sp) => {
-            return sum + getActiveSubprojectBudget(sp.details || [], sp.status);
+            return sum + getActiveSubprojectBudget(sp.details || [], sp.status, sp);
         }, 0);
 
         const trainingInvestment = completedTrainings.reduce((sum, t) => {
-            return sum + (t.expenses || []).reduce((eSum, e) => eSum + toSafeNumber(e.amount), 0);
+            return sum + (isParentExcludedFromTargets(t) ? 0 : (t.expenses || []).reduce((eSum, e) => eSum + (isBudgetLineExcludedFromTargets(e) ? 0 : getBudgetLineAmount(e)), 0));
         }, 0);
 
         const totalInvestment = subprojectInvestment + trainingInvestment;
 
         // 4. Total Allocation (regardless of status)
         const subprojectAllocation = (subprojects || []).reduce((sum, sp) => {
-            return sum + getActiveSubprojectBudget(sp.details || [], sp.status);
+            return sum + getActiveSubprojectBudget(sp.details || [], sp.status, sp);
         }, 0);
 
         const trainingAllocation = (trainings || []).reduce((sum, t) => {
-            return sum + (t.expenses || []).reduce((eSum, e) => eSum + toSafeNumber(e.amount), 0);
+            return sum + (isParentExcludedFromTargets(t) ? 0 : (t.expenses || []).reduce((eSum, e) => eSum + (isBudgetLineExcludedFromTargets(e) ? 0 : getBudgetLineAmount(e)), 0));
         }, 0);
 
         const totalAllocation = subprojectAllocation + trainingAllocation;
@@ -1054,8 +1056,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
         }
     };
 
-    const calculateTotalBudget = (details?: Subproject['details'] | null, status?: Subproject['status']) => {
-        return getActiveSubprojectBudget(details || [], status);
+    const calculateTotalBudget = (details?: Subproject['details'] | null, status?: Subproject['status'], parent?: Subproject) => {
+        return getActiveSubprojectBudget(details || [], status, parent);
     }
     
     const commonInputClasses = "form-control";
@@ -1806,7 +1808,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                                 <td title={formatDate(project.estimatedCompletionDate)}>{formatDate(project.estimatedCompletionDate)}</td>
                                                 <td title={formatDate(project.actualCompletionDate)}>{formatDate(project.actualCompletionDate)}</td>
                                                 <td className="data-table__numeric" title={`${getSubprojectPhysicalRate(project)}%`}>{getSubprojectPhysicalRate(project)}%</td>
-                                                <td className="data-table__numeric" title={formatCurrency(calculateTotalBudget(project.details, project.status))}>{formatCompactCurrency(calculateTotalBudget(project.details, project.status))}</td>
+                                                <td className="data-table__numeric" title={formatCurrency(calculateTotalBudget(project.details, project.status, project))}>{formatCompactCurrency(calculateTotalBudget(project.details, project.status, project))}</td>
                                             </tr>
                                         ))}
                                     </tbody>

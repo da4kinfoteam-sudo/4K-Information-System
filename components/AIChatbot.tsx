@@ -9,6 +9,7 @@ import {
 } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { getActiveSubprojectBudget } from '../lib/subprojectItemAdjustments';
+import { isTransferAccomplishmentActive } from '../lib/budgetItemTransferRules';
 
 interface AIChatbotProps {
     subprojects: Subproject[];
@@ -709,12 +710,14 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
         // Filter Data
         const fSubprojects = subprojects.filter(s => 
+            isTransferAccomplishmentActive(s) &&
             s.fundingYear === year && 
             s.fundType === filters.fundType && 
             s.tier === filters.tier && 
             (ou === 'All' ? true : s.operatingUnit === ou)
         );
         const fActivities = activities.filter(a => 
+            isTransferAccomplishmentActive(a) &&
             a.fundingYear === year && 
             a.fundType === filters.fundType && 
             a.tier === filters.tier && 
@@ -751,6 +754,8 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const ceiling = budgetCeilings.find(c => c.operating_unit === ou && c.year === year)?.amount || 0;
 
         if (isTargets) {
+            const targetSubprojects = fSubprojects.filter(item => !item.isTransferTargetExcluded);
+            const targetActivities = fActivities.filter(item => !item.isTransferTargetExcluded);
             const componentAllocation: {[key: string]: number} = {
                 'Social Preparation': 0,
                 'Production and Livelihood': 0,
@@ -760,12 +765,12 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
             // Subprojects always go to Production and Livelihood as per WFP report structure
             fSubprojects.forEach(s => {
-                const amt = getActiveSubprojectBudget(s.details || [], s.status);
+                const amt = getActiveSubprojectBudget(s.details || [], s.status, s);
                 componentAllocation['Production and Livelihood'] += amt;
             });
 
             // Activities (Trainings and Other Activities) use their component field
-            fActivities.forEach(a => {
+            targetActivities.forEach(a => {
                 const cat = a.component || 'Program Management';
                 const amt = a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0;
                 if (componentAllocation.hasOwnProperty(cat)) {
@@ -795,9 +800,10 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
             const totalAllocation = Object.values(componentAllocation).reduce((a, b) => a + b, 0);
             
-            const iposWithTargetSP = new Set(fSubprojects.map(s => s.indigenousPeopleOrganization)).size;
-            const iposWithTargetTrainings = new Set(fTrainings.map(t => t.participatingIpos).flat()).size;
-            const adsWithTargetSP = new Set(fIPOs.filter(i => fSubprojects.some(s => s.indigenousPeopleOrganization === i.name)).map(i => i.ancestralDomainNo)).size;
+            const targetTrainings = targetActivities.filter(activity => activity.type === 'Training');
+            const iposWithTargetSP = new Set(targetSubprojects.map(s => s.indigenousPeopleOrganization)).size;
+            const iposWithTargetTrainings = new Set(targetTrainings.map(t => t.participatingIpos).flat()).size;
+            const adsWithTargetSP = new Set(fIPOs.filter(i => targetSubprojects.some(s => s.indigenousPeopleOrganization === i.name)).map(i => i.ancestralDomainNo)).size;
 
             const isExceeded = ceiling > 0 && totalAllocation > ceiling;
 
@@ -838,10 +844,10 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
                     <div className="ai-insight__stat-grid">
                         <div className="ai-insight__stat">
-                            <small>Subprojects</small><strong>{fSubprojects.length}</strong>
+                            <small>Subprojects</small><strong>{targetSubprojects.length}</strong>
                         </div>
                         <div className="ai-insight__stat">
-                            <small>Trainings</small><strong>{fTrainings.length}</strong>
+                            <small>Trainings</small><strong>{targetTrainings.length}</strong>
                         </div>
                         <div className="ai-insight__stat">
                             <small>IPOs w/ SPs</small><strong>{iposWithTargetSP}</strong>
@@ -906,7 +912,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             // Consolidation logic (same as Targets but for financial actuals)
             fSubprojects.forEach(s => {
                 const cat = 'Production and Livelihood';
-                const alloc = getActiveSubprojectBudget(s.details || [], s.status);
+                const alloc = getActiveSubprojectBudget(s.details || [], s.status, s);
                 const obli = s.details?.reduce((ds, d) => ds + (d.actualObligationAmount || 0), 0) || 0;
                 const disb = s.details?.reduce((ds, d) => ds + (d.actualDisbursementAmount || 0), 0) || 0;
                 componentAllocation[cat] += alloc;

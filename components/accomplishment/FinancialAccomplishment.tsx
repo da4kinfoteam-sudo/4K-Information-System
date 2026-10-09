@@ -10,6 +10,7 @@ import { Undo2, Loader2, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, ChevronDo
 import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
 import { resolveDisbursementEntries, summarizeDisbursements } from '../../lib/disbursementUtils';
 import { getBudgetLineAmount } from '../../lib/budgetLineAdjustments';
+import { isTransferAccomplishmentActive } from '../../lib/budgetItemTransferRules';
 import type { DataScope } from '../../lib/scopedDataFetch';
 import { normalizeStaffingExpenses, staffingExpenseItemId } from '../../lib/staffingExpenseIdentity';
 import { ConfirmDialog, LoadingState } from '../ui/enterprise';
@@ -90,6 +91,7 @@ interface FinancialItem {
  status: string; // Added status field
   isRealignment?: boolean;
   isSavings?: boolean;
+  isTransferTargetExcluded?: boolean;
   isCancelled?: boolean;
   isSuperseded?: boolean;
  isConfirmed: boolean; // Just a UI state for this session (or could map to 'status')
@@ -177,7 +179,7 @@ const getContextDescription = (item: FinancialItem) => {
  return item.expenseParticular;
 };
 
-const isTaggedExclusion = (item: FinancialItem) => !!(item.isRealignment || item.isSavings || item.isCancelled || item.isSuperseded);
+const isTaggedExclusion = (item: FinancialItem) => !!(item.isRealignment || item.isSavings || item.isTransferTargetExcluded || item.isCancelled || item.isSuperseded);
 
 const getTargetObligationForTotals = (item: FinancialItem) =>
  isTaggedExclusion(item) ? 0 : toFiniteNumber(item.targetObligationAmount);
@@ -377,6 +379,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  const fetchData = async () => {
  try {
  const matchesFilters = (item: any) => {
+ if (!isTransferAccomplishmentActive(item)) return false;
  const itemYear = item.fundingYear || item.fundYear;
  if (selectedYear !== 'All' && String(itemYear) !== String(selectedYear)) return false;
  if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
@@ -527,6 +530,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  status: sp.status,
   isRealignment: sp.isRealignment || d.isRealignment,
   isSavings: sp.isSavings || d.isSavings,
+  isTransferTargetExcluded: !!sp.isTransferTargetExcluded,
   isCancelled: sp.status === 'Cancelled' || (sp.status === 'Ongoing' && d.isCancelled),
   isSuperseded: d.isSuperseded,
  ...defaultMonthly,
@@ -564,6 +568,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  status: act.status,
  isRealignment: act.isRealignment || e.isRealignment,
  isSavings: act.isSavings || e.isSavings,
+ isTransferTargetExcluded: !!act.isTransferTargetExcluded,
  isCancelled: act.status === 'Cancelled' || e.isCancelled,
  ...defaultMonthly,
  isConfirmed: false
@@ -1889,7 +1894,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  const isChanged = changedItems.has(item.uniqueId);
  const contextDescription = getContextDescription(item);
  const isTagged = isTaggedExclusion(item);
-  const taggedLabel = item.isCancelled ? 'Cancelled' : item.isSuperseded ? 'Replaced' : item.isSavings ? 'Savings' : item.isRealignment ? 'Realignment' : '';
+  const taggedLabel = item.isCancelled ? 'Cancelled' : item.isSuperseded ? 'Replaced' : item.isSavings ? 'Savings' : item.isRealignment ? 'Realignment' : item.isTransferTargetExcluded ? 'Transferred' : '';
  const itemFinancialDecision = getFinancialStatusDecision(item);
  const canEditFinancialItem = canEdit && itemFinancialDecision.allowed;
 

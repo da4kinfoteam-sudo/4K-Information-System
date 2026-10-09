@@ -9,7 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
 import { aggregateHomepageFinancials } from '../lib/financialAggregation';
 import { aggregateHomepagePhysicalStats } from '../lib/physicalAggregation';
-import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
+import { getBudgetLineAmount, isBudgetLineExcludedFromTargets, isParentExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import type { DataScope } from '../lib/scopedDataFetch';
 import { listHomepageGalleryFeed, HomepageGalleryFeedItem } from '../lib/googleDriveStorage';
 import { supabase } from '../supabaseClient';
@@ -376,7 +376,8 @@ const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 }
 
-const calculateTotalBudget = (details: SubprojectDetail[], parentStatus?: Subproject['status']) => {
+const calculateTotalBudget = (details: SubprojectDetail[], parentStatus?: Subproject['status'], parent?: Subproject) => {
+    if (isParentExcludedFromTargets(parent)) return 0;
     return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item, parentStatus) ? 0 : getBudgetLineAmount(item)), 0);
 }
 

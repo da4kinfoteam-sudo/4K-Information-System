@@ -54,6 +54,7 @@ import {
     type FinancialObligationChange,
 } from './lib/financialObligationSync';
 import { emptyIpoLinkedDcfRecords, fetchIpoLinkedDcfRecords, IpoLinkedDcfRecords } from './lib/ipoLinkedDcfRecords';
+import { reparentSelectedFinancialActualRows, type BudgetItemTransferResult, type BudgetTransferSourceType } from './lib/budgetItemTransfer';
 import { fetchWorkflowEntityById, fetchWorkflowIpos } from './lib/workflowLookups';
 import {
     getCanonicalModuleRoute,
@@ -436,6 +437,20 @@ const AppContent: React.FC = () => {
     const replaceOtherProgramExpenses = otherProgramExpensesSync.replaceLocalData;
     const replaceFinancialObligations = financialObligationsSync.replaceLocalData;
     const replaceFinancialDisbursements = financialDisbursementsSync.replaceLocalData;
+
+    const syncResolvedTransferActuals = (sourceType: BudgetTransferSourceType, result: BudgetItemTransferResult) => {
+        if (result.status !== 'applied') return;
+        const lines = sourceType === 'subproject'
+            ? (result.destination as Subproject).details
+            : (result.destination as Activity).expenses;
+        const itemIds = (lines || []).map(item => String(item.id));
+        financialObligationsSync.upsertLocalData(reparentSelectedFinancialActualRows(
+            allFinancialObligations, sourceType, result.source.id, result.destination.id, itemIds,
+        ));
+        financialDisbursementsSync.upsertLocalData(reparentSelectedFinancialActualRows(
+            allFinancialDisbursements, sourceType, result.source.id, result.destination.id, itemIds,
+        ));
+    };
 
     // Helper to filter data based on visibility scope
     const filterByVisibility = <T extends { operatingUnit?: string }>(data: T[]): T[] => {
@@ -1716,6 +1731,8 @@ const AppContent: React.FC = () => {
                             subprojects={visibleSubprojects} 
                             setSubprojects={setSubprojects}
                             replaceSubprojects={subprojectsSync.replaceLocalData}
+                            upsertSubprojectsLocally={subprojectsSync.upsertLocalData}
+                            onTransferResolved={result => syncResolvedTransferActuals('subproject', result)}
                             setIpos={setIpos} 
                             onSelectIpo={handleSelectIpo}
                             onSelectSubproject={handleSelectSubproject}
@@ -1733,6 +1750,8 @@ const AppContent: React.FC = () => {
                             ipos={ipos} 
                             activities={visibleActivities}
                             setActivities={setActivities}
+                            upsertActivitiesLocally={activitiesSync.upsertLocalData}
+                            onTransferResolved={result => syncResolvedTransferActuals('activity', result)}
                             onSelectIpo={handleSelectIpo}
                             onSelectActivity={handleSelectActivity}
                             onCreateActivity={handleCreateActivity}
@@ -1749,6 +1768,8 @@ const AppContent: React.FC = () => {
                             ipos={ipos} 
                             activities={visibleActivities}
                             setActivities={setActivities}
+                            upsertActivitiesLocally={activitiesSync.upsertLocalData}
+                            onTransferResolved={result => syncResolvedTransferActuals('activity', result)}
                             onSelectIpo={handleSelectIpo}
                             onSelectActivity={handleSelectActivity}
                             onCreateActivity={handleCreateActivity}
@@ -1765,6 +1786,8 @@ const AppContent: React.FC = () => {
                             ipos={ipos} 
                             activities={visibleActivities}
                             setActivities={setActivities}
+                            upsertActivitiesLocally={activitiesSync.upsertLocalData}
+                            onTransferResolved={result => syncResolvedTransferActuals('activity', result)}
                             onSelectIpo={handleSelectIpo}
                             onSelectActivity={handleSelectActivity}
                             onCreateActivity={handleCreateActivity}
@@ -2124,6 +2147,21 @@ const AppContent: React.FC = () => {
                                     }));
                                 }
                             }}
+                            onBudgetTransferComplete={(source, destination, status, selectedItemIds) => {
+                                const next = new Map(subprojects.map(item => [item.id, item]));
+                                next.set(source.id, source);
+                                next.set(destination.id, destination);
+                                subprojectsSync.replaceLocalData(Array.from(next.values()));
+                                if (status === 'applied') {
+                                    financialObligationsSync.upsertLocalData(reparentSelectedFinancialActualRows(
+                                        allFinancialObligations, 'subproject', source.id, destination.id, selectedItemIds,
+                                    ));
+                                    financialDisbursementsSync.upsertLocalData(reparentSelectedFinancialActualRows(
+                                        allFinancialDisbursements, 'subproject', source.id, destination.id, selectedItemIds,
+                                    ));
+                                }
+                                setSelectedSubproject(source);
+                            }}
                             particularTypes={derivedParticularTypes}
                             uacsCodes={derivedUacsCodes}
                             commodityCategories={derivedCommodityCategories}
@@ -2188,6 +2226,21 @@ const AppContent: React.FC = () => {
                             onUpdateActivity={(updated) => {
                                 setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
                                 setSelectedActivity(updated);
+                            }}
+                            onBudgetTransferComplete={(source, destination, status, selectedItemIds) => {
+                                const next = new Map(activities.map(item => [item.id, item]));
+                                next.set(source.id, source);
+                                next.set(destination.id, destination);
+                                activitiesSync.replaceLocalData(Array.from(next.values()));
+                                if (status === 'applied') {
+                                    financialObligationsSync.upsertLocalData(reparentSelectedFinancialActualRows(
+                                        allFinancialObligations, 'activity', source.id, destination.id, selectedItemIds,
+                                    ));
+                                    financialDisbursementsSync.upsertLocalData(reparentSelectedFinancialActualRows(
+                                        allFinancialDisbursements, 'activity', source.id, destination.id, selectedItemIds,
+                                    ));
+                                }
+                                setSelectedActivity(source);
                             }}
                             onEdit={(mode) => {
                                 setSelectedActivity(latestAct);

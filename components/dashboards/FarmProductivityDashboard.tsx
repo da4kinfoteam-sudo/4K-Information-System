@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { IPO, MarketingPartner, ouToRegionMap, Subproject, type MarketLinkageUnit } from '../../constants';
 import { collectFinancialLineItems, FinancialAggregationFilters } from '../../lib/financialAggregation';
+import { isTransferAccomplishmentActive } from '../../lib/budgetItemTransferRules';
+import { isParentExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 import { calculateMarketLinkageSales, createEmptyMarketQuantityTotals, formatMarketQuantityTotals } from '../../lib/marketSalesAggregation';
 import { parseLocation } from '../LocationPicker';
 import { XLSX } from '../reports/ReportUtils';
@@ -384,7 +386,7 @@ const FarmProductivityDashboard: React.FC<Props> = ({
         const monthlyActualYield = Array(12).fill(0);
 
         (subprojects || [])
-            .filter(subproject => subproject.status !== 'Cancelled')
+            .filter(subproject => isTransferAccomplishmentActive(subproject) && subproject.status !== 'Cancelled')
             .forEach(subproject => {
                 const commodities = (subproject.subprojectCommodities || [])
                     .map((commodity, index) => ({
@@ -417,7 +419,7 @@ const FarmProductivityDashboard: React.FC<Props> = ({
 
                 commodities.forEach(commodity => {
                     const unit: CommodityUnit = commodity.typeName.toLowerCase() === 'livestock' ? 'livestock' : 'crop';
-                    const targetYieldKg = unit === 'crop'
+                    const targetYieldKg = unit === 'crop' && !isParentExcludedFromTargets(subproject)
                         ? (commodity.averageYield || getFallbackTargetYield(commodity, ipo))
                         : 0;
                     const actualYieldKg = unit === 'crop' ? commodity.actualYield : 0;

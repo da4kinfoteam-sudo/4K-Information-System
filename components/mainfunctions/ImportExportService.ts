@@ -10,7 +10,7 @@ import { parseOfficeRequirementRow } from '../program_management/OfficeRequireme
 import { parseStaffingRequirementRow } from '../program_management/StaffingRequirementsTab';
 import { parseOtherExpenseRow } from '../program_management/OtherExpensesTab';
 import { normalizeImportedCommodity } from '../../lib/commodityProfile';
-import { isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
+import { getBudgetLineAmount, isBudgetLineExcludedFromTargets, isParentExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 import { DEFAULT_FUND_SOURCE_UID, getFundSourceByUid, getFundSourceLabel, getNewSubprojectDefaultFundSource, normalizeFundSourceLabel, resolveFundSourceUidFromLegacyLabel } from '../../lib/fundSources';
 
 declare const XLSX: any;
@@ -139,7 +139,8 @@ const parseMonthToDate = (input: any): string => {
 // --- SUBPROJECTS ---
 
 export const downloadSubprojectsReport = (subprojects: Subproject[], fundSources: RefFundSource[] = []) => {
-    const calculateTotalBudget = (details: SubprojectDetail[], status?: Subproject['status']) => {
+    const calculateTotalBudget = (details: SubprojectDetail[], status?: Subproject['status'], parent?: Subproject) => {
+        if (isParentExcludedFromTargets(parent)) return 0;
         return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item, status) ? 0 : item.pricePerUnit * item.numberOfUnits), 0);
     };
 
@@ -154,7 +155,7 @@ export const downloadSubprojectsReport = (subprojects: Subproject[], fundSources
         'Fund Source UID': s.fundSourceUid ?? '',
         'Fund Source': getFundSourceLabel(s, fundSources),
         'Tier': s.tier,
-        Budget: calculateTotalBudget(s.details, s.status),
+        Budget: calculateTotalBudget(s.details, s.status, s),
         'End Date': s.estimatedCompletionDate,
         'Actual Male Beneficiaries': s.actualMaleBeneficiaries ?? '',
         'Actual Female Beneficiaries': s.actualFemaleBeneficiaries ?? '',
@@ -459,7 +460,7 @@ export const downloadActivitiesReport = (activities: Activity[], fundSources: Re
         'Location': a.location,
         'Male Participants': a.participantsMale,
         'Female Participants': a.participantsFemale,
-        'Total Budget': a.expenses.reduce((sum, e) => sum + e.amount, 0),
+        'Total Budget': isParentExcludedFromTargets(a) ? 0 : a.expenses.reduce((sum, e) => sum + (isBudgetLineExcludedFromTargets(e) ? 0 : getBudgetLineAmount(e)), 0),
         'Funding Year': a.fundingYear,
         'Fund Type': a.fundType,
         'Tier': a.tier,

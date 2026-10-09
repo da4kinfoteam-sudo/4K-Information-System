@@ -11,6 +11,7 @@ import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../li
 import { getBudgetLineTag, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 import { resolveSubprojectCompletionRollup } from '../../lib/subprojectCompletion';
 import { isMonthTargetOverdue } from '../../lib/dateStatus';
+import { isTransferAccomplishmentActive } from '../../lib/budgetItemTransferRules';
 import type { DataScope } from '../../lib/scopedDataFetch';
 import { ConfirmDialog, LoadingState } from '../ui/enterprise';
 import { DcfScopeFilterPanel, type DcfScopeFilterValue, useDcfScopeFilters } from '../ui/DcfScopeFilters';
@@ -262,6 +263,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     }, [setExpandedGroups]);
 
     const matchesSelectedFilters = (item: any) => {
+        if (!isTransferAccomplishmentActive(item)) return false;
         const y = item.fundingYear || item.fundYear;
         if (selectedYear !== 'All' && String(y ?? '') !== String(selectedYear)) return false;
         if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
@@ -284,14 +286,16 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             };
         };
 
-        const scopedSubprojects = (subprojects || []).filter(item => matchesSelectedFilters(item) && !isPhysicalRecordExcludedFromTargets(item));
-        const scopedActivities = (activities || []).filter(item => matchesSelectedFilters(item) && !isPhysicalRecordExcludedFromTargets(item));
+        const scopedSubprojects = (subprojects || []).filter(item => matchesSelectedFilters(item) && !isPhysicalRecordExcludedFromTargets(item) && !item.isTransferTargetExcluded);
+        const accomplishedSubprojects = (subprojects || []).filter(item => matchesSelectedFilters(item) && !isPhysicalRecordExcludedFromTargets(item));
+        const scopedActivities = (activities || []).filter(item => matchesSelectedFilters(item) && !isPhysicalRecordExcludedFromTargets(item) && !item.isTransferTargetExcluded);
+        const accomplishedActivities = (activities || []).filter(item => matchesSelectedFilters(item) && !isPhysicalRecordExcludedFromTargets(item));
         const scopedStaffing = (staffingReqs || []).filter(item => matchesSelectedFilters(item) && !isPhysicalRecordExcludedFromTargets(item));
         const scopedOffice = (officeReqs || []).filter(item => matchesSelectedFilters(item) && !isPhysicalRecordExcludedFromTargets(item));
 
         return [
-            buildCard('Subprojects', scopedSubprojects.length, scopedSubprojects.filter(item => !!item.actualCompletionDate || item.status === 'Completed').length),
-            buildCard('Activities', scopedActivities.length, scopedActivities.filter(item => !!item.actualDate || item.status === 'Completed').length),
+            buildCard('Subprojects', scopedSubprojects.length, accomplishedSubprojects.filter(item => !!item.actualCompletionDate || item.status === 'Completed').length),
+            buildCard('Activities', scopedActivities.length, accomplishedActivities.filter(item => !!item.actualDate || item.status === 'Completed').length),
             buildCard('Staffing Requirement', scopedStaffing.length, scopedStaffing.filter(item => !!item.actualObligationDate || item.hiringStatus === 'Filled').length),
             buildCard('Office Requirement', scopedOffice.length, scopedOffice.filter(item => !!item.actualObligationDate || item.status === 'Completed').length)
         ];
@@ -309,7 +313,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             (subprojects || []).filter(matchesSelectedFilters).forEach(sp => {
                 const parentId = `sp-${sp.id}`;
                 const parentRecordTag = getPhysicalRecordTag(sp);
-                const parentTargetExcluded = isPhysicalRecordExcludedFromTargets(sp);
+                const parentTargetExcluded = isPhysicalRecordExcludedFromTargets(sp) || !!sp.isTransferTargetExcluded;
                 const parentDue = getPhysicalDueStatus(sp.estimatedCompletionDate, !!sp.actualCompletionDate || sp.status === 'Completed');
                 const children: PhysicalItem[] = (sp.details || []).map(d => {
                     const isCompleted = d.isCompleted === true || (!!d.actualDeliveryDate && d.isCompleted === undefined);
@@ -365,7 +369,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             // B. Activities (Flat)
             (activities || []).filter(matchesSelectedFilters).forEach(act => {
                 const recordTag = getPhysicalRecordTag(act);
-                const targetExcluded = isPhysicalRecordExcludedFromTargets(act);
+                const targetExcluded = isPhysicalRecordExcludedFromTargets(act) || !!act.isTransferTargetExcluded;
                 const activityDue = getPhysicalDueStatus(act.endDate || act.date, !!act.actualDate || act.status === 'Completed');
                 loadedItems.push({
                     uniqueId: `act-${act.id}`,

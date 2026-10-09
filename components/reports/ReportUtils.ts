@@ -39,10 +39,11 @@ export type YearFilter = string | 'All';
 type ParentPhysicalRecord = {
     isRealignment?: boolean;
     isSavings?: boolean;
+    isTransferTargetExcluded?: boolean;
 };
 
 export const isParentRealignmentOrSavings = (record?: ParentPhysicalRecord | null) =>
-    !!(record?.isRealignment || record?.isSavings);
+    !!(record?.isRealignment || record?.isSavings || record?.isTransferTargetExcluded);
 
 export const countPhysicalTarget = (record: ParentPhysicalRecord | null | undefined, value: number) =>
     isParentRealignmentOrSavings(record) ? 0 : value;

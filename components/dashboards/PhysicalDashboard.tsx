@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Subproject, IPO, Training, OtherActivity, OfficeRequirement, StaffingRequirement, operatingUnits, ouToRegionMap } from '../../constants';
 import { isMonthTargetOverdue } from '../../lib/dateStatus';
+import { isTransferAccomplishmentActive } from '../../lib/budgetItemTransferRules';
 import { parseLocation } from '../LocationPicker';
 import { ModalItem } from './DashboardComponents';
 
@@ -252,14 +253,14 @@ const matchesSelectedYear = (dateString: string | undefined, selectedYear: strin
     return getDateYear(dateString) === selectedYear;
 };
 
-const isTargetRecord = (record: { status?: string; isRealignment?: boolean; isSavings?: boolean }) =>
-    record.status !== 'Cancelled' && !record.isRealignment && !record.isSavings;
+const isTargetRecord = (record: { status?: string; isRealignment?: boolean; isSavings?: boolean; isTransferTargetExcluded?: boolean }) =>
+    record.status !== 'Cancelled' && !record.isRealignment && !record.isSavings && !record.isTransferTargetExcluded;
 
 const isCompletedSubproject = (subproject: Subproject) =>
-    subproject.status === 'Completed' && !!subproject.actualCompletionDate;
+    isTransferAccomplishmentActive(subproject) && subproject.status === 'Completed' && !!subproject.actualCompletionDate;
 
 const isCompletedTraining = (training: Training) =>
-    training.status !== 'Cancelled' && !!training.actualDate;
+    isTransferAccomplishmentActive(training) && training.status !== 'Cancelled' && !!training.actualDate;
 
 const percent = (actual: number, target: number) => target > 0 ? Math.round((actual / target) * 100) : 0;
 

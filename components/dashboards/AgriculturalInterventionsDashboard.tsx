@@ -22,6 +22,7 @@ import { parseLocation } from '../LocationPicker';
 import { XLSX } from '../reports/ReportUtils';
 import { isMonthTargetOverdue } from '../../lib/dateStatus';
 import { isSupersededSubprojectDetail } from '../../lib/subprojectItemAdjustments';
+import { isTransferAccomplishmentActive } from '../../lib/budgetItemTransferRules';
 
 interface Props {
     subprojects: Subproject[];
@@ -304,9 +305,9 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
     const [searchTerm, setSearchTerm] = useState('');
 
     const subprojectPerformance = useMemo(() => {
-        const targetSubprojects = (subprojects || []).filter(subproject => !subproject.isRealignment && !subproject.isSavings);
+        const targetSubprojects = (subprojects || []).filter(subproject => !subproject.isRealignment && !subproject.isSavings && !subproject.isTransferTargetExcluded);
         const completedSubprojects = (subprojects || []).filter(subproject =>
-            subproject.status === 'Completed' && !!subproject.actualCompletionDate
+            isTransferAccomplishmentActive(subproject) && subproject.status === 'Completed' && !!subproject.actualCompletionDate
         );
 
         return {
@@ -316,7 +317,9 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
     }, [subprojects]);
 
     const rows = useMemo<InterventionRow[]>(() => {
-        const validSubprojects = (subprojects || []).filter(subproject => subproject.status !== 'Cancelled');
+        const validSubprojects = (subprojects || []).filter(subproject =>
+            isTransferAccomplishmentActive(subproject) && subproject.status !== 'Cancelled'
+        );
 
         return validSubprojects.flatMap(subproject => {
             const parsedLocation = parseLocation(subproject.location || '');
@@ -326,9 +329,9 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
             const region = subproject.operatingUnit || 'Unspecified OU';
 
             return (subproject.details || []).filter(Boolean).filter(detail => !isSupersededSubprojectDetail(detail)).map((detail, index) => {
-                const target = normalizeQuantity(Number(detail.numberOfUnits) || 0, detail.unitOfMeasure);
+                const target = normalizeQuantity(subproject.isTransferTargetExcluded ? 0 : Number(detail.numberOfUnits) || 0, detail.unitOfMeasure);
                 const actual = normalizeQuantity(Number(detail.actualNumberOfUnits) || 0, detail.unitOfMeasure);
-                const allocation = (Number(detail.numberOfUnits) || 0) * (Number(detail.pricePerUnit) || 0);
+                const allocation = subproject.isTransferTargetExcluded ? 0 : (Number(detail.numberOfUnits) || 0) * (Number(detail.pricePerUnit) || 0);
                 const obligated = getActualObligation(detail);
                 const disbursed = getActualDisbursement(detail);
                 const completionRate = target.qty > 0 ? clampRate((actual.qty / target.qty) * 100) : 0;

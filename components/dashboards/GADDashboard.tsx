@@ -306,8 +306,10 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         scopedProgramData.subprojects.forEach(item => {
             const linked = resolveSubprojectIpos(item).filter(ipo => ipo.isWomenLed);
             if (!linked.length) return;
-            targetedWomenSubprojects += 1;
-            linked.forEach(ipo => targetedWomen.add(ipo.id));
+            if (!item.isTransferTargetExcluded) {
+                targetedWomenSubprojects += 1;
+                linked.forEach(ipo => targetedWomen.add(ipo.id));
+            }
             const rollup = resolveSubprojectCompletionRollup(item.details || [], item.status);
             if (rollup.isComplete && getYear(rollup.actualCompletionDate || undefined) === year) {
                 completedWomenSubprojects += 1;
@@ -316,7 +318,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         });
         scopedProgramData.activities.forEach(item => {
             const linked = resolveActivityIpos(item).filter(ipo => ipo.isWomenLed);
-            linked.forEach(ipo => targetedWomen.add(ipo.id));
+            if (!item.isTransferTargetExcluded) linked.forEach(ipo => targetedWomen.add(ipo.id));
             if (item.actualDate && getYear(item.actualDate) === year) {
                 linked.forEach(ipo => assistedWomen.add(ipo.id));
                 if (item.type === 'Training' && linked.length) womenTrainings += 1;
@@ -326,8 +328,8 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         const trainingRows = scopedProgramData.activities.filter(item => item.type === 'Training');
         const conductedTrainings = trainingRows.filter(item => item.actualDate && getYear(item.actualDate) === year);
         const trainingTargets = trainingRows.reduce((result, item) => ({
-            targetMale: result.targetMale + toNumber(item.participantsMale),
-            targetFemale: result.targetFemale + toNumber(item.participantsFemale),
+            targetMale: result.targetMale + (item.isTransferTargetExcluded ? 0 : toNumber(item.participantsMale)),
+            targetFemale: result.targetFemale + (item.isTransferTargetExcluded ? 0 : toNumber(item.participantsFemale)),
         }), { targetMale: 0, targetFemale: 0 });
         const trainingActuals = conductedTrainings.reduce((result, item) => ({
             actualMale: result.actualMale + toNumber(item.actualParticipantsMale),
@@ -361,7 +363,13 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
             women: { targeted: targetedWomen.size, assisted: assistedWomen.size, targetedSubprojects: targetedWomenSubprojects, completedSubprojects: completedWomenSubprojects, trainings: womenTrainings },
             training,
             beneficiaries: { ...beneficiaries, reported: reportedBeneficiaries.length, eligible: completedSubprojects.length, byOu: beneficiaryByOu },
-            completion: { targets: scopedProgramData.activities.length, completed: completedActivities.length, meetingFemaleTarget, belowFemaleTarget, missingSexActual },
+            completion: {
+                targets: scopedProgramData.activities.filter(item => !item.isTransferTargetExcluded).length,
+                completed: completedActivities.length,
+                meetingFemaleTarget,
+                belowFemaleTarget,
+                missingSexActual,
+            },
         };
     }, [scopedProgramData, ipoLookup, rowOus, year]);
 
@@ -372,13 +380,13 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         const assistedWomen = new Set<number>();
         ouSubprojects.forEach(item => {
             const linked = resolveSubprojectIpos(item).filter(ipo => ipo.isWomenLed);
-            linked.forEach(ipo => targetedWomen.add(ipo.id));
+            if (!item.isTransferTargetExcluded) linked.forEach(ipo => targetedWomen.add(ipo.id));
             const rollup = resolveSubprojectCompletionRollup(item.details || [], item.status);
             if (rollup.isComplete && getYear(rollup.actualCompletionDate || undefined) === year) linked.forEach(ipo => assistedWomen.add(ipo.id));
         });
         ouActivities.forEach(item => {
             const linked = resolveActivityIpos(item).filter(ipo => ipo.isWomenLed);
-            linked.forEach(ipo => targetedWomen.add(ipo.id));
+            if (!item.isTransferTargetExcluded) linked.forEach(ipo => targetedWomen.add(ipo.id));
             if (item.actualDate && getYear(item.actualDate) === year) linked.forEach(ipo => assistedWomen.add(ipo.id));
         });
         const conducted = ouActivities.filter(item => item.type === 'Training' && item.actualDate && getYear(item.actualDate) === year);

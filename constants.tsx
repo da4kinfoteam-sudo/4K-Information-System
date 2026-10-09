@@ -83,6 +83,7 @@ export interface RoleConfig {
     can_edit: boolean;
     can_delete: boolean;
     can_manage?: boolean;
+    can_transfer_budget_items?: boolean;
     visibility_scope?: VisibilityScope;
 }
 
@@ -241,6 +242,8 @@ export interface Subproject extends BaseEntity {
     fundSourceUid?: string | null;
     isRealignment?: boolean;
     isSavings?: boolean;
+    isTransferTargetExcluded?: boolean;
+    budgetItemTransferId?: string | null;
     tier?: Tier;
     operatingUnit: string;
     encodedBy: string;
@@ -349,6 +352,8 @@ export interface Activity extends BaseEntity {
     fundSourceUid?: string | null;
     isRealignment?: boolean;
     isSavings?: boolean;
+    isTransferTargetExcluded?: boolean;
+    budgetItemTransferId?: string | null;
     tier?: Tier;
     operatingUnit: string;
     encodedBy: string;

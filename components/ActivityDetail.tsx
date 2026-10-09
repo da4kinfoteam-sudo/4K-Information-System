@@ -12,6 +12,7 @@ import {
     Plus,
     RefreshCw,
     Trash2,
+    ArrowRightLeft,
     UserCheck,
     Users,
     UploadCloud,
@@ -46,6 +47,8 @@ import {
     GalleryViewToggle,
     getPersistedDriveUploadSection
 } from './ui/DriveMediaSections';
+import { BudgetItemTransferDialog } from './ui/BudgetItemTransferDialog';
+import { canTransferBudgetItems, getTransferEligibleLines, BudgetItemTransferResult } from '../lib/budgetItemTransfer';
 import {
     RecordDetailAside,
     RecordDetailGrid,
@@ -64,6 +67,7 @@ interface ActivityDetailProps {
     ipos: IPO[];
     fundSources: RefFundSource[];
     onUpdateActivity: (updatedActivity: Activity) => void;
+    onBudgetTransferComplete?: (source: Activity, destination: Activity, status: BudgetItemTransferResult['status'], selectedItemIds: string[]) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     referenceActivities?: ReferenceActivity[];
     cachedMonitoringReports?: ActivityMonitoringReport[];
@@ -117,8 +121,8 @@ const MonitoringPreviewLine: React.FC<{ label: string; value?: string | null }> 
     </div>
 );
 
-export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, fundSources, onSelectIpo, onEdit, uacsCodes, referenceActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], onOpenMonitoringReport }) => {
-    const { currentUser } = useAuth();
+export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, fundSources, onUpdateActivity, onSelectIpo, onEdit, uacsCodes, referenceActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], onOpenMonitoringReport, onBudgetTransferComplete }) => {
+    const { currentUser, rolesConfigs, getVisibilityScope } = useAuth();
     const { canEdit } = useUserAccess('Activities');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
     const { canEdit: canEditPhysical } = useUserAccess('Accomplishment - Physical');
@@ -133,6 +137,9 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     const [driveFilePendingDelete, setDriveFilePendingDelete] = useState<ActivityDriveFile | null>(null);
     const [uploadModal, setUploadModal] = useState<'gallery' | 'files' | null>(null);
     const [galleryView, setGalleryView] = useState<GalleryViewMode>('thumbnail');
+    const [selectedTransferItemIds, setSelectedTransferItemIds] = useState<string[]>([]);
+    const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+    const [transferNotice, setTransferNotice] = useState<string | null>(null);
     const cachedReportsForActivity = useMemo(() =>
         cachedMonitoringReports.filter(report => Number(report.activity_id) === Number(activity.id)),
     [activity.id, cachedMonitoringReports]);
@@ -198,6 +205,18 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     const accomplishmentDecision = physicalAccomplishmentDecision.allowed ? physicalAccomplishmentDecision : financialAccomplishmentDecision;
     const canEditDetails = detailsDecision.allowed;
     const canEditExpenses = expensesDecision.allowed;
+    const transferPermission = canTransferBudgetItems(currentUser?.role, 'Activities', rolesConfigs, currentUser?.permissions_override);
+    const canStartBudgetTransfer = !!currentUser && transferPermission && canEdit
+        && activity.status !== 'Cancelled'
+        && (!activity.workflow_status || activity.workflow_status === 'APPROVED');
+    const eligibleTransferLines = useMemo(() => getTransferEligibleLines('activity', activity), [activity]);
+    const eligibleTransferIds = useMemo(() => new Set(eligibleTransferLines.map(line => String(line.id))), [eligibleTransferLines]);
+    const selectedTransferLines = useMemo(() => eligibleTransferLines.filter(line => selectedTransferItemIds.includes(String(line.id))), [eligibleTransferLines, selectedTransferItemIds]);
+
+    useEffect(() => {
+        setSelectedTransferItemIds([]);
+        setTransferNotice(null);
+    }, [activity.id]);
     
     // Accomplishment: Editable based on tracking permissions
     const canEditAccomplishment = physicalAccomplishmentDecision.allowed || financialAccomplishmentDecision.allowed;
@@ -220,9 +239,37 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
         if (allowed) onEdit(mode);
     };
 
+    const handleBudgetTransferComplete = (result: BudgetItemTransferResult) => {
+        const source = result.source as Activity;
+        const destination = result.destination as Activity;
+        if (onBudgetTransferComplete) onBudgetTransferComplete(source, destination, result.status, selectedTransferItemIds);
+        else {
+            onUpdateActivity(source);
+            onUpdateActivity(destination);
+        }
+        setSelectedTransferItemIds([]);
+        setTransferDialogOpen(false);
+        setTransferNotice(result.status === 'pending'
+            ? 'Transfer request submitted for approval. The source budget remains unchanged until it is approved.'
+            : 'Selected items and actuals were transferred.');
+    };
+
+    const toggleTransferItem = (itemId: string) => {
+        setSelectedTransferItemIds(previous => previous.includes(itemId)
+            ? previous.filter(id => id !== itemId)
+            : [...previous, itemId]);
+    };
+
+    const toggleAllTransferItems = () => {
+        setSelectedTransferItemIds(previous => previous.length === eligibleTransferLines.length
+            ? []
+            : eligibleTransferLines.map(line => String(line.id)));
+    };
+
     const totalBudget = useMemo(() => {
+       if (activity.isTransferTargetExcluded) return 0;
        return activity.expenses.reduce((acc, item) => acc + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)), 0);
-    }, [activity.expenses]);
+    }, [activity.expenses, activity.isTransferTargetExcluded]);
     const totalObligated = useMemo(
         () => activity.expenses.reduce((total, expense) => total + getActualObligationSummary(expense).amount, 0),
         [activity.expenses]
@@ -231,7 +278,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
         () => activity.expenses.reduce((total, expense) => total + getActualDisbursementSummary(expense).amount, 0),
         [activity.expenses]
     );
-    const targetParticipantCount = (activity.participantsMale || 0) + (activity.participantsFemale || 0);
+    const targetParticipantCount = activity.isTransferTargetExcluded ? 0 : (activity.participantsMale || 0) + (activity.participantsFemale || 0);
     const actualParticipantCount = (activity.actualParticipantsMale || 0) + (activity.actualParticipantsFemale || 0);
     const monitoringReference = useMemo(() => referenceActivities.find(ref =>
         ref.activity_name === 'Subproject Monitoring' &&
@@ -434,6 +481,19 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                     onClose={() => setUploadModal(null)}
                 />
             )}
+            {transferDialogOpen && currentUser && (
+                <BudgetItemTransferDialog
+                    sourceType="activity"
+                    source={activity}
+                    selectedLines={selectedTransferLines}
+                    ipos={ipos}
+                    fundSources={fundSources}
+                    currentUser={currentUser}
+                    canChangeOperatingUnit={getVisibilityScope('Activities') === 'All'}
+                    onClose={() => setTransferDialogOpen(false)}
+                    onComplete={handleBudgetTransferComplete}
+                />
+            )}
 
 
             <RecordHeader
@@ -548,17 +608,25 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                     <RecordPanel
                         title="Expenses & Budget"
                         description="Planned expense lines and financial schedule"
-                        actions={(canEdit || canEditExpenses) ? (
-                                <button onClick={() => handlePolicyEdit('expenses')} disabled={!canEditExpenses} className={`table-action table-action--primary ${!canEditExpenses ? 'is-disabled' : ''}`} title={canEditExpenses ? 'Edit Expenses' : expensesDecision.message}>
+                        actions={(canEdit || canEditExpenses || canStartBudgetTransfer) ? (
+                            <div className="budget-transfer-actions">
+                                {canStartBudgetTransfer && <button type="button" onClick={() => setTransferDialogOpen(true)} disabled={selectedTransferLines.length === 0} className="table-action" title="Create a same-type record from the selected expense items">
+                                    <ArrowRightLeft className="btn-symbol" aria-hidden="true" />
+                                    Transfer{selectedTransferLines.length > 0 ? ` (${selectedTransferLines.length})` : ''}
+                                </button>}
+                                {(canEdit || canEditExpenses) && <button onClick={() => handlePolicyEdit('expenses')} disabled={!canEditExpenses} className={`table-action table-action--primary ${!canEditExpenses ? 'is-disabled' : ''}`} title={canEditExpenses ? 'Edit Expenses' : expensesDecision.message}>
                                     <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Expenses
-                                </button>
-                            ) : null}
+                                </button>}
+                            </div>
+                        ) : null}
                     >
+                        {transferNotice && <p className="budget-transfer-notice" role="status">{transferNotice}</p>}
                         <div className="data-table-scroll">
                             <table className="data-table">
                                 <thead>
                                     <tr>
+                                        {canStartBudgetTransfer && <th className="data-table__cell--selection"><input type="checkbox" className="form-checkbox" aria-label="Select all eligible expense items for transfer" checked={eligibleTransferLines.length > 0 && selectedTransferLines.length === eligibleTransferLines.length} disabled={eligibleTransferLines.length === 0} onChange={toggleAllTransferItems} /></th>}
                                         <th>Particulars</th>
                                         <th>Status</th>
                                         <th>UACS Code</th>
@@ -571,6 +639,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                     {activity.expenses.length > 0 ? (
                                         activity.expenses.map(exp => (
                                             <tr key={exp.id} className={`${isBudgetLineExcludedFromTargets(exp) ? 'budget-item-card--excluded' : ''} ${exp.isCancelled ? 'budget-item-card--cancelled' : ''} ${exp.isRealignment ? 'budget-item-card--realignment' : ''} ${exp.isSavings ? 'budget-item-card--savings' : ''}`}>
+                                                {canStartBudgetTransfer && <td className="data-table__cell--selection"><input type="checkbox" className="form-checkbox" aria-label={`Select ${exp.expenseParticular} for transfer`} checked={selectedTransferItemIds.includes(String(exp.id))} disabled={!eligibleTransferIds.has(String(exp.id))} onChange={() => toggleTransferItem(String(exp.id))} /></td>}
                                                 <td className="data-table__primary">
                                                     {exp.expenseParticular}
                                                 </td>
@@ -595,12 +664,12 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                             </tr>
                                         ))
                                     ) : (
-                                        <tr><td colSpan={6} className="text-center italic">No expenses recorded.</td></tr>
+                                        <tr><td colSpan={canStartBudgetTransfer ? 7 : 6} className="text-center italic">No expenses recorded.</td></tr>
                                     )}
                                 </tbody>
                                 <tfoot>
                                     <tr>
-                                        <td colSpan={5} className="data-table__numeric data-table__total-label">Active Target Budget</td>
+                                        <td colSpan={canStartBudgetTransfer ? 6 : 5} className="data-table__numeric data-table__total-label">Active Target Budget</td>
                                         <td className="data-table__numeric data-table__total-value">{formatCurrency(totalBudget)}</td>
                                     </tr>
                                 </tfoot>

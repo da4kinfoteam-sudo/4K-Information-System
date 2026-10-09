@@ -98,11 +98,11 @@ export const normalizeBudgetLineStatus = <T extends AdjustableBudgetLine>(line: 
 export const isBudgetLineExcludedFromTargets = (line?: AdjustableBudgetLine | null, parentStatus?: string) =>
     getBudgetLineTag(line, parentStatus) !== null;
 
-export const isParentExcludedFromTargets = (record?: { status?: string; isRealignment?: boolean; isSavings?: boolean } | null) =>
-    !!(record?.status === 'Cancelled' || record?.isRealignment || record?.isSavings);
+export const isParentExcludedFromTargets = (record?: { status?: string; isRealignment?: boolean; isSavings?: boolean; isTransferTargetExcluded?: boolean } | null) =>
+    !!(record?.status === 'Cancelled' || record?.isRealignment || record?.isSavings || record?.isTransferTargetExcluded);
 
 export const isRecordOrLineExcludedFromTargets = (
-    record?: { status?: string; isRealignment?: boolean; isSavings?: boolean } | null,
+    record?: { status?: string; isRealignment?: boolean; isSavings?: boolean; isTransferTargetExcluded?: boolean } | null,
     line?: AdjustableBudgetLine | null,
     lineParentStatus?: string,
 ) => isParentExcludedFromTargets(record) || isBudgetLineExcludedFromTargets(line, lineParentStatus);

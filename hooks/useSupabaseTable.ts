@@ -42,6 +42,7 @@ export async function fetchAll(tableName: string, orderBy: string = 'id', ascend
 export interface SupabaseTableSyncState {
     refresh: () => Promise<void>;
     replaceLocalData: (nextData: any[]) => void;
+    upsertLocalData: (records: any[]) => void;
     isLoading: boolean;
     lastFetchedAt: string | null;
     error: string | null;
@@ -103,6 +104,17 @@ export function useSupabaseTable<T extends { id: number | string }>(
         setIsLoaded(true);
     }, []);
 
+    const upsertLocalData = useCallback((records: T[]) => {
+        setData(previous => {
+            const next = new Map(previous.map(item => [item.id, item]));
+            records.forEach(item => next.set(item.id, item));
+            return Array.from(next.values());
+        });
+        setLastFetchedAt(new Date().toISOString());
+        setError(null);
+        setIsLoaded(true);
+    }, []);
+
     const setSupabaseData = (action: React.SetStateAction<T[]>) => {
         setData((prev) => {
             const next = typeof action === 'function' ? (action as any)(prev) : action;
@@ -154,6 +166,6 @@ export function useSupabaseTable<T extends { id: number | string }>(
         });
     };
 
-    return [data, setSupabaseData, { refresh, replaceLocalData, isLoading, lastFetchedAt, error }];
+    return [data, setSupabaseData, { refresh, replaceLocalData, upsertLocalData, isLoading, lastFetchedAt, error }];
 }
 // --- End of useSupabaseTable.ts ---
