@@ -1,6 +1,6 @@
 ﻿
 // Author: 4K 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Subproject, IPO, SubprojectDetail, operatingUnits, ouToRegionMap, filterYears, RefFundSource } from '../constants';
 import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,6 +18,7 @@ import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/bud
 import { isActiveSubprojectDetail } from '../lib/subprojectItemAdjustments';
 import { getFundSourceByUid, getFundSourceLabel, getNewSubprojectDefaultFundSource, resolveFundSourceUidFromLegacyLabel } from '../lib/fundSources';
 import { resolveBudgetItemTransfer, type BudgetItemTransferResult } from '../lib/budgetItemTransfer';
+import { buildSubprojectClonePayload } from '../lib/recordCloning';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -86,6 +87,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [subprojectToDelete, setSubprojectToDelete] = useState<Subproject | null>(null);
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
+    const [isCloning, setIsCloning] = useState(false);
+    const cloneInFlight = useRef(false);
     
     // Use Shared Selection Hook
     const { 
@@ -384,82 +387,55 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     };
 
     const handleClone = async () => {
+        if (cloneInFlight.current || !currentUser || !canEdit) return;
         const itemsToClone = subprojects.filter(s => selectedIds.includes(s.id));
         if (itemsToClone.length === 0) return;
-
-        if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} subprojects? This will create new entries with the same details but reset accomplishments.`)) return;
-
-        const currentTimestamp = new Date().toISOString();
-        const currentYear = new Date().getFullYear();
-
-        const newItemsPayload = itemsToClone.map((item, index) => {
-            const { id, uid, created_at, updated_at, history, physical_accomplishment_submitted_at, ...rest } = item;
-            
-            const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
-            const newUid = `SP-${currentYear}-${sequence}${index}`;
-
-            const clonedDetails = (item.details || []).map(d => ({
-                ...d,
-                id: Date.now() + Math.random(),
-                actualDeliveryDate: '',
-                actualNumberOfUnits: 0,
-                actualObligationDate: '',
-                actualDisbursementDate: '',
-                actualAmount: 0,
-                actualObligationAmount: 0,
-                actualDisbursementAmount: 0,
-                isCompleted: false
-            }));
-
-            const clonedCommodities = (item.subprojectCommodities || []).map(c => ({
-                ...c,
-                actualYield: 0,
-                income: 0
-            }));
-
-            const sourceUid = item.fundSourceUid || resolveFundSourceUidFromLegacyLabel(item.fundSource, fundSources);
-            const existingSource = getFundSourceByUid(sourceUid, fundSources);
-            const newSource = existingSource?.is_active ? existingSource : getNewSubprojectDefaultFundSource(fundSources);
-
-            return {
-                ...rest,
-                fundSourceUid: newSource?.uid || null,
-                fundSource: newSource?.label || null,
-                uid: newUid,
-                status: 'Proposed',
-                actualCompletionDate: undefined,
-                physical_accomplishment_submitted_at: null,
-                catchUpPlanRemarks: '',
-                newTargetCompletionDate: '',
-                details: clonedDetails,
-                subprojectCommodities: clonedCommodities,
-                encodedBy: currentUser?.fullName || 'System Clone',
-                created_at: currentTimestamp,
-                updated_at: currentTimestamp,
-                history: [{
-                    date: currentTimestamp,
-                    event: 'Cloned from ' + uid,
-                    user: currentUser?.fullName || 'System'
-                }]
+        cloneInFlight.current = true;
+        try {
+            if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} subprojects? This will create new entries with the same details but reset accomplishments.`)) return;
+            if (supabase && !upsertSubprojectsLocally) throw new Error('Local synchronization is unavailable. Reload before cloning.');
+            setIsCloning(true);
+            const context = {
+                createdAt: new Date().toISOString(),
+                encodedBy: currentUser.fullName || 'System Clone',
+                requiresApprover: !!currentUser.requires_approver,
             };
-        });
-
-        if (supabase) {
-            const { data, error } = await supabase.from('subprojects').insert(newItemsPayload).select();
-            if (error) {
-                alert('Failed to clone items: ' + error.message);
-            } else if (data) {
-                if (replaceSubprojects) replaceSubprojects([...(data as Subproject[]), ...subprojects]);
-                else setSubprojects(prev => [...data as Subproject[], ...prev]);
+            const newItemsPayload = itemsToClone.map(item => {
+                const sourceUid = item.fundSourceUid || resolveFundSourceUidFromLegacyLabel(item.fundSource, fundSources);
+                const existingSource = getFundSourceByUid(sourceUid, fundSources);
+                const newSource = existingSource?.is_active ? existingSource : getNewSubprojectDefaultFundSource(fundSources);
+                return {
+                    ...buildSubprojectClonePayload(item, context),
+                    fundSourceUid: newSource?.uid || null,
+                    fundSource: newSource?.label || null,
+                };
+            });
+            if (supabase) {
+                const { data, error } = await supabase.from('subprojects').insert(newItemsPayload).select();
+                if (error) throw error;
+                if (!data?.length) throw new Error('No created records were returned. Refresh before retrying.');
+                upsertSubprojectsLocally!(data as Subproject[]);
                 resetSelection();
                 alert(`Successfully cloned ${data.length} subprojects.`);
+            } else {
+                const reservedIds = new Set(subprojects.map(item => item.id));
+                let localId = Date.now();
+                const newLocalItems = newItemsPayload.map(item => {
+                    while (reservedIds.has(localId)) localId++;
+                    reservedIds.add(localId);
+                    return { ...item, id: localId++ };
+                });
+                if (upsertSubprojectsLocally) upsertSubprojectsLocally(newLocalItems);
+                else if (replaceSubprojects) replaceSubprojects([...newLocalItems, ...subprojects]);
+                else setSubprojects(prev => [...newLocalItems, ...prev]);
+                resetSelection();
+                alert(`Successfully cloned ${newLocalItems.length} subprojects (Local).`);
             }
-        } else {
-            const newLocalItems = newItemsPayload.map((item, idx) => ({ ...item, id: Date.now() + idx }));
-            if (replaceSubprojects) replaceSubprojects([...(newLocalItems as Subproject[]), ...subprojects]);
-            else setSubprojects(prev => [...(newLocalItems as Subproject[]), ...prev]);
-            resetSelection();
-            alert(`Successfully cloned ${newLocalItems.length} subprojects (Local).`);
+        } catch (error) {
+            alert('Failed to clone items: ' + (error instanceof Error ? error.message : (error as { message?: string })?.message || 'Unknown error'));
+        } finally {
+            cloneInFlight.current = false;
+            setIsCloning(false);
         }
     };
 
@@ -676,7 +652,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                     activeFilterCount={Object.keys(columnFilters).length}
                     onOpenFilters={() => setIsColumnFilterOpen(true)}
                     actions={isSelectionMode
-                        ? <BulkSelectionBar intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} />
+                        ? <BulkSelectionBar intent={selectionIntent} count={selectedIds.length} busy={isCloning} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} />
                         : <>
                         <button onClick={() => downloadSubprojectsReport(processedSubprojects, fundSources)} className="btn btn-secondary"><Download aria-hidden="true" /> Export</button>
                         {canEdit && <>

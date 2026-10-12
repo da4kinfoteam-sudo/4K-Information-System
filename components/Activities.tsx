@@ -1,6 +1,6 @@
 ﻿
 // Author: 4K
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
 import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, RefFundSource, philippineRegions, operatingUnits, ouToRegionMap, filterYears } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,6 +19,7 @@ import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheck
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import { getFundSourceFilterOptions, getFundSourceFilterValue, getFundSourceLabel, getFundSourceSortLabel } from '../lib/fundSources';
 import { resolveBudgetItemTransfer, type BudgetItemTransferResult } from '../lib/budgetItemTransfer';
+import { buildActivityClonePayload } from '../lib/recordCloning';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -91,6 +92,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     const [itemToDelete, setItemToDelete] = useState<Activity | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
+    const [isCloning, setIsCloning] = useState(false);
+    const cloneInFlight = useRef(false);
 
     // Shared Hooks
     const { canEdit, canViewAll } = useUserAccess('Activities');
@@ -371,68 +374,45 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     };
 
     const handleClone = async () => {
+        if (cloneInFlight.current || !currentUser || !canEdit) return;
         const itemsToClone = activities.filter(a => selectedIds.includes(a.id));
         if (itemsToClone.length === 0) return;
-
-        if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} activities? This will create new entries with the same details but reset accomplishments.`)) return;
-
-        const currentTimestamp = new Date().toISOString();
-        const currentYear = new Date().getFullYear();
-
-        const newActivitiesPayload = itemsToClone.map((item, index) => {
-            const { id, uid, created_at, updated_at, history, participating_ipo_ids, physical_accomplishment_submitted_at, ...rest } = item;
-
-            const prefix = item.type === 'Training' ? 'TRN' : 'ACT';
-            const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
-            const newUid = `${prefix}-${currentYear}-${sequence}${index}`;
-
-            const clonedExpenses = item.expenses.map(exp => ({
-                ...exp,
-                id: Date.now() + Math.random(),
-                actualObligationAmount: 0,
-                actualObligationDate: null as unknown as string,
-                actualDisbursementAmount: 0,
-                actualDisbursementDate: null as unknown as string,
-                actualAmount: 0
-            }));
-
-            return {
-                ...rest,
-                uid: newUid,
-                status: 'Proposed',
-                actualDate: null as unknown as string,
-                actualEndDate: null as unknown as string,
-                physical_accomplishment_submitted_at: null,
-                actualParticipantsMale: 0,
-                actualParticipantsFemale: 0,
-                catchUpPlanRemarks: '',
-                newTargetDate: null as unknown as string,
-                expenses: clonedExpenses,
-                encodedBy: currentUser?.fullName || 'System Clone',
-                created_at: currentTimestamp,
-                updated_at: currentTimestamp,
-                history: [{
-                    date: currentTimestamp,
-                    event: 'Cloned from ' + uid,
-                    user: currentUser?.fullName || 'System'
-                }]
+        cloneInFlight.current = true;
+        try {
+            if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} activities? This will create new entries with the same details but reset accomplishments.`)) return;
+            if (supabase && !upsertActivitiesLocally) throw new Error('Local synchronization is unavailable. Reload before cloning.');
+            setIsCloning(true);
+            const context = {
+                createdAt: new Date().toISOString(),
+                encodedBy: currentUser.fullName || 'System Clone',
+                requiresApprover: !!currentUser.requires_approver,
             };
-        });
-
-        if (supabase) {
-            const { data, error } = await supabase.from('activities').insert(newActivitiesPayload).select();
-            if (error) {
-                alert('Failed to clone items: ' + error.message);
-            } else if (data) {
-                setActivities(prev => [...data as Activity[], ...prev]);
+            const newActivitiesPayload = itemsToClone.map(item => buildActivityClonePayload(item, context));
+            if (supabase) {
+                const { data, error } = await supabase.from('activities').insert(newActivitiesPayload).select();
+                if (error) throw error;
+                if (!data?.length) throw new Error('No created records were returned. Refresh before retrying.');
+                upsertActivitiesLocally!(data as Activity[]);
                 resetSelection();
                 alert(`Successfully cloned ${data.length} activities.`);
+            } else {
+                const reservedIds = new Set(activities.map(item => item.id));
+                let localId = Date.now();
+                const newLocalItems = newActivitiesPayload.map(item => {
+                    while (reservedIds.has(localId)) localId++;
+                    reservedIds.add(localId);
+                    return { ...item, id: localId++ };
+                });
+                if (upsertActivitiesLocally) upsertActivitiesLocally(newLocalItems);
+                else setActivities(prev => [...newLocalItems, ...prev]);
+                resetSelection();
+                alert(`Successfully cloned ${newLocalItems.length} activities (Local).`);
             }
-        } else {
-            const newLocalItems = newActivitiesPayload.map((item, idx) => ({ ...item, id: Date.now() + idx }));
-            setActivities(prev => [...(newLocalItems as Activity[]), ...prev]);
-            resetSelection();
-            alert(`Successfully cloned ${newLocalItems.length} activities (Local).`);
+        } catch (error) {
+            alert('Failed to clone items: ' + (error instanceof Error ? error.message : (error as { message?: string })?.message || 'Unknown error'));
+        } finally {
+            cloneInFlight.current = false;
+            setIsCloning(false);
         }
     };
 
@@ -626,7 +606,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                     activeFilterCount={Object.keys(columnFilters).length}
                     onOpenFilters={() => setIsColumnFilterOpen(true)}
                     actions={isSelectionMode
-                        ? <BulkSelectionBar intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} />
+                        ? <BulkSelectionBar intent={selectionIntent} count={selectedIds.length} busy={isCloning} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} />
                         : <>
                         <button onClick={() => downloadActivitiesReport(processedActivities, fundSources)} className="btn btn-secondary"><Download aria-hidden="true" /> Export</button>
                         {canEdit && <>
