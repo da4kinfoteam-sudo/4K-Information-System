@@ -20,6 +20,7 @@ import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/bud
 import { getFundSourceFilterOptions, getFundSourceFilterValue, getFundSourceLabel, getFundSourceSortLabel } from '../lib/fundSources';
 import { resolveBudgetItemTransfer, type BudgetItemTransferResult } from '../lib/budgetItemTransfer';
 import { buildActivityClonePayload } from '../lib/recordCloning';
+import { getActivityIpoSelection } from '../lib/activityIpoLinks';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -637,7 +638,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                         <tbody>
                             {paginatedActivities.map(activity => {
                                 const totalBudget = calculateActivityBudget(activity);
-                                const participatingIpos = activity.participatingIpos || [];
+                                const participatingIpos = getActivityIpoSelection(activity, ipos).map(row => row.name || `IPO ${row.ipoId}`);
                                 const ipoPreview = participatingIpos.length > 0
                                     ? `${participatingIpos[0]}${participatingIpos.length > 1 ? ` +${participatingIpos.length - 1}` : ''}`
                                     : '—';

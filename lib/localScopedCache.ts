@@ -1,5 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { DataScope, getDataScopeKey, ScopedAppData } from './scopedDataFetch';
+import type { Activity } from '../constants';
 
 const DB_NAME = '4kis-local-cache';
 const DB_VERSION = 1;
@@ -205,6 +206,24 @@ export const writeScopedCache = async (scope: DataScope, data: ScopedAppData): P
   tx.objectStore('scope_meta').put(meta);
   await tx.done;
   return meta;
+};
+
+export const updateCachedActivity = async (userId: string | number, activity: Activity): Promise<void> => {
+  const db = await getDb();
+  if (!db) return;
+  const tx = db.transaction(['scope_meta', 'records'], 'readwrite');
+  const rows = await tx.objectStore('records').index('tableName').getAll('activities');
+  const scopeFields: (keyof Activity)[] = ['operatingUnit', 'fundingYear', 'fundType', 'tier', 'workflow_status', 'type'];
+  for (const row of rows) {
+    if (row.userId !== String(userId) || Number(row.value.id) !== Number(activity.id)) continue;
+    if (scopeFields.some(field => row.value[field] !== activity[field])) {
+      // Invalidate an existing scope instead of inserting a record into a now-incompatible cohort.
+      await tx.objectStore('scope_meta').delete(row.scopeKey);
+    } else {
+      await tx.objectStore('records').put({ ...row, value: activity });
+    }
+  }
+  await tx.done;
 };
 
 export const clearUserCache = async (userId: string | number): Promise<void> => {

@@ -28,6 +28,8 @@ import { getActualObligationValidationError, hasActualObligationRecords } from '
 import { fetchFinancialObligationsForParent, replaceFinancialObligationRecords } from '../lib/financialObligationSync';
 import { getFundSourceByUid, getNewFundSourceDefault, resolveFundSourceUidFromLegacyLabel } from '../lib/fundSources';
 import { FundSourceField } from './ui/FundSourceField';
+import { ActivityIpoSelector } from './ui/ActivityIpoSelector';
+import { buildActivityDetailsPayload, getActivityIpoIds, reconcileActivityIpoLinks } from '../lib/activityIpoLinks';
 
 interface ActivityEditProps {
     mode: 'create' | 'details' | 'expenses' | 'accomplishment';
@@ -66,6 +68,7 @@ const defaultFormData: Activity = {
     location: '',
     facilitator: '',
     participatingIpos: [],
+    participating_ipo_ids: [],
     participantsMale: 0,
     participantsFemale: 0,
     component: 'Social Preparation',
@@ -105,13 +108,15 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     const [formData, setFormData] = useState<Activity>(activity || defaultFormData);
     const [initialActivity, setInitialActivity] = useState<Activity>(activity || defaultFormData);
     const [monthLockMessage, setMonthLockMessage] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const saveInFlight = useRef(false);
 
     const [activeTab, setActiveTab] = useState<'details' | 'expenses'>('details');
     const [selectedActivityType, setSelectedActivityType] = useState('');
     const [conductType, setConductType] = useState<'Single' | 'Multi-day' | 'Repeating'>('Single');
     const [repeatingEntries, setRepeatingEntries] = useState<any[]>([]);
     const [currentRepeatingEntry, setCurrentRepeatingEntry] = useState<any>({
-        id: 0, date: '', endDate: '', isMultiDay: false, participantsMale: 0, participantsFemale: 0, participatingIpos: []
+        id: 0, date: '', endDate: '', isMultiDay: false, participantsMale: 0, participantsFemale: 0, participatingIpos: [], participating_ipo_ids: []
     });
     
     // Filter state for IPO selection
@@ -204,13 +209,16 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     }),
                 };
                 if (cancelled) return;
-                setFormData(processedActivity);
-                setInitialActivity(processedActivity);
+                setFormData(previous => ({
+                    ...previous,
+                    expenses: previous.expenses.map(expense => processedActivity.expenses.find(item => item.id === expense.id) || expense),
+                }));
+                setInitialActivity(previous => ({ ...previous, expenses: processedActivity.expenses }));
             };
 
             setFormData({ ...activity, expenses: activity.expenses || [] });
             setInitialActivity({ ...activity, expenses: activity.expenses || [] });
-            if (supabase && activity.id > 0) {
+            if (supabase && activity.id > 0 && mode !== 'details') {
                 void fetchFinancialObligationsForParent({ entityType: 'activity_expense', parentId: activity.id })
                     .then(rows => applyObligationRows(rows))
                     .catch(error => {
@@ -239,11 +247,14 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         } else {
             // Create Mode Defaults
             const userOu = currentUser?.operatingUnit || '';
+            const defaultSource = getNewFundSourceDefault(fundSources);
             setFormData({
                 ...defaultFormData,
                 type: forcedType || 'Activity',
                 operatingUnit: userOu,
                 encodedBy: currentUser?.fullName || '',
+                fundSourceUid: defaultSource?.uid || null,
+                fundSource: defaultSource?.label || null,
                 status: 'Proposed'
             });
             setConductType('Single');
@@ -252,7 +263,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         
         if (mode === 'expenses') setActiveTab('expenses');
         return () => { cancelled = true; };
-    }, [activity, mode, forcedType, currentUser]);
+    }, [activity?.id, mode, forcedType, currentUser?.id]);
 
     // Derived States
     const activityOptions = useMemo(() => {
@@ -261,15 +272,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             .filter(ra => forcedType ? ra.type === forcedType : true)
             .map(ra => ra.activity_name);
     }, [formData.component, referenceActivities, forcedType]);
-
-    // Filtered IPO List
-    const filteredIpos = useMemo(() => {
-        let current = ipos;
-        if (ipoRegionFilter !== 'All') {
-            current = current.filter(i => i.region === ipoRegionFilter);
-        }
-        return current.sort((a, b) => a.name.localeCompare(b.name));
-    }, [ipos, ipoRegionFilter]);
 
     // Status Logic
     const availableStatuses = useMemo(() => {
@@ -297,7 +299,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             if (name === 'operatingUnit') {
                 const mappedRegion = ouToRegionMap[value] || 'All';
                 setIpoRegionFilter(mappedRegion);
-                newData.participatingIpos = [];
             }
             if (name === 'date' && conductType === 'Single') newData.endDate = value;
             if (name === 'actualDate' && conductType === 'Single') newData.actualEndDate = value;
@@ -382,11 +383,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         }
     };
     
-    const handleRepeatingIpoSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const selectedOptions = Array.from(e.target.selectedOptions, (option: HTMLOptionElement) => option.value);
-        setCurrentRepeatingEntry(prev => ({ ...prev, participatingIpos: selectedOptions }));
-    };
-
     const handleAddRepeatingEntry = () => {
         if (!currentRepeatingEntry.date) {
             alert("Date is required.");
@@ -394,7 +390,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         }
         const newEntry = { ...currentRepeatingEntry, id: Date.now() };
         setRepeatingEntries(prev => [...prev, newEntry]);
-        setCurrentRepeatingEntry({ id: 0, date: '', endDate: '', isMultiDay: false, participantsMale: 0, participantsFemale: 0, participatingIpos: [] });
+        setCurrentRepeatingEntry({ id: 0, date: '', endDate: '', isMultiDay: false, participantsMale: 0, participantsFemale: 0, participatingIpos: [], participating_ipo_ids: [] });
     };
 
     // Budget Handlers
@@ -647,6 +643,15 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
+        if (saveInFlight.current) return;
+        saveInFlight.current = true;
+        setIsSaving(true);
+        try {
+
+        if (mode === 'create' && !hasAccess('Activities', 'edit')) {
+            alert('You do not have permission to create activities.');
+            return;
+        }
 
         if (mode === 'accomplishment') {
             const obligationError = (formData.expenses || [])
@@ -687,8 +692,9 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
         if (!(await validateActivityAccomplishmentMonthsForSave())) return;
         
-        if ((mode === 'create' && activeTab === 'details') || mode === 'details') {
-            const requiredFields = ['component', 'type', 'date', 'location'];
+        if (mode === 'create' || mode === 'details') {
+            const requiredFields = ['component', 'type', 'location'];
+            if (conductType !== 'Repeating') requiredFields.push('date');
             if (formData.type === 'Training') requiredFields.push('name');
             if (conductType === 'Multi-day') requiredFields.push('endDate');
 
@@ -698,6 +704,11 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 alert('Please fill out all required fields before proceeding.');
                 return;
             }
+        }
+
+        if (mode === 'create' && conductType === 'Repeating' && repeatingEntries.length === 0) {
+            alert('Add at least one schedule entry before saving.');
+            return;
         }
 
         let activitiesToSave: Activity[] = [];
@@ -724,6 +735,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     participantsMale: entry.participantsMale,
                     participantsFemale: entry.participantsFemale,
                     participatingIpos: entry.participatingIpos,
+                    participating_ipo_ids: entry.participating_ipo_ids,
                     expenses: formData.expenses.map((exp, eIdx) => ({ ...exp, id: Date.now() + Math.random() + eIdx })), 
                     id: 0,
                     workflow_status,
@@ -784,6 +796,21 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             }];
         }
 
+        if (mode === 'create' || mode === 'details') {
+            activitiesToSave = activitiesToSave.map(saved => ({ ...saved, ...reconcileActivityIpoLinks(saved, ipos) }));
+        }
+        if (mode === 'details' && activity) {
+            const before = reconcileActivityIpoLinks(activity, ipos);
+            const after = reconcileActivityIpoLinks(formData, ipos);
+            if (JSON.stringify(before) !== JSON.stringify(after)) {
+                activitiesToSave[0].history!.push({
+                    date: activitiesToSave[0].updated_at!,
+                    event: `Participating IPOs changed: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`,
+                    user: currentUser?.fullName || 'System',
+                });
+            }
+        }
+
         const linkedFundSourceUid = formData.fundSourceUid || resolveFundSourceUidFromLegacyLabel(formData.fundSource, fundSources);
         const linkedFundSource = getFundSourceByUid(linkedFundSourceUid, fundSources);
         if (linkedFundSource) {
@@ -795,13 +822,18 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         }
 
         if (supabase) {
+            const persisted: Activity[] = [];
             try {
                 for (let i = 0; i < activitiesToSave.length; i++) {
                     const act = activitiesToSave[i];
-                    const { id, participating_ipo_ids, ...payload } = act;
+                    const { id, ...payload } = act;
                     
                     // Sanitize date fields: convert empty strings to null
-                    const sanitizedPayload: any = { ...payload };
+                    const sanitizedPayload: any = mode === 'details' ? buildActivityDetailsPayload(act) : { ...payload };
+                    if (mode === 'expenses' || mode === 'accomplishment') {
+                        delete sanitizedPayload.participatingIpos;
+                        delete sanitizedPayload.participating_ipo_ids;
+                    }
                     if (sanitizedPayload.reference_activity_id === '' || sanitizedPayload.reference_activity_id === undefined) {
                         sanitizedPayload.reference_activity_id = null;
                     }
@@ -842,9 +874,11 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     if (mode === 'create') {
                          const { data, error } = await supabase.from('activities').insert([sanitizedPayload]).select();
                          if (error) throw error;
-                         if (data && data.length > 0) {
+                         if (!data?.length) throw new Error('No saved activity was returned. Reload before retrying.');
+                         if (data.length > 0) {
                              const createdId = data[0].id;
-                             activitiesToSave[i].id = createdId;
+                             activitiesToSave[i] = data[0] as Activity;
+                             persisted.push(data[0] as Activity);
                              logAction(`Created ${act.type}`, act.name, undefined, act.type, String(createdId));
                              
                              // Sync obligations for new activity
@@ -852,25 +886,36 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                              await syncActivityDisbursements(createdId, act.expenses);
                          }
                     } else {
-                         const { error } = await supabase.from('activities').update(sanitizedPayload).eq('id', activity!.id);
+                         const { data, error } = await supabase.from('activities').update(sanitizedPayload).eq('id', activity!.id).select().single();
                          if (error) throw error;
+                         if (!data) throw new Error('No saved activity was returned. Reload before retrying.');
+                         activitiesToSave[i] = data as Activity;
+                         persisted.push(data as Activity);
                          
-                         const metadata = getMonetaryChanges(activity, sanitizedPayload, 'Activity');
+                         const metadata = mode === 'details' ? undefined : getMonetaryChanges(activity, sanitizedPayload, 'Activity');
                          logAction(`Updated ${act.type}`, act.name, undefined, act.type, String(activity!.id), metadata);
                          
                          // Sync obligations for updated activity
-                         await syncActivityObligations(activity!.id, act.expenses);
-                         await syncActivityDisbursements(activity!.id, act.expenses);
+                         if (mode !== 'details') {
+                             await syncActivityObligations(activity!.id, act.expenses);
+                             await syncActivityDisbursements(activity!.id, act.expenses);
+                         }
                     }
                     
                     // IPO History Log
-                    for (const ipoName of act.participatingIpos) {
-                        const ipo = ipos.find(i => i.name === ipoName);
-                        if(ipo) await addIpoHistory(ipo.id, `${mode === 'create' ? 'Created' : 'Updated'} ${act.type}: ${act.name}`);
+                    const saved = activitiesToSave[i];
+                    for (const ipoId of getActivityIpoIds(reconcileActivityIpoLinks(saved, ipos))) {
+                        if (ipos.some(ipo => Number(ipo.id) === ipoId)) {
+                            await addIpoHistory(ipoId, `${mode === 'create' ? 'Created' : 'Updated'} ${saved.type}: ${saved.name} (${saved.uid || saved.id})`);
+                        }
                     }
                 }
             } catch (err: any) {
-                alert("Error saving: " + err.message);
+                persisted.forEach(onUpdateActivity);
+                alert(persisted.length
+                    ? `${persisted.length} activity record(s) saved, but a follow-up operation failed: ${err.message}. Reload before retrying to avoid duplicates.`
+                    : "Error saving: " + err.message);
+                if (persisted.length) onBack();
                 return;
             }
         } else {
@@ -886,6 +931,10 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         }
         if (mode === 'create') alert(`Saved ${activitiesToSave.length} activities.`);
         onBack();
+        } finally {
+            saveInFlight.current = false;
+            setIsSaving(false);
+        }
     };
 
     const syncActivityObligations = async (parentId: number, expenses: ActivityExpense[]) => {
@@ -958,6 +1007,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             </div>
 
             <form onSubmit={handleSubmit} className="form-card">
+                <fieldset className="activity-form-save-boundary" disabled={isSaving}>
                 {monthLockMessage && (
                     <div className="notice notice--warning" role="status">
                         {monthLockMessage}
@@ -1074,18 +1124,8 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                         <div><label className="form-label">Female</label><input type="number" name="participantsFemale" value={formData.participantsFemale} onChange={handleNumericChange} className={commonInputClasses} /></div>
                                         
                                         <div className="form-field--full">
-                                            <label className="form-label">Filter IPOs by Region</label>
-                                            <select value={ipoRegionFilter} onChange={(e) => setIpoRegionFilter(e.target.value)} className={commonInputClasses}>
-                                                <option value="All">All Regions</option>
-                                                {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="form-field--full">
-                                            <label className="form-label">Participating IPOs</label>
-                                            <select multiple value={formData.participatingIpos} onChange={(e) => setFormData(prev => ({ ...prev, participatingIpos: Array.from(e.target.selectedOptions, (o: HTMLOptionElement) => o.value) }))} className={`${commonInputClasses} form-control--multiselect`}>
-                                                {filteredIpos.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
-                                            </select>
-                                            <p className="form-help">Hold Ctrl (Cmd on Mac) to select multiple IPOs.</p>
+                                            <ActivityIpoSelector ipos={ipos} links={formData} region={ipoRegionFilter} onRegionChange={setIpoRegionFilter}
+                                                disabled={isSaving} onChange={links => setFormData(previous => ({ ...previous, ...links }))} />
                                         </div>
                                     </div>
                                 </fieldset>
@@ -1139,17 +1179,10 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                     <div><label className="form-label form-label--compact">Male</label><input type="number" name="participantsMale" value={currentRepeatingEntry.participantsMale} onChange={handleRepeatingEntryChange} className={commonInputClasses} /></div>
                                     <div><label className="form-label form-label--compact">Female</label><input type="number" name="participantsFemale" value={currentRepeatingEntry.participantsFemale} onChange={handleRepeatingEntryChange} className={commonInputClasses} /></div>
                                     
-                                    <div className="md:col-span-4">
-                                         <label className="form-label form-label--compact">Filter IPOs by Region</label>
-                                         <select value={ipoRegionFilter} onChange={(e) => setIpoRegionFilter(e.target.value)} className={commonInputClasses}>
-                                            <option value="All">All Regions</option>
-                                            {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
-                                        </select>
-                                    </div>
-
-                                    <div className="md:col-span-4">
-                                        <label className="form-label form-label--compact">IPOs</label>
-                                        <select multiple value={currentRepeatingEntry.participatingIpos} onChange={handleRepeatingIpoSelect} className={`${commonInputClasses} h-20`}>{filteredIpos.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}</select>
+                                    <div className="form-field--full">
+                                        <ActivityIpoSelector key={currentRepeatingEntry.id} ipos={ipos} links={currentRepeatingEntry} region={ipoRegionFilter}
+                                            onRegionChange={setIpoRegionFilter} disabled={isSaving}
+                                            onChange={links => setCurrentRepeatingEntry(previous => ({ ...previous, ...links }))} />
                                     </div>
                                     <div className="form-field--full"><button type="button" onClick={handleAddRepeatingEntry} className="btn btn-primary btn-block">Add to Schedule</button></div>
                                 </div>
@@ -1429,13 +1462,14 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 )}
 
                 <div className="form-footer">
-                    <button type="button" onClick={onBack} className="btn btn-secondary">
+                    <button type="button" onClick={onBack} className="btn btn-secondary" disabled={isSaving}>
                         Cancel
                     </button>
-                    <button type="submit" className="btn btn-primary">
-                        {mode === 'create' ? 'Create Activity' : 'Save Changes'}
+                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                        {isSaving ? 'Saving...' : mode === 'create' ? 'Create Activity' : 'Save Changes'}
                     </button>
                 </div>
+                </fieldset>
             </form>
         </div>
     );

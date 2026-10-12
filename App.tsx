@@ -47,7 +47,8 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DcfPolicyProvider } from './contexts/DcfPolicyContext';
 import { useDcfPolicyGuard } from './hooks/useDcfPolicyGuard';
 import { DataScope, fetchMarketingDatabasePartners, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
-import { clearUserCache, getScopeCacheMeta, readScopedCache, writeScopedCache } from './lib/localScopedCache';
+import { clearUserCache, getScopeCacheMeta, readScopedCache, updateCachedActivity, writeScopedCache } from './lib/localScopedCache';
+import { activityIncludesIpo, getActivityIpoIds, reconcileActivityIpoLinks } from './lib/activityIpoLinks';
 import { normalizeStaffingExpenses } from './lib/staffingExpenseIdentity';
 import {
     FINANCIAL_OBLIGATIONS_CHANGED_EVENT,
@@ -732,8 +733,28 @@ const AppContent: React.FC = () => {
         error: string | null;
     } | null>(null);
     const ipoLinkedDcfCacheRef = useRef<Map<string, IpoLinkedDcfRecords>>(new Map());
+    const [activityLinkRevision, setActivityLinkRevision] = useState(0);
     const [activityEditMode, setActivityEditMode] = useState<'create' | 'details' | 'expenses' | 'accomplishment'>('create');
     const [subprojectDetailMode, setSubprojectDetailMode] = useState<'none' | 'details' | 'commodity' | 'budget' | 'accomplishment'>('none');
+
+    const handleActivitySaved = (updated: Activity) => {
+        const previous = activities.find(item => Number(item.id) === Number(updated.id))
+            || (selectedActivity?.id === updated.id ? selectedActivity : undefined);
+        const affectedIpoIds = new Set([
+            ...getActivityIpoIds(reconcileActivityIpoLinks(previous || {}, activityWorkflowIpos)),
+            ...getActivityIpoIds(reconcileActivityIpoLinks(updated, activityWorkflowIpos)),
+        ]);
+        activitiesSync.upsertLocalData([updated]);
+        setSelectedActivity(updated);
+        for (const key of ipoLinkedDcfCacheRef.current.keys()) {
+            if (affectedIpoIds.has(Number(key.split('|').at(-1)))) ipoLinkedDcfCacheRef.current.delete(key);
+        }
+        if (selectedIpo && affectedIpoIds.has(Number(selectedIpo.id))) setIpoLinkedDcfState(null);
+        setActivityLinkRevision(value => value + 1);
+        if (currentUser) void updateCachedActivity(currentUser.id, updated).catch(error => {
+            console.error('Activity saved, but its local cache could not be updated:', error);
+        });
+    };
 
     const handleMarketingPartnerUpdated = useCallback((updatedPartner: MarketingPartner) => {
         setMarketingDatabasePartners(previous => {
@@ -1133,11 +1154,7 @@ const AppContent: React.FC = () => {
             String(subproject.indigenousPeopleOrganization || '').trim() === ipoName
         );
         const linkedActivities = visibleActivities.filter(activity =>
-            (activity.participating_ipo_ids || []).map(Number).includes(ipoId) ||
-            (Array.isArray(activity.participatingIpos)
-                ? activity.participatingIpos
-                : String(activity.participatingIpos || '').split(/[;,]/)
-            ).some(name => String(name || '').trim() === ipoName)
+            activityIncludesIpo(activity, ipoId, ipoName)
         );
         const linkedActivityIds = new Set(linkedActivities.map(activity => Number(activity.id)));
         const linkedReports = activityMonitoringReports.filter(report =>
@@ -1229,6 +1246,7 @@ const AppContent: React.FC = () => {
         currentUser?.operatingUnit,
         currentUser?.role,
         currentUser?.visibility_scope,
+        activityLinkRevision,
         selectedIpo
     ]);
 
@@ -1840,14 +1858,7 @@ const AppContent: React.FC = () => {
                             onBack={() => navigateTo(effectiveEditMode === 'create'
                                 ? '/activities'
                                 : buildContextualRecordPath('/activity-detail', routeActivity?.id))}
-                            onUpdateActivity={(updated) => {
-                                if (effectiveEditMode === 'create') {
-                                     setActivities(prev => [...prev, updated]);
-                                } else {
-                                     setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
-                                     setSelectedActivity(updated);
-                                }
-                            }}
+                            onUpdateActivity={handleActivitySaved}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             fundSources={fundSources}
@@ -2223,10 +2234,7 @@ const AppContent: React.FC = () => {
                             activity={latestAct}
                             ipos={activityWorkflowIpos}
                             fundSources={fundSources}
-                            onUpdateActivity={(updated) => {
-                                setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
-                                setSelectedActivity(updated);
-                            }}
+                            onUpdateActivity={handleActivitySaved}
                             onBudgetTransferComplete={(source, destination, status, selectedItemIds) => {
                                 const next = new Map(activities.map(item => [item.id, item]));
                                 next.set(source.id, source);

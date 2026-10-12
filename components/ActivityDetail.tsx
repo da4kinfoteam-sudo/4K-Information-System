@@ -26,6 +26,7 @@ import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 import { getBudgetLineAmount, getBudgetLineTag, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import { getActualDisbursementSummary, getActualObligationSummary } from '../lib/financialActualSummary';
 import { getFundSourceLabel } from '../lib/fundSources';
+import { resolveActivityIpos } from '../lib/activityIpoLinks';
 import { supabase } from '../supabaseClient';
 import {
     ActivityDriveFile,
@@ -291,28 +292,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
         String(activity.reference_activity_id) === String(monitoringReference.id);
 
     const participatingIpos = useMemo(() => {
-        const byId = new Map<number, IPO>(ipos.map(ipo => [Number(ipo.id), ipo]));
-        const byName = new Map<string, IPO>(ipos.map(ipo => [ipo.name, ipo]));
-        const resolved: IPO[] = [];
-        const seen = new Set<number>();
-
-        (activity.participating_ipo_ids || []).forEach(id => {
-            const ipo = byId.get(Number(id));
-            if (ipo && !seen.has(ipo.id)) {
-                resolved.push(ipo);
-                seen.add(ipo.id);
-            }
-        });
-
-        (activity.participatingIpos || []).forEach(name => {
-            const ipo = byName.get(name);
-            if (ipo && !seen.has(ipo.id)) {
-                resolved.push(ipo);
-                seen.add(ipo.id);
-            }
-        });
-
-        return resolved;
+        return resolveActivityIpos(activity, ipos);
     }, [activity.participatingIpos, activity.participating_ipo_ids, ipos]);
 
     const loadDriveFiles = useCallback(async () => {
