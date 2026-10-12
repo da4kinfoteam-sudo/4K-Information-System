@@ -185,17 +185,18 @@ interface BulkSelectionBarProps {
     onConfirm: () => void;
     onClear: () => void;
     onCancel: () => void;
+    busy?: boolean;
 }
 
-export const BulkSelectionBar: React.FC<BulkSelectionBarProps> = ({ intent, count, onConfirm, onClear, onCancel }) => (
-    <div className={cn('bulk-selection-bar', `bulk-selection-bar--${intent}`)} role="region" aria-label={`${intent} selection mode`}>
+export const BulkSelectionBar: React.FC<BulkSelectionBarProps> = ({ intent, count, onConfirm, onClear, onCancel, busy = false }) => (
+    <div className={cn('bulk-selection-bar', `bulk-selection-bar--${intent}`)} role="region" aria-label={`${intent} selection mode`} aria-busy={busy}>
         <div className="bulk-selection-bar__summary">
             <span>{count > 0 ? `${count} selected` : `Select rows to ${intent}`}</span>
-            {count > 0 && <button type="button" className="btn btn-link" onClick={onClear}>Clear</button>}
+            {count > 0 && <button type="button" className="btn btn-link" onClick={onClear} disabled={busy}>Clear</button>}
         </div>
         <div className="bulk-selection-bar__actions">
-            <button type="button" className="btn btn-secondary" onClick={onCancel}><X aria-hidden="true" /> Cancel</button>
-            <button type="button" className={cn('btn', intent === 'delete' ? 'btn-danger' : 'btn-primary')} onClick={onConfirm} disabled={count === 0}>
+            <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={busy}><X aria-hidden="true" /> Cancel</button>
+            <button type="button" className={cn('btn', intent === 'delete' ? 'btn-danger' : 'btn-primary')} onClick={onConfirm} disabled={busy || count === 0}>
                 {intent === 'delete' ? <Trash2 aria-hidden="true" /> : <Copy aria-hidden="true" />}
                 {count > 0 ? `${intent === 'delete' ? 'Delete' : 'Clone'} (${count})` : intent === 'delete' ? 'Delete' : 'Clone'}
             </button>
