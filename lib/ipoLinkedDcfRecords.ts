@@ -1,5 +1,6 @@
 import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, normalizeRegionName, ouToRegionMap, Subproject, User } from '../constants';
 import { supabase } from '../supabaseClient';
+import { activityIncludesIpo } from './activityIpoLinks';
 
 export interface IpoLinkedDcfRecords {
   subprojects: Subproject[];
@@ -66,21 +67,6 @@ const filterByUserVisibility = <T extends { operatingUnit?: string }>(rows: T[],
 };
 
 const toNumericIds = (values: unknown[]) => Array.from(new Set(values.map(Number).filter(Number.isFinite)));
-
-const normalizeComparableText = (value: unknown) => String(value || '').trim().toLowerCase();
-
-const activityIncludesIpo = (activity: Activity, ipoId: number, ipoName: string) => {
-  const idMatches = (activity.participating_ipo_ids || []).map(Number).includes(ipoId);
-  if (idMatches) return true;
-
-  const targetName = normalizeComparableText(ipoName);
-  const rawNames = activity.participatingIpos;
-  const names = Array.isArray(rawNames)
-    ? rawNames
-    : String(rawNames || '').split(/[;,]/);
-
-  return names.some(name => normalizeComparableText(name) === targetName);
-};
 
 const getLikelyOperatingUnits = (ipo: IPO, currentUser?: User | null) => {
   const units = new Set<string>();
@@ -194,7 +180,8 @@ export async function fetchIpoLinkedDcfRecords(ipo: IPO, currentUser?: User | nu
     currentUser
   );
   const linkedActivities = filterByUserVisibility(
-    mergePreferFirstById(idMatchedActivities, nameMatchedActivities, fallbackActivities),
+    mergePreferFirstById(idMatchedActivities, nameMatchedActivities, fallbackActivities)
+      .filter(activity => activityIncludesIpo(activity, ipoId, ipoName)),
     currentUser
   );
   const linkedTrainings = linkedActivities.filter(activity => activity.type === 'Training');
