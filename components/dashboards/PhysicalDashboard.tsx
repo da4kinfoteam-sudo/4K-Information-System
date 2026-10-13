@@ -1,4 +1,5 @@
 // Author: 4K
+import { getActivityDisplayTitle } from '../../lib/activityTitles';
 import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
@@ -630,7 +631,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     : '';
                 return {
                     id: training.id,
-                    name: training.name,
+                    name: getActivityDisplayTitle(training),
                     details: `${training.component} | Target: ${formatDate(targetDate)} | Conducted: ${formatDate(training.actualDate)}${unresolvedDetails}`,
                     operatingUnit: training.operatingUnit,
                     targetDate,
@@ -1125,7 +1126,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             .filter(activity => activity.status !== 'Cancelled' && !!activity.actualDate)
             .map(activity => ({
                 id: `activity-${activity.id}`,
-                name: activity.name,
+                name: getActivityDisplayTitle(activity),
                 type: activity.type === 'Training' ? 'Training' : 'Activity',
                 component: activity.component || 'Activity',
                 operatingUnit: activity.operatingUnit || 'Unknown OU',

@@ -333,6 +333,7 @@ export interface Activity extends BaseEntity {
     type: 'Training' | 'Activity'; // Database Discriminator
     reference_activity_id?: number | string | null;
     name: string;
+    activity_title?: string | null;
     date: string; // Start Date
     endDate?: string; // End Date (Optional, same as date if single day)
     description: string;

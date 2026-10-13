@@ -1,5 +1,6 @@
 ﻿
 // Author: 4K
+import { getActivityDisplayTitle } from '../lib/activityTitles';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
 import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, RefFundSource, philippineRegions, operatingUnits, ouToRegionMap, filterYears } from '../constants';
@@ -192,7 +193,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         if (searchTerm) {
             const lowercasedSearchTerm = searchTerm.toLowerCase();
             filtered = filtered.filter(t =>
-                t.name.toLowerCase().includes(lowercasedSearchTerm) ||
+                getActivityDisplayTitle(t).toLowerCase().includes(lowercasedSearchTerm) ||
+                (t.name || '').toLowerCase().includes(lowercasedSearchTerm) ||
                 t.location.toLowerCase().includes(lowercasedSearchTerm) ||
                 t.description.toLowerCase().includes(lowercasedSearchTerm) ||
                 (t.type === 'Training' && t.facilitator?.toLowerCase().includes(lowercasedSearchTerm)) ||
@@ -207,7 +209,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     const uniqueValues = useMemo(() => {
         const getUnique = (key: keyof Activity) => Array.from(new Set(initiallyFilteredActivities.map(a => String(a[key] || '')))).filter(Boolean).sort();
         return {
-            name: getUnique('name'),
+            name: Array.from(new Set(initiallyFilteredActivities.map(getActivityDisplayTitle))).filter(Boolean).sort(),
             status: getUnique('status'),
             date: getUnique('date'),
             description: getUnique('description'),
@@ -233,7 +235,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                     if (key === 'fundSourceUid') {
                         return selectedValues.includes(getFundSourceFilterValue(item, fundSources));
                     }
-                    const itemValue = String((item as any)[key] || '');
+                    const itemValue = key === 'name' ? getActivityDisplayTitle(item) : String((item as any)[key] || '');
                     return selectedValues.includes(itemValue);
                 });
             }
@@ -248,6 +250,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                 if (sortConfig.key === 'fundSourceUid' || sortConfig.key === 'fundSource') {
                     aValue = getFundSourceSortLabel(a, fundSources);
                     bValue = getFundSourceSortLabel(b, fundSources);
+                } else if (sortConfig.key === 'name') {
+                    aValue = getActivityDisplayTitle(a);
+                    bValue = getActivityDisplayTitle(b);
                 } else if (sortConfig.key === 'totalParticipants') {
                     aValue = a.participantsMale + a.participantsFemale;
                     bValue = b.participantsMale + b.participantsFemale;
@@ -341,7 +346,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                 return;
             }
             const deletableIds = deletableItems.map(item => item.id);
-            const deletedItems = deletableItems.map(a => a.name).join(', ');
+            const deletedItems = deletableItems.map(getActivityDisplayTitle).join(', ');
             logAction('Deleted Activities', `Bulk deleted ${deletableItems.length} items: ${deletedItems}${skippedCount ? ` (${skippedCount} skipped by policy)` : ''}`);
 
             if (supabase) {
@@ -646,19 +651,19 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     key={activity.id}
                                     className={isSelectionMode ? (selectedIds.includes(activity.id) ? `data-table__row--selected${selectionIntent === 'delete' ? ' data-table__row--selected-danger' : ''}` : undefined) : 'data-table__row--interactive'}
                                     tabIndex={isSelectionMode ? undefined : 0}
-                                    aria-label={isSelectionMode ? undefined : `View details for ${activity.name}`}
+                                    aria-label={isSelectionMode ? undefined : `View details for ${getActivityDisplayTitle(activity)}`}
                                     onClick={isSelectionMode ? undefined : () => onSelectActivity(activity)}
                                     onKeyDown={isSelectionMode ? undefined : event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectActivity(activity); } }}
                                 >
-                                    {isSelectionMode && <td className="data-table__cell--selection"><SelectionCheckbox aria-label={`Select ${activity.name}`} checked={selectedIds.includes(activity.id)} onChange={() => handleSelectRow(activity.id)} /></td>}
+                                    {isSelectionMode && <td className="data-table__cell--selection"><SelectionCheckbox aria-label={`Select ${getActivityDisplayTitle(activity)}`} checked={selectedIds.includes(activity.id)} onChange={() => handleSelectRow(activity.id)} /></td>}
                                     <td className="data-table__cell--mono"><TruncatedTableCell value={activity.uid || 'No code'} /></td>
-                                    <td className="data-table__cell--primary"><TruncatedTableCell value={activity.name} /></td>
+                                    <td className="data-table__cell--primary"><TruncatedTableCell value={getActivityDisplayTitle(activity)} /></td>
                                     <td><TruncatedTableCell value={activity.operatingUnit} /></td>
                                     <td><TruncatedTableCell value={ipoPreview} fullText={participatingIpos.join(', ') || 'No participating IPO'} /></td>
                                     <td>{activity.fundingYear || '—'}</td><td>{activity.fundType || '—'}</td><td>{activity.tier || '—'}</td><td><TruncatedTableCell value={getFundSourceLabel(activity, fundSources) || '—'} /></td>
                                     <td className="data-table__cell--numeric">{currency.format(totalBudget)}</td>
                                     <td><span className={getStatusBadge(activity.status)}>{activity.status || 'Unknown'}</span></td>
-                                    <td><div className="data-table__actions">{getWorkflowStatusBadge(activity.workflow_status)}{activity.workflow_status === 'PENDING' && canApprove(currentUser?.role) && <><button onClick={(event) => handleApprove(activity.id, event)} className="action-mini action-mini--approve" aria-label={`Approve ${activity.name}`}><Check aria-hidden="true" /></button><button onClick={(event) => handleReject(activity.id, event)} className="action-mini action-mini--reject" aria-label={`Reject ${activity.name}`}><X aria-hidden="true" /></button></>}</div></td>
+                                    <td><div className="data-table__actions">{getWorkflowStatusBadge(activity.workflow_status)}{activity.workflow_status === 'PENDING' && canApprove(currentUser?.role) && <><button onClick={(event) => handleApprove(activity.id, event)} className="action-mini action-mini--approve" aria-label={`Approve ${getActivityDisplayTitle(activity)}`}><Check aria-hidden="true" /></button><button onClick={(event) => handleReject(activity.id, event)} className="action-mini action-mini--reject" aria-label={`Reject ${getActivityDisplayTitle(activity)}`}><X aria-hidden="true" /></button></>}</div></td>
                                 </tr>;
                             })}
                             {paginatedActivities.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 12 : 11}>No activities match the current filters.</td></tr>}

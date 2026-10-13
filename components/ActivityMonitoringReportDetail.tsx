@@ -1,3 +1,4 @@
+import { getActivityDisplayTitle } from '../lib/activityTitles';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Edit3, Loader2, Plus, Save, Trash2, X } from 'lucide-react';
 import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, ActivityMonitoringStatus, IPO } from '../constants';
@@ -373,7 +374,7 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
             <header className="detail-header">
                 <div className="detail-heading">
                     <h1 className="detail-title">Monitoring Report</h1>
-                    <p className="detail-meta">{activity.name} | {ipo.name}</p>
+                    <p className="detail-meta">{getActivityDisplayTitle(activity)} | {ipo.name}</p>
                 </div>
                 <div className="detail-actions">
                 </div>

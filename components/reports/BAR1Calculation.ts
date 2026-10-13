@@ -1,3 +1,4 @@
+import { getActivityDisplayTitle, normalizeActivityTitle } from '../../lib/activityTitles';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO, HistoryEntry } from '../../constants';
 import { countPhysicalActual, countPhysicalTarget, getReportingMonthIndex, isParentRealignmentOrSavings } from './ReportUtils';
 import { isTransferAccomplishmentActive } from '../../lib/budgetItemTransferRules';
@@ -236,7 +237,7 @@ export const calculateBAR1ReportData = (data: {
     const makeActivityRecord = (activity: Training | OtherActivity, actualDate?: string): BAR1DrilldownRecord => ({
         id: `activity-${activity.id}`,
         type: activity.type === 'Training' ? 'training' : 'activity',
-        label: activity.name,
+        label: getActivityDisplayTitle(activity),
         description: activity.description,
         targetDate: activity.endDate || activity.date,
         actualDate: actualDate || activity.actualDate,
@@ -250,7 +251,7 @@ export const calculateBAR1ReportData = (data: {
         label: ipoName,
         targetDate: activity.endDate || activity.date,
         actualDate: actualDate || activity.actualDate,
-        linkedNames: [activity.name],
+        linkedNames: [getActivityDisplayTitle(activity)],
         component: activity.component,
         source: ipoMap.get(ipoName),
     });
@@ -450,8 +451,8 @@ export const calculateBAR1ReportData = (data: {
         Object.entries(groups).forEach(([name, activities]) => {
             const targetConducted = activities
                 .filter(a => !isParentRealignmentOrSavings(a))
-                .map(a => ({ val: 1, label: a.location || a.name, date: a.date, record: makeActivityRecord(a, actualDateIfSubmitted(a, a.actualDate)) }));
-            const actualConducted = activities.map(a => ({ val: countPhysicalActual(a, 1), label: a.location || a.name, date: actualDateIfSubmitted(a, a.actualDate), record: makeActivityRecord(a, actualDateIfSubmitted(a, a.actualDate)) }));
+                .map(a => ({ val: 1, label: normalizeActivityTitle(a.activity_title) ? getActivityDisplayTitle(a) : (a.location || a.name), date: a.date, record: makeActivityRecord(a, actualDateIfSubmitted(a, a.actualDate)) }));
+            const actualConducted = activities.map(a => ({ val: countPhysicalActual(a, 1), label: normalizeActivityTitle(a.activity_title) ? getActivityDisplayTitle(a) : (a.location || a.name), date: actualDateIfSubmitted(a, a.actualDate), record: makeActivityRecord(a, actualDateIfSubmitted(a, a.actualDate)) }));
 
             const targetIPOs: { id: string, label: string, date?: string, record?: BAR1DrilldownRecord }[] = [];
             const actualIPOs: { id: string, label: string, date?: string, record?: BAR1DrilldownRecord }[] = [];

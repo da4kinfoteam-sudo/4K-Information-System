@@ -84,7 +84,7 @@ export const resolveActivityIpos = (links: ActivityIpoLinks, ipos: IPO[]) => {
 };
 
 const DETAIL_FIELDS = [
-    'type', 'name', 'status', 'operatingUnit', 'component', 'reference_activity_id',
+    'type', 'name', 'activity_title', 'status', 'operatingUnit', 'component', 'reference_activity_id',
     'date', 'endDate', 'description', 'location', 'lat', 'lng', 'facilitator',
     'participantsMale', 'participantsFemale', 'fundingYear', 'fundType', 'tier',
     'fundSource', 'fundSourceUid', 'isRealignment', 'isSavings',

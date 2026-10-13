@@ -1,4 +1,5 @@
 
+import { getActivityDisplayTitle } from '../lib/activityTitles';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Banknote,
@@ -477,7 +478,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
 
 
             <RecordHeader
-                title={activity.name}
+                title={getActivityDisplayTitle(activity)}
                 metadata={
                     <>
                         <span className="ipo-detail-record-id">{activity.uid || `ACT-${activity.id}`}</span>

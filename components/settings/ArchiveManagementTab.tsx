@@ -1,5 +1,6 @@
 
 // Author: 4K 
+import { getActivityDisplayTitle } from '../../lib/activityTitles';
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import { RefFundSource, TrashItem } from '../../constants';
@@ -71,7 +72,7 @@ const ArchiveManagementTab: React.FC<{ fundSources: RefFundSource[] }> = ({ fund
         
         switch (item.entity_type) {
             case 'subproject': return data.name || data.uid || 'Unnamed Subproject';
-            case 'activity': return data.name || data.uid || 'Unnamed Activity';
+            case 'activity': return getActivityDisplayTitle(data) || data.uid || 'Unnamed Activity';
             case 'office_requirement': return data.equipment || data.uid || 'Unnamed Equipment';
             case 'staffing_requirement': return data.personnelPosition || data.uid || 'Unnamed Position';
             case 'other_program_expense': return data.particulars || data.uid || 'Unnamed Expense';

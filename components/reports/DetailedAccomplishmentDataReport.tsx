@@ -1,4 +1,5 @@
 // Author: 4K
+import { getActivityDisplayTitle } from '../../lib/activityTitles';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Download, Printer, RotateCcw, Save, Search, SlidersHorizontal, X } from 'lucide-react';
 import { ActivityComponentType, IPO, OtherActivity, Subproject, Training } from '../../constants';
@@ -530,7 +531,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                     performanceIndicatorLevel1: component,
                     performanceIndicatorLevel2: getLevel2(component, 'Activity'),
                     performanceIndicatorLevel3,
-                    title: activity.name || '',
+                    title: getActivityDisplayTitle(activity),
                     unitOfMeasure: 'Activity',
                     quantity: 1,
                     beneficiaryProvince: beneficiary.province,

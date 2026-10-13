@@ -1,5 +1,6 @@
 
 // Author: 4K
+import { getActivityDisplayTitle } from '../../lib/activityTitles';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, ObligationRecord, DisbursementRecord } from '../../constants';
 import { supabase } from '../../supabaseClient';
@@ -554,7 +555,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  uacsCode: e.uacsCode,
  objectType: e.objectType || 'MOOE',
  expenseParticular: e.expenseParticular || 'Unspecified',
- sourceName: act.name || `${act.type} (${act.component})`,
+ sourceName: getActivityDisplayTitle(act) || `${act.type} (${act.component})`,
  targetObligationMonth: e.obligationMonth,
  targetObligationAmount: getBudgetLineAmount(e),
  targetDisbursementMonth: e.disbursementMonth,
