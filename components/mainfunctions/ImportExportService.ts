@@ -166,6 +166,13 @@ export const downloadSubprojectsReport = (subprojects: Subproject[], fundSources
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Subprojects");
+    const schedules = subprojects.flatMap(parent => parent.details.map(row => ({
+        uid: parent.uid, name: parent.name, detail_id: row.id, detail_budgetItemGroupId: row.budgetItemGroupId || '',
+        detail_type: row.type, detail_particulars: row.particulars, detail_unitOfMeasure: row.unitOfMeasure,
+        detail_uacsCode: row.uacsCode, detail_pricePerUnit: row.pricePerUnit, detail_numberOfUnits: row.numberOfUnits,
+        detail_obligationMonth: row.obligationMonth, detail_deliveryDate: row.deliveryDate, detail_disbursementMonth: row.disbursementMonth,
+    })));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(schedules), 'Budget Schedules');
     XLSX.writeFile(wb, "Subprojects_Report.xlsx");
 };
 
@@ -174,7 +181,7 @@ export const downloadSubprojectsTemplate = () => {
         'uid', 'name', 'indigenousPeopleOrganization', 'status', 'packageType', 
         'estimatedCompletionDate', 'actualCompletionDate', 'actualMaleBeneficiaries', 'actualFemaleBeneficiaries', 'actualFourPsBeneficiaries', 'fundingYear', 'fundType', 'fundSourceUid', 'fundSource', 'tier', 'operatingUnit', 'remarks',
         'detail_type', 'detail_particulars', 'detail_deliveryDate', 'detail_unitOfMeasure', 'detail_pricePerUnit', 'detail_numberOfUnits', 
-        'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth'
+        'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth', 'detail_budgetItemGroupId'
     ];
 
     const exampleData = [
@@ -235,7 +242,8 @@ export const downloadSubprojectsTemplate = () => {
         ["detail_numberOfUnits", "Number"],
         ["detail_uacsCode", "Specific UACS Code. Object Type and Expense Particular will be derived from this code."],
         ["detail_obligationMonth", "Month Year (e.g., February 2024)"],
-        ["detail_disbursementMonth", "Month Year (e.g., March 2024)"]
+        ["detail_disbursementMonth", "Month Year (e.g., March 2024)"],
+        ["detail_budgetItemGroupId", "Optional shared item identity within this Subproject. Leave blank for independent legacy rows."]
     ];
 
     const wb = XLSX.utils.book_new();
@@ -381,6 +389,7 @@ export const handleSubprojectsUpload = (
 
                     subproject.details.push({
                         id: Date.now() + index, 
+                        budgetItemGroupId: String(row.detail_budgetItemGroupId || '').trim() || undefined,
                         type: row.detail_type,
                         particulars: row.detail_particulars,
                         deliveryDate: parseMonthToDate(row.detail_deliveryDate),

@@ -6,6 +6,8 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
+      // Isolated fixture servers must not replace the running app's dependency cache.
+      cacheDir: 'node_modules/.vite/app',
       server: {
         port: 3000,
         host: '0.0.0.0',

@@ -1,5 +1,6 @@
 import type { Activity, ActivityExpense, Subproject, SubprojectDetail } from '../constants';
 import { normalizeActivityTitle } from './activityTitles';
+import { remapClonedBudgetGroups } from './subprojectBudgetSchedules';
 
 interface CloneContext {
     createdAt: string;
@@ -83,7 +84,7 @@ export const buildSubprojectClonePayload = (source: Subproject, context: CloneCo
         actualFourPsBeneficiaries: null,
         accomplishmentRemarks: null,
         newTargetCompletionDate: undefined,
-        details: (source.details || []).map(line => ({
+        details: remapClonedBudgetGroups(source.details || []).map(line => ({
             ...cloneFinancialLine(line, reservedIds),
             actualDeliveryDate: undefined,
             actualNumberOfUnits: 0,

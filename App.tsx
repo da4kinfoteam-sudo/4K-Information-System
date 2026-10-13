@@ -48,7 +48,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DcfPolicyProvider } from './contexts/DcfPolicyContext';
 import { useDcfPolicyGuard } from './hooks/useDcfPolicyGuard';
 import { DataScope, fetchMarketingDatabasePartners, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
-import { clearUserCache, getScopeCacheMeta, readScopedCache, updateCachedActivity, writeScopedCache } from './lib/localScopedCache';
+import { clearUserCache, getScopeCacheMeta, readScopedCache, updateCachedActivity, updateCachedSubproject, writeScopedCache } from './lib/localScopedCache';
 import { activityIncludesIpo, getActivityIpoIds, reconcileActivityIpoLinks } from './lib/activityIpoLinks';
 import { normalizeStaffingExpenses } from './lib/staffingExpenseIdentity';
 import {
@@ -1901,15 +1901,17 @@ const AppContent: React.FC = () => {
                                 ? buildContextualRecordPath('/subproject-detail', selectedSubproject.id)
                                 : '/subprojects')}
                             onUpdateSubproject={(updated, options) => {
+                                if (options?.persisted && currentUser) void updateCachedSubproject(currentUser.id, updated).catch(console.error);
                                 if (selectedSubproject) {
                                      if (options?.persisted) {
-                                         subprojectsSync.replaceLocalData(subprojects.map(p => p.id === updated.id ? updated : p));
+                                         subprojectsSync.upsertLocalData([updated]);
                                      } else {
                                          setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
                                      }
                                      setSelectedSubproject(updated);
                                 } else {
-                                     setSubprojects(prev => [updated, ...prev]);
+                                     if (options?.persisted) subprojectsSync.upsertLocalData([updated]);
+                                     else setSubprojects(prev => [updated, ...prev]);
                                 }
                                 
                                 // Sync commodities to IPO
@@ -2128,8 +2130,9 @@ const AppContent: React.FC = () => {
                             fundSources={fundSources}
                             onEditModeChange={setSubprojectDetailMode}
                             onUpdateSubproject={(updated, options) => {
+                                if (options?.persisted && currentUser) void updateCachedSubproject(currentUser.id, updated).catch(console.error);
                                 if (options?.persisted) {
-                                    subprojectsSync.replaceLocalData(subprojects.map(p => p.id === updated.id ? updated : p));
+                                    subprojectsSync.upsertLocalData([updated]);
                                 } else {
                                     setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
                                 }

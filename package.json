@@ -15,6 +15,8 @@
     "test:financial-breakdown": "node scripts/run-financial-breakdown-hierarchy-check.mjs",
     "test:financial-obligation-sync": "node --experimental-strip-types scripts/run-financial-obligation-sync-check.mjs",
     "test:subproject-budget-lifecycle": "node --experimental-strip-types scripts/run-subproject-budget-lifecycle-check.mjs",
+    "test:subproject-budget-schedules": "node scripts/run-subproject-budget-schedule-check.mjs",
+    "test:subproject-budget-ui": "node scripts/run-subproject-budget-ui-check.mjs",
     "test:budget-item-transfer": "node --experimental-strip-types scripts/run-budget-item-transfer-check.mjs",
     "test:activity-ipo-links": "node scripts/run-activity-ipo-links-check.mjs",
     "test:activity-titles": "node scripts/run-activity-title-check.mjs",

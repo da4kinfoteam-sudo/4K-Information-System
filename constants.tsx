@@ -167,6 +167,7 @@ export interface DisbursementRecord {
 
 export interface SubprojectDetail {
     id: number;
+    budgetItemGroupId?: string | null;
     type: string;
     particulars: string;
     deliveryDate: string;
