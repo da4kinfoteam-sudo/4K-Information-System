@@ -72,6 +72,7 @@ export function MonthYearPicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          type="button"
           variant="outline"
           className={cn(
             "month-year-picker-trigger",

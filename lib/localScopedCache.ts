@@ -1,6 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { DataScope, getDataScopeKey, ScopedAppData } from './scopedDataFetch';
-import type { Activity } from '../constants';
+import type { Activity, Subproject } from '../constants';
 
 const DB_NAME = '4kis-local-cache';
 const DB_VERSION = 1;
@@ -222,6 +222,20 @@ export const updateCachedActivity = async (userId: string | number, activity: Ac
     } else {
       await tx.objectStore('records').put({ ...row, value: activity });
     }
+  }
+  await tx.done;
+};
+
+export const updateCachedSubproject = async (userId: string | number, subproject: Subproject): Promise<void> => {
+  const db = await getDb();
+  if (!db) return;
+  const tx = db.transaction(['scope_meta', 'records'], 'readwrite');
+  const rows = await tx.objectStore('records').index('tableName').getAll('subprojects');
+  const scopeFields: (keyof Subproject)[] = ['operatingUnit', 'fundingYear', 'fundType', 'tier', 'workflow_status'];
+  for (const row of rows) {
+    if (row.userId !== String(userId) || Number(row.value.id) !== Number(subproject.id)) continue;
+    if (scopeFields.some(field => row.value[field] !== subproject[field])) await tx.objectStore('scope_meta').delete(row.scopeKey);
+    else await tx.objectStore('records').put({ ...row, value: subproject });
   }
   await tx.done;
 };

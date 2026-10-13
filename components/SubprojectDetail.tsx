@@ -8,6 +8,10 @@ import { useUserAccess } from './mainfunctions/TableHooks';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { normalizePolicyMonth, useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 import { MonthYearPicker } from './ui/MonthYearPicker';
+import { SubprojectBudgetEditor } from './ui/SubprojectBudgetEditor';
+import { ReferenceCombobox } from './ui/ReferenceCombobox';
+import { budgetTargetsChanged, getUacsOptions, groupBudgetSchedules, latestBudgetDeliveryDate, validateBudgetSchedule } from '../lib/subprojectBudgetSchedules';
+import { getChangedSubprojectActualIds, persistSubprojectDraft, rescheduleBudgetTargets } from '../lib/subprojectDraftPersistence';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
 import { supabase } from '../supabaseClient';
@@ -249,6 +253,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     useEffect(() => () => onEditModeChange?.('none'), [onEditModeChange]);
 
     const [editedSubproject, setEditedSubproject] = useState(subproject);
+    const draftBaseRef = useRef(subproject);
     const selectedFundSourceUid = editedSubproject.fundSourceUid
         || resolveFundSourceUidFromLegacyLabel(editedSubproject.fundSource, fundSources)
         || '';
@@ -260,6 +265,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     }, [fundSources, selectedFundSourceUid]);
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
+    const [isSaving, setIsSaving] = useState(false);
+    const saveInFlight = useRef(false);
+    const [budgetDraftPending, setBudgetDraftPending] = useState(false);
     const [budgetItemRemovalError, setBudgetItemRemovalError] = useState<{ itemId: string; text: string } | null>(null);
     const draftContextRef = useRef<{
         subprojectId: number;
@@ -511,6 +519,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             && draftContextRef.current?.editMode === editMode;
         if (sameDraftContext && editMode !== 'none') return;
         draftContextRef.current = { subprojectId: subproject.id, editMode, status: subproject.status };
+        draftBaseRef.current = structuredClone(subproject);
 
         let cancelled = false;
         setEditedSubproject(subproject);
@@ -525,14 +534,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         const applyObligationRows = (centralRows: Awaited<ReturnType<typeof fetchFinancialObligationsForParent>> | null) => {
             if (cancelled) return;
             // Preserve rows the user has already edited or removed while actuals were loading.
-            setDetailItems(previous => previous.map(d => ensureOriginalBudgetSnapshot({
-                ...d,
-                obligations: getSubprojectBudgetItemObligations(d, centralRows),
-            })));
+            setDetailItems(previous => previous.map(d => {
+                const original = subproject.details.find(row => String(row.id) === String(d.id));
+                if (JSON.stringify(d.obligations || []) !== JSON.stringify(original?.obligations || [])) return d;
+                return ensureOriginalBudgetSnapshot({ ...d, obligations: getSubprojectBudgetItemObligations(d, centralRows) });
+            }));
         };
 
         setDetailItems((subproject.details || []).map(d => ensureOriginalBudgetSnapshot(d)));
-        if (supabase && subproject.id > 0) {
+        if (supabase && subproject.id > 0 && (editMode === 'none' || editMode === 'accomplishment')) {
             void fetchFinancialObligationsForParent({ entityType: 'subproject_detail', parentId: subproject.id })
                 .then(rows => applyObligationRows(rows))
                 .catch(error => {
@@ -838,9 +848,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             }));
         } else if (name === 'fundingYear') {
             const year = parseInt(value) || new Date().getFullYear();
+            const rescheduleTargets = window.confirm('Also reschedule the planned dates to this Fund Year? Actual dates will not change.');
             setEditedSubproject(prev => {
-                const newData = { ...prev, fundingYear: year, startDate: `${year}-01-01` };
-                if (newData.estimatedCompletionDate) {
+                const newData = { ...prev, fundingYear: year, startDate: rescheduleTargets ? `${year}-01-01` : prev.startDate };
+                if (rescheduleTargets && newData.estimatedCompletionDate) {
                     const month = getMonthFromDateStr(newData.estimatedCompletionDate);
                     if (month !== '') {
                         newData.estimatedCompletionDate = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
@@ -849,24 +860,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 return newData;
             });
 
-            // Sync details if fundingYear changes
-            setDetailItems(prev => prev.map(d => {
-                // A superseded original remains an immutable audit record.
-                if (d.isSuperseded) return d;
-                const updateDate = (dateStr?: string) => {
-                    if (!dateStr) return dateStr;
-                    const parts = dateStr.split('-');
-                    if (parts.length > 1) return `${year}-${parts[1]}-${parts[2] || '01'}`;
-                    return dateStr;
-                };
-                return {
-                    ...d,
-                    obligationMonth: updateDate(d.obligationMonth) || '',
-                    disbursementMonth: updateDate(d.disbursementMonth) || '',
-                    actualObligationDate: updateDate(d.actualObligationDate),
-                    actualDisbursementDate: updateDate(d.actualDisbursementDate)
-                };
-            }));
+            if (detailItems.length && rescheduleTargets) {
+                setDetailItems(previous => rescheduleBudgetTargets(previous as SubprojectDetailType[], year));
+            }
         } else if (name === 'operatingUnit') {
             const mappedRegion = ouToRegionMap[value];
             setEditedSubproject(prev => ({
@@ -1313,6 +1309,12 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         const existingAdjustmentItem = accomplishmentItemEditingIndex === null
             ? undefined
             : detailItems[accomplishmentItemEditingIndex];
+        const unchangedParticular = existingAdjustmentItem?.type === accomplishmentItemDraft.type && existingAdjustmentItem?.particulars === accomplishmentItemDraft.particulars;
+        const unchangedUacs = existingAdjustmentItem?.objectType === accomplishmentItemDraft.objectType && existingAdjustmentItem?.expenseParticular === accomplishmentItemDraft.expenseParticular && existingAdjustmentItem?.uacsCode === accomplishmentItemDraft.uacsCode;
+        if ((!unchangedParticular && !particularTypes[accomplishmentItemDraft.type]?.includes(accomplishmentItemDraft.particulars)) || (!unchangedUacs && !Object.hasOwn(uacsCodes[accomplishmentItemDraft.objectType]?.[accomplishmentItemDraft.expenseParticular] || {}, accomplishmentItemDraft.uacsCode))) {
+            setAccomplishmentItemFormMessage('Select listed Particulars and UACS Code choices.');
+            return;
+        }
         const previousSourceItemId = existingAdjustmentItem?.replacementOfItemId ?? existingAdjustmentItem?.sourceItemId ?? null;
         const isChangingReplacementSource = accomplishmentItemDraft.adjustmentType === 'Replacement'
             && sourceItem
@@ -1337,6 +1339,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         const sourceItemId = sourceItem?.id ?? null;
         const reason = accomplishmentItemDraft.adjustmentReason.trim();
         const newItem = ensureOriginalBudgetSnapshot({
+            budgetItemGroupId: existingAdjustmentItem?.budgetItemGroupId || crypto.randomUUID(),
             type: accomplishmentItemDraft.type,
             particulars: accomplishmentItemDraft.particulars,
             deliveryDate: accomplishmentItemDraft.deliveryDate,
@@ -1604,7 +1607,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }));
     };
 
-    const handleSubmit = async (e: FormEvent) => {
+    const saveForm = async (e: FormEvent) => {
         e.preventDefault();
 
         if (editMode === 'accomplishment') {
@@ -1666,45 +1669,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             if (matchedIpo) resolvedIpoId = matchedIpo.id;
         }
 
-        if (resolvedIpoId) {
-             addIpoHistory(resolvedIpoId, `${eventType}: ${editedSubproject.name}`);
-        }
-
-        // Logic to track accomplishment history in new table
-        if (editMode === 'accomplishment' && supabase) {
-            // Find changed items that are newly delivered or quantity changed
-            const changes = detailItems.filter((item, index) => {
-                const original = subproject.details[index];
-                if (!original) return true; // New item (shouldn't happen in accomplishment mode usually)
-
-                // Track if actual delivery happened or quantity updated
-                const deliveredNow = !!item.actualDeliveryDate;
-                const deliveredBefore = !!original.actualDeliveryDate;
-
-                // If just marked delivered, or quantity updated
-                if ((deliveredNow && !deliveredBefore) || (deliveredNow && item.actualNumberOfUnits !== original.actualNumberOfUnits)) {
-                    return true;
-                }
-                return false;
-            });
-
-            if (changes.length > 0) {
-                const historyRecords = changes.map(item => ({
-                    subproject_id: subproject.id,
-                    detail_id: item.id || 0, // Fallback 0 if id missing (should not happen for saved items)
-                    delivery_date: item.actualDeliveryDate,
-                    quantity: item.actualNumberOfUnits,
-                    remarks: `Delivered: ${item.particulars}`,
-                    created_by: currentUser?.fullName || 'System',
-                    created_at: new Date().toISOString()
-                }));
-
-                // Insert into tracking table
-                const { error: histError } = await supabase.from('subproject_accomplishments').insert(historyRecords);
-                if (histError) console.error("Error logging accomplishment history:", histError);
-            }
-        }
-
         // Add 'id' back to details if missing (from new adds)
         const cleanDetails = detailItems.map(d => {
             const detailWithSnapshot = ensureOriginalBudgetSnapshot(d);
@@ -1716,7 +1680,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             if (cleanD.actualDeliveryDate === '') (cleanD as any).actualDeliveryDate = null;
             if (cleanD.obligationMonth === '') (cleanD as any).obligationMonth = null;
             if (cleanD.disbursementMonth === '') (cleanD as any).disbursementMonth = null;
-            const preserveProposedBudgetActuals = editMode === 'budget' && subproject.status === 'Proposed';
+            const preserveProposedBudgetActuals = editMode !== 'accomplishment';
             if (!preserveProposedBudgetActuals) {
                 if (cleanD.obligations && cleanD.obligations.length === 0) {
                      cleanD.actualObligationAmount = 0;
@@ -1797,7 +1761,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
             details: normalizedCleanDetails as SubprojectDetailType[],
             accomplishmentRemarks: nextAccomplishmentRemarks,
-            history: [...(subproject.history || []), historyEntry]
+            history: [...(draftBaseRef.current.history || []), historyEntry]
         };
 
         const hasOngoingBudgetItemCancellation = editMode === 'budget'
@@ -1820,56 +1784,61 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             }
         });
 
-        if (guardedBudgetStatus && supabase) {
-            const { id, ...dbPayload } = updatedSubprojectWithDetails;
-            try {
-                const { data, error } = await supabase
-                    .from('subprojects')
-                    .update(dbPayload)
-                    .eq('id', subproject.id)
-                    .eq('status', guardedBudgetStatus)
-                    .select('id')
-                    .maybeSingle();
-                if (error) throw error;
-                if (!data) {
-                    const { data: latestRecord, error: refreshError } = await supabase
-                        .from('subprojects')
-                        .select('*')
-                        .eq('id', subproject.id)
-                        .maybeSingle();
-                    if (refreshError) throw refreshError;
-                    if (latestRecord && latestRecord.status !== guardedBudgetStatus) {
-                        onUpdateSubproject(latestRecord as Subproject, { persisted: true });
-                        window.alert(`The subproject status changed to ${latestRecord.status}. Your draft was discarded and the current record was refreshed; reopen it to use the correct budget-item workflow.`);
-                        onEditModeChange('none');
-                        return;
-                    }
-                    setBudgetItemFormMessage({
-                        type: 'error',
-                        text: `The subproject could not be saved while it was ${guardedBudgetStatus}. No changes were saved.`,
-                    });
-                    return;
+        const confirmedSubproject = await persistSubprojectDraft(draftBaseRef.current, updatedSubprojectWithDetails, editMode, guardedBudgetStatus);
+        onUpdateSubproject(confirmedSubproject, { persisted: !!supabase });
+
+        // Logic to track accomplishment history in new table
+        if (editMode === 'accomplishment' && supabase) {
+            // Find changed items that are newly delivered or quantity changed
+            const changes = confirmedSubproject.details.filter(item => {
+                const original = subproject.details.find(row => String(row.id) === String(item.id));
+                if (!original) return true; // New item (shouldn't happen in accomplishment mode usually)
+
+                // Track if actual delivery happened or quantity updated
+                const deliveredNow = !!item.actualDeliveryDate;
+                const deliveredBefore = !!original.actualDeliveryDate;
+
+                // If just marked delivered, or quantity updated
+                if ((deliveredNow && !deliveredBefore) || (deliveredNow && item.actualNumberOfUnits !== original.actualNumberOfUnits)) {
+                    return true;
                 }
-                onUpdateSubproject(updatedSubprojectWithDetails, { persisted: true });
-            } catch (error) {
-                console.error('Unable to save Proposed subproject budget item changes:', error);
-                setBudgetItemFormMessage({
-                    type: 'error',
-                    text: error instanceof Error ? `Unable to save the budget changes: ${error.message}` : 'Unable to save the budget changes.',
-                });
-                return;
+                return false;
+            });
+
+            if (changes.length > 0) {
+                const historyRecords = changes.map(item => ({
+                    subproject_id: subproject.id,
+                    detail_id: item.id || 0, // Fallback 0 if id missing (should not happen for saved items)
+                    delivery_date: item.actualDeliveryDate,
+                    quantity: item.actualNumberOfUnits,
+                    remarks: `Delivered: ${item.particulars}`,
+                    created_by: currentUser?.fullName || 'System',
+                    created_at: new Date().toISOString()
+                }));
+
+                // Insert into tracking table
+                const { error: histError } = await supabase.from('subproject_accomplishments').insert(historyRecords);
+                if (histError) console.error("Error logging accomplishment history:", histError);
             }
-        } else {
-            onUpdateSubproject(updatedSubprojectWithDetails);
         }
+
+
+        if (resolvedIpoId) addIpoHistory(resolvedIpoId, `${eventType}: ${confirmedSubproject.name}`);
 
         // Sync obligations to central table if supabase is available
-        if (supabase && !guardedBudgetStatus) {
-             await syncSubprojectObligations(subproject.id, normalizedCleanDetails as SubprojectDetailType[]);
-             await syncSubprojectDisbursements(subproject.id, normalizedCleanDetails as SubprojectDetailType[]);
+        if (supabase && editMode === 'accomplishment') {
+             try {
+                 const obligationIds = getChangedSubprojectActualIds(draftBaseRef.current.details, normalizedCleanDetails, 'obligation');
+                 const disbursementIds = getChangedSubprojectActualIds(draftBaseRef.current.details, normalizedCleanDetails, 'disbursement');
+                 await syncSubprojectObligations(subproject.id, confirmedSubproject.details.filter(row => obligationIds.has(String(row.id))));
+                 await syncSubprojectDisbursements(subproject.id, confirmedSubproject.details.filter(row => disbursementIds.has(String(row.id))));
+             } catch (error) {
+                 console.error('The Subproject saved, but central financial synchronization failed:', error);
+                 alert('The Subproject was saved, but financial synchronization failed. Do not submit the same accomplishment again; contact an administrator.');
+             }
         }
 
-        if ((editMode === 'accomplishment' || hasOngoingBudgetItemCancellation) && pendingAdjustmentHistory.length > 0) {
+        if ((editMode === 'accomplishment' || editMode === 'budget') && pendingAdjustmentHistory.length > 0) {
             for (const entry of pendingAdjustmentHistory) {
                 await persistBudgetAdjustmentHistory(
                     entry.action,
@@ -1918,42 +1887,62 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         if (!supabase) return;
         const entityType = 'subproject_detail';
 
-        await supabase.from('financial_disbursements').delete().eq('entity_type', entityType).eq('parent_id', parentId);
-
-        const syncPayload: any[] = [];
-        details.forEach(item => {
-            if (item.disbursements && item.disbursements.length > 0) {
-                const latestDb = [...item.disbursements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-                item.actualDisbursementAmount = item.disbursements.reduce((sum, d) => sum + (d.amount || 0), 0);
-                item.actualDisbursementDate = latestDb.date;
-
-                item.disbursements.forEach(d => {
-                    syncPayload.push({
-                        entity_type: entityType,
-                        parent_id: parentId,
-                        item_id: item.id?.toString() || null,
-                        disbursement_date: d.date,
-                        amount: d.amount || 0,
-                        remarks: d.remarks || ''
-                    });
+        for (const item of details) {
+            const syncPayload: any[] = [];
+            if (item.disbursements?.length) {
+                item.disbursements.forEach(record => syncPayload.push({
+                    entity_type: entityType, parent_id: parentId, item_id: String(item.id),
+                    disbursement_date: record.date, amount: record.amount || 0, remarks: record.remarks || '',
+                }));
+            } else if (item.disbursements === undefined && Number(item.actualDisbursementAmount) > 0) {
+                syncPayload.push({
+                    entity_type: entityType, parent_id: parentId, item_id: String(item.id),
+                    disbursement_date: item.actualDisbursementDate || new Date().toISOString().split('T')[0],
+                    amount: item.actualDisbursementAmount, remarks: 'Migrated missing',
                 });
-            } else if (item.actualDisbursementAmount && item.actualDisbursementAmount > 0) {
-                 syncPayload.push({
-                     entity_type: entityType,
-                     parent_id: parentId,
-                     item_id: item.id?.toString() || null,
-                     disbursement_date: item.actualDisbursementDate || new Date().toISOString().split('T')[0],
-                     amount: item.actualDisbursementAmount || 0,
-                     remarks: 'Migrated missing'
-                 });
             }
-        });
-
-        if (syncPayload.length > 0) {
-            await supabase.from('financial_disbursements').insert(syncPayload);
+            const { error: deleteError } = await supabase.from('financial_disbursements').delete().eq('entity_type', entityType).eq('parent_id', parentId).eq('item_id', String(item.id));
+            if (deleteError) throw deleteError;
+            if (syncPayload.length) {
+                const { error } = await supabase.from('financial_disbursements').insert(syncPayload);
+                if (error) throw error;
+            }
         }
     };
 
+    const applyBudgetSchedules = async (rows: SubprojectDetailType[]) => {
+        const { decision, action } = getEditModeDecision('budget');
+        if (!(await ensureDecisionAllowed(decision, { moduleKey: 'subprojects', item: subproject, itemId: subproject.id, itemName: subproject.name, status: subproject.status, action, entityType: 'subproject' }))) throw new Error('Budget editing is not permitted.');
+        const normalized = rows.map(row => ensureOriginalBudgetSnapshot(normalizeBudgetLineStatus(row, subproject.status)));
+        for (const row of normalized) {
+            const before = detailItems.find(item => String(item.id) === String(row.id));
+            const oldTag = getBudgetLineTag(before, subproject.status), tag = getBudgetLineTag(row, subproject.status);
+            if (oldTag !== tag && (oldTag || tag)) {
+                const action = tag === 'Cancelled' ? 'cancel' : tag === 'Realignment' ? 'tag_realignment' : tag === 'Savings' ? 'tag_savings' : oldTag === 'Cancelled' ? 'restore' : 'clear_tag';
+                setPendingAdjustmentHistory(previous => [...previous, { action, beforeSnapshot: before, afterSnapshot: row, reason: row.adjustmentReason || 'Updated budget item tag.' }]);
+            }
+        }
+        const byId = new Map(normalized.map(row => [String(row.id), row]));
+        const next = [...detailItems.map(row => byId.get(String(row.id)) || row), ...normalized.filter(row => !detailItems.some(item => String(item.id) === String(row.id)))];
+        setDetailItems(next);
+        setEditedSubproject(previous => ({ ...previous, estimatedCompletionDate: latestBudgetDeliveryDate(next as SubprojectDetailType[], previous.estimatedCompletionDate, previous.status) }));
+    };
+    const handleSubmit = async (event: FormEvent) => {
+        event.preventDefault();
+        if (saveInFlight.current) return;
+        if (budgetDraftPending) { alert('Apply or discard the schedule draft before saving.'); return; }
+        if (editMode === 'budget') for (const row of detailItems) {
+            const original = subproject.details.find(item => String(item.id) === String(row.id));
+            if (original && !budgetTargetsChanged(original, row as SubprojectDetailType)) continue;
+            const error = validateBudgetSchedule(row as SubprojectDetailType, { particularTypes, uacsCodes }, original);
+            if (error) { alert(error); return; }
+        }
+        saveInFlight.current = true; setIsSaving(true);
+        try { await saveForm(event); }
+        catch (error) { alert(error instanceof Error ? error.message : (error as { message?: string })?.message || 'Unable to save changes. Your draft was retained.'); }
+        finally { saveInFlight.current = false; setIsSaving(false); }
+    };
+    const cancelEditing = () => { if (!isSaving && (!budgetDraftPending || window.confirm('Discard the unsaved schedule draft?'))) setEditMode('none'); };
     const commonInputClasses = "form-control";
 
     if (editMode !== 'none') {
@@ -1963,7 +1952,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     <h1 className="detail-title">
                         {editMode === 'budget' ? 'Editing Budget: ' : editMode === 'accomplishment' ? 'Editing Accomplishment: ' : editMode === 'commodity' ? 'Editing Commodities: ' : 'Editing Details: '}{subproject.name}
                     </h1>
-                    <button onClick={() => setEditMode('none')} className="btn btn-secondary"><X className="btn-symbol" aria-hidden="true" />Cancel Editing</button>
+                    <button disabled={isSaving} onClick={cancelEditing} className="btn btn-secondary"><X className="btn-symbol" aria-hidden="true" />Cancel Editing</button>
                 </div>
 
                 <div className="form-card">
@@ -2307,220 +2296,16 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 <div className="space-y-6">
                                      <fieldset className="form-section">
                                         <legend>Budget Items</legend>
-                                        <div className="budget-item-list">
-                                            {detailItems.map((d, index) => (
-                                                <div key={index} className={`budget-item-card ${editingDetailIndex === index ? 'budget-item-card--editing' : ''} ${isBudgetLineExcludedFromTargets(d, subproject.status) ? 'budget-item-card--excluded' : ''} ${subproject.status !== 'Proposed' && d.isCancelled ? 'budget-item-card--cancelled' : ''} ${d.isRealignment ? 'budget-item-card--realignment' : ''} ${d.isSavings ? 'budget-item-card--savings' : ''}`}>
-                                                    <div className="budget-item-card__summary">
-                                                        <span className="budget-item-card__title">
-                                                            {d.particulars}
-                                                            {getBudgetLineTag(d, subproject.status) && (
-                                                                <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(d, subproject.status)?.toLowerCase()}`}>
-                                                                    {getBudgetLineTag(d, subproject.status)}
-                                                                </span>
-                                                            )}
-                                                        </span>
-                                                        <div className="budget-item-card__meta">
-                                                            <div>{d.uacsCode} {availableUacsCodes.find(c => c.code === d.uacsCode)?.desc ? `- ${availableUacsCodes.find(c => c.code === d.uacsCode)?.desc}` : ''}</div>
-                                                            <div>{d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}</div>
-                                                            <span className="block mt-1">Obligation: {formatMonthYear(d.obligationMonth)} | Disbursement: {formatMonthYear(d.disbursementMonth)}</span>
-                                                            {isBudgetLineExcludedFromTargets(d, subproject.status) && (
-                                                                <span className="budget-line-exclusion-note">{d.adjustmentReason || 'No adjustment justification recorded.'}</span>
-                                                            )}
-                                                        </div>
-                                                        {budgetItemRemovalError?.itemId === String(d.id) && (
-                                                            <div className="budget-item-form-message budget-item-form-message--error" role="alert">
-                                                                {budgetItemRemovalError.text}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <div className="budget-item-card__actions">
-                                                        <span className="budget-item-card__total">{formatCurrency(getBudgetLineAmount(d))}</span>
-                                                        <div className="budget-item-card__buttons">
-                                                                <button type="button" onClick={() => handleEditParticular(index)} disabled={!canEditSubprojectBudgetItem(subproject.status, !!d.isSuperseded)} className="table-action table-action--primary" title={d.isSuperseded && subproject.status !== 'Proposed' ? 'Replaced item is read-only' : 'Edit item'}>
-                                                                <Pencil className="btn-symbol" aria-hidden="true" />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleRemoveDetail(index)}
-                                                                disabled={!canEditSubprojectBudgetItem(subproject.status, !!d.isSuperseded) || (subproject.status !== 'Proposed' && subproject.status !== 'Ongoing' && !!(d.id && subproject.details.some(saved => String(saved.id) === String(d.id))))}
-                                                                className="table-action table-action--danger"
-                                                                title={d.isSuperseded && subproject.status !== 'Proposed'
-                                                                    ? 'Replaced item is read-only'
-                                                                    : subproject.status === 'Ongoing'
-                                                                        ? 'Cancel planned budget item'
-                                                                        : subproject.status === 'Proposed'
-                                                                            ? 'Delete proposed budget item'
-                                                                            : 'Saved items cannot be removed at this status'}
-                                                            ><Trash2 className="btn-symbol" aria-hidden="true" /></button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            <div className="budget-item-list__total">Total: {formatCurrency(totalBudget)}</div>
-                                        </div>
-
-                                        <div className="budget-item-form-grid">
-                                            <div className="budget-item-form-grid__wide"><label className="form-label">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`}><option value="">Select Type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                            <div className="budget-item-form-grid__wide"><label className="form-label">Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={`${commonInputClasses} form-control--compact`}><option value="">Select Item</option>{currentDetail.type && particularTypes[currentDetail.type]?.map(i => <option key={i} value={i}>{i}</option>)}</select></div>
-
-                                            <div className="budget-item-form-grid__full budget-item-form-grid budget-item-form-grid--nested">
-                                                <div><label className="form-label">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                                <div><label className="form-label">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType] || {}).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                                <div>
-                                                    <label className="form-label">UACS Code</label>
-                                                    <input
-                                                        type="text"
-                                                        name="uacsCode"
-                                                        value={currentDetail.uacsCode}
-                                                        onChange={handleDetailChange}
-                                                        list="uacs-codes-list"
-                                                        placeholder="Search UACS..."
-                                                        className={`${commonInputClasses} form-control--compact`}
-                                                    />
-                                                    <datalist id="uacs-codes-list">
-                                                        {availableUacsCodes.map((item) => (
-                                                            <option key={item.code} value={item.code}>{item.code} - {item.desc}</option>
-                                                        ))}
-                                                    </datalist>
-                                                    {currentDetail.uacsCode && availableUacsCodes.find(c => c.code === currentDetail.uacsCode) && (
-                                                        <p className="form-help">
-                                                            {availableUacsCodes.find(c => c.code === currentDetail.uacsCode)?.desc}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            <div>
-                                                <label className="form-label">Delivery Month</label>
-                                                <MonthYearPicker
-                                                    value={currentDetail.deliveryDate}
-                                                    onChange={(val) => {
-                                                        setBudgetItemFormMessage(null);
-                                                        setBudgetItemErrorFields(prev => prev.filter(field => field !== 'deliveryDate'));
-                                                        if (editedSubproject.estimatedCompletionDate && val > editedSubproject.estimatedCompletionDate) {
-                                                            setConfirmBudgetItemDate({ field: 'deliveryDate', dateStr: val });
-                                                            return;
-                                                        }
-                                                        setCurrentDetail(prev => ({ ...prev, deliveryDate: val }));
-                                                    }}
-                                                    placeholder="Select month"
-                                                    defaultYear={editedSubproject.fundingYear}
-                                                    className="h-9"
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <label className="form-label">Obligation Month</label>
-                                                <MonthYearPicker
-                                                    value={currentDetail.obligationMonth}
-                                                    onChange={(val) => {
-                                                        setBudgetItemFormMessage(null);
-                                                        setBudgetItemErrorFields(prev => prev.filter(field => field !== 'obligationMonth'));
-                                                        if (editedSubproject.estimatedCompletionDate && val > editedSubproject.estimatedCompletionDate) {
-                                                            setConfirmBudgetItemDate({ field: 'obligationMonth', dateStr: val });
-                                                            return;
-                                                        }
-                                                        setCurrentDetail(prev => ({ ...prev, obligationMonth: val }));
-                                                    }}
-                                                    placeholder="Select month"
-                                                    defaultYear={editedSubproject.fundingYear}
-                                                    className="h-9"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="form-label">Disbursement Month</label>
-                                                <MonthYearPicker
-                                                    value={currentDetail.disbursementMonth}
-                                                    onChange={(val) => {
-                                                        setBudgetItemFormMessage(null);
-                                                        setBudgetItemErrorFields(prev => prev.filter(field => field !== 'disbursementMonth'));
-                                                        setCurrentDetail(prev => ({ ...prev, disbursementMonth: val }));
-                                                    }}
-                                                    placeholder="Select month"
-                                                    defaultYear={editedSubproject.fundingYear}
-                                                    className="h-9"
-                                                />
-                                            </div>
-
-                                            <div><label className="form-label">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`} /></div>
-                                            <div><label className="form-label">Number of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`} /></div>
-                                            <div><label className="form-label">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`}><option value="pcs">pcs</option><option value="grams">grams</option><option value="kg">kg</option><option value="liters">liters</option><option value="boxes">boxes</option><option value="cans">cans</option><option value="sets">sets</option><option value="pax">pax</option><option value="heads">heads</option><option value="months">months</option><option value="days">days</option><option value="ha">ha</option><option value="bags">bags</option><option value="bottles">bottles</option><option value="sachets">sachets</option><option value="rolls">rolls</option><option value="meters">meters</option><option value="units">units</option><option value="packs">packs</option><option value="lots">lots</option></select></div>
-                                            {budgetItemFormMessage && (
-                                                <div className={`budget-item-form-grid__full budget-item-form-message budget-item-form-message--${budgetItemFormMessage.type}`} role={budgetItemFormMessage.type === 'error' ? 'alert' : 'status'}>
-                                                    {budgetItemFormMessage.text}
-                                                </div>
-                                            )}
-                                            <div className="budget-item-form-grid__full budget-line-adjustment-options">
-                                                {editingDetailIndex !== null && subproject.status === 'Ongoing' && (
-                                                    <label className="form-check">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={currentDetail.isCancelled}
-                                                            onChange={(e) => setCurrentDetail(prev => ({
-                                                                ...prev,
-                                                                isCancelled: e.target.checked,
-                                                                isRealignment: e.target.checked ? false : prev.isRealignment,
-                                                                isSavings: e.target.checked ? false : prev.isSavings,
-                                                            }))}
-                                                            className="form-checkbox"
-                                                        />
-                                                        Cancelled
-                                                    </label>
-                                                )}
-                                                <label className="form-check">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={currentDetail.isRealignment}
-                                                        onChange={(e) => setCurrentDetail(prev => ({
-                                                            ...prev,
-                                                            isRealignment: e.target.checked,
-                                                            isCancelled: e.target.checked ? false : prev.isCancelled,
-                                                            isSavings: e.target.checked ? false : prev.isSavings,
-                                                        }))}
-                                                        className="form-checkbox"
-                                                    />
-                                                    Realignment
-                                                </label>
-                                                <label className="form-check">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={currentDetail.isSavings}
-                                                        onChange={(e) => setCurrentDetail(prev => ({
-                                                            ...prev,
-                                                            isSavings: e.target.checked,
-                                                            isCancelled: e.target.checked ? false : prev.isCancelled,
-                                                            isRealignment: e.target.checked ? false : prev.isRealignment,
-                                                        }))}
-                                                        className="form-checkbox"
-                                                    />
-                                                    Savings
-                                                </label>
-                                                {(currentDetail.isCancelled || currentDetail.isRealignment || currentDetail.isSavings) && (
-                                                    <input
-                                                        type="text"
-                                                        name="adjustmentReason"
-                                                        value={currentDetail.adjustmentReason}
-                                                        onChange={handleDetailChange}
-                                                        placeholder="Reason for this adjustment"
-                                                        className={`${commonInputClasses} form-control--compact budget-line-adjustment-options__reason`}
-                                                    />
-                                                )}
-                                            </div>
-
-                                            {editingDetailIndex !== null ? (
-                                                <div className="budget-item-form-grid__actions">
-                                                    <button type="button" onClick={handleAddDetail} className="btn btn-primary">Update Item</button>
-                                                    <button type="button" onClick={handleCancelDetailEdit} className="btn btn-secondary">Cancel</button>
-                                                </div>
-                                            ) : (
-                                                <div className="budget-item-form-grid__actions">
-                                                    <button type="button" onClick={handleAddDetail} className="btn btn-primary w-full">
-                                                        <Plus className="btn-symbol" aria-hidden="true" />
-                                                        Add Item
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
+                                        <SubprojectBudgetEditor
+                                            items={detailItems as SubprojectDetailType[]} parent={editedSubproject}
+                                            particularTypes={particularTypes} uacsCodes={uacsCodes} allowTags disabled={isSaving}
+                                            canEdit={row => canEditSubprojectBudgetItem(subproject.status, !!row.isSuperseded)}
+                                            canRemove={row => canEditSubprojectBudgetItem(subproject.status, !!row.isSuperseded) && !(subproject.status !== 'Proposed' && subproject.status !== 'Ongoing' && subproject.details.some(saved => saved.id === row.id))}
+                                            onApply={applyBudgetSchedules}
+                                            onRemove={id => handleRemoveDetail(detailItems.findIndex(row => row.id === id))}
+                                            onDraftChange={setBudgetDraftPending}
+                                        />
+                                        {budgetItemRemovalError && <p className="form-error" role="alert">{budgetItemRemovalError.text}</p>}
                                         <div className="budget-adjustment-summary">
                                             <div className="budget-adjustment-summary__header">
                                                 <h4>Expense Calculator</h4>
@@ -2904,8 +2689,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             )}
                         </div>
                         <div className="detail-edit-footer">
-                            <button type="button" onClick={() => setEditMode('none')} className="btn btn-secondary">Cancel</button>
-                            <button type="submit" className="btn btn-primary">Save Changes</button>
+                            <button type="button" disabled={isSaving} onClick={cancelEditing} className="btn btn-secondary">Cancel</button>
+                            <button type="submit" disabled={isSaving || budgetDraftPending} className="btn btn-primary">{isSaving ? 'Saving...' : 'Save Changes'}</button>
                         </div>
                     </form>
                 </div>
@@ -2940,19 +2725,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             {Object.keys(particularTypes).map(type => <option key={type} value={type}>{type}</option>)}
                                         </select>
                                     </div>
-                                    <div>
-                                        <label className="form-label">Particulars <span className="form-required">*</span></label>
-                                        <select
-                                            name="particulars"
-                                            value={accomplishmentItemDraft.particulars}
-                                            onChange={handleAccomplishmentDraftChange}
-                                            disabled={!accomplishmentItemDraft.type}
-                                            className={commonInputClasses}
-                                        >
-                                            <option value="">Select Item</option>
-                                            {(particularTypes[accomplishmentItemDraft.type] || []).map(particular => <option key={particular} value={particular}>{particular}</option>)}
-                                        </select>
-                                    </div>
+                                    <ReferenceCombobox key={`adjustment-particular:${accomplishmentItemDraft.type}`} label="Particulars" value={accomplishmentItemDraft.particulars} fallbackLabel={accomplishmentItemDraft.particulars} disabled={!accomplishmentItemDraft.type}
+                                        options={[...(particularTypes[accomplishmentItemDraft.type] || [])].sort((a, b) => a.localeCompare(b)).map(value => ({ value, label: value }))}
+                                        onChange={value => setAccomplishmentItemDraft(previous => ({ ...previous, particulars: value }))} />
                                     <div>
                                         <label className="form-label">Object Type</label>
                                         <select name="objectType" value={accomplishmentItemDraft.objectType} onChange={handleAccomplishmentDraftChange} className={commonInputClasses}>
@@ -2971,20 +2746,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             {Object.keys(uacsCodes[accomplishmentItemDraft.objectType] || {}).map(particular => <option key={particular} value={particular}>{particular}</option>)}
                                         </select>
                                     </div>
-                                    <div>
-                                        <label className="form-label">UACS Code <span className="form-required">*</span></label>
-                                        <input
-                                            type="text"
-                                            name="uacsCode"
-                                            value={accomplishmentItemDraft.uacsCode}
-                                            onChange={handleAccomplishmentDraftChange}
-                                            list="accomplishment-uacs-codes-list"
-                                            className={commonInputClasses}
-                                        />
-                                        <datalist id="accomplishment-uacs-codes-list">
-                                            {allUacsCodes.map(item => <option key={item.code} value={item.code}>{item.code} - {item.desc}</option>)}
-                                        </datalist>
-                                    </div>
+                                    <ReferenceCombobox key={`adjustment-uacs:${accomplishmentItemDraft.objectType}:${accomplishmentItemDraft.expenseParticular}`} label="UACS Code"
+                                        value={accomplishmentItemDraft.uacsCode ? JSON.stringify([accomplishmentItemDraft.objectType, accomplishmentItemDraft.expenseParticular, accomplishmentItemDraft.uacsCode]) : ''}
+                                        fallbackLabel={accomplishmentItemDraft.uacsCode}
+                                        options={getUacsOptions({ particularTypes, uacsCodes }, accomplishmentItemDraft.objectType, accomplishmentItemDraft.expenseParticular)}
+                                        onChange={value => setAccomplishmentItemDraft(previous => {
+                                            if (!value) return { ...previous, uacsCode: '' };
+                                            const [objectType, expenseParticular, uacsCode] = JSON.parse(value);
+                                            return { ...previous, objectType, expenseParticular, uacsCode };
+                                        })} />
                                     <div>
                                         <label className="form-label">Target Delivery Month <span className="form-required">*</span></label>
                                         <MonthYearPicker
@@ -3309,7 +3079,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {subproject.details.map(detail => {
+                                    {groupBudgetSchedules(subproject.details).flatMap(group => group.rows.map((detail, scheduleIndex) => {
                                         const actualUnits = detail.actualNumberOfUnits || 0;
                                         const targetUnits = detail.numberOfUnits || 1; // Avoid division by zero
                                         const completionPct = (actualUnits / targetUnits) * 100;
@@ -3317,7 +3087,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         return (
                                             <tr key={detail.id} className={`${isBudgetLineExcludedFromTargets(detail, subproject.status) ? 'budget-item-card--excluded' : ''} ${subproject.status !== 'Proposed' && detail.isCancelled ? 'budget-item-card--cancelled' : ''} ${detail.isRealignment ? 'budget-item-card--realignment' : ''} ${detail.isSavings ? 'budget-item-card--savings' : ''}`}>
                                                 {canStartBudgetTransfer && <td className="data-table__cell--selection"><input type="checkbox" className="form-checkbox" aria-label={`Select ${detail.particulars} for transfer`} checked={selectedTransferItemIds.includes(String(detail.id))} disabled={!eligibleTransferIds.has(String(detail.id))} onChange={() => toggleTransferItem(String(detail.id))} /></td>}
-                                                <td className="data-table__primary">{detail.particulars}</td>
+                                                {scheduleIndex === 0 && <td rowSpan={group.rows.length} className="data-table__primary subproject-budget-editor__shared"><span className="subproject-budget-editor__text" title={detail.particulars}>{detail.particulars}</span></td>}
                                                 <td>
                                                     {getBudgetLineTag(detail, subproject.status) ? (
                                                         <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(detail, subproject.status)?.toLowerCase()}`}>
@@ -3340,7 +3110,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 </td>
                                             </tr>
                                         );
-                                    })}
+                                    }))}
                                 </tbody>
                                 <tfoot>
                                     <tr className="data-table__total-row">
