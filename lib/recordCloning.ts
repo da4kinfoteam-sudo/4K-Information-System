@@ -1,4 +1,5 @@
 import type { Activity, ActivityExpense, Subproject, SubprojectDetail } from '../constants';
+import { normalizeActivityTitle } from './activityTitles';
 
 interface CloneContext {
     createdAt: string;
@@ -61,6 +62,7 @@ export const buildActivityClonePayload = (source: Activity, context: CloneContex
     return {
         ...createCloneBase(source, context),
         uid: createCloneUid(source.type === 'Training' ? 'TRN' : 'ACT', context.createdAt),
+        activity_title: normalizeActivityTitle(source.activity_title),
         actualDate: undefined,
         actualEndDate: undefined,
         actualParticipantsMale: 0,

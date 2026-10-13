@@ -28,6 +28,7 @@ const mocks = {
                 if (window.fixture.fail) return done({ data: null, error: { message: 'Synthetic save failure' } });
                 if (window.fixture.noRow) return done({ data: null, error: null });
                 const row = { ...window.fixture.source, ...payload, id: id || 501 + window.fixture.writes.filter(write => write.table === 'activities').length, serverConfirmed: true };
+                if (window.fixture.serverTitle !== undefined && !Object.hasOwn(payload || {}, 'activity_title')) row.activity_title = window.fixture.serverTitle;
                 window.fixture.writes.push({ table, action, payload });
                 if (table !== 'activities') return done({ data: [], error: null });
                 window.fixture.stored = row;
@@ -96,7 +97,7 @@ function Harness() {
         if (kind === 'cloned') Object.assign(source, { uid: 'ACT-CLONE', actualDate: null, actualParticipantsMale: 0, actualParticipantsFemale: 0 });
         if (kind === 'training') Object.assign(source, { type: 'Training', name: 'Specific Training', reference_activity_id: 2 });
         window.fixture = { source, writes: [], saved: [], fetches: 0, financialWrites: 0, ...options };
-        setRecord(source); setMode(kind === 'create' ? 'create' : 'details'); setVersion(value => value + 1);
+        setRecord(source); setMode(options.mode || (kind === 'create' ? 'create' : 'details')); setVersion(value => value + 1);
     };
     if (!window.fixture) window.fixture = { source: base, writes: [], saved: [], fetches: 0, financialWrites: 0 };
     return <main style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
@@ -164,6 +165,8 @@ try {
         await page.evaluate(kind => window.loadFixture(kind), kind);
         await page.getByRole('button', { name: 'Remove Original IPO', exact: true }).waitFor();
         await replaceIpo();
+        if (kind !== 'training') await page.getByLabel('Activity Title (optional)', { exact: true }).fill('  Fixture custom visit  ');
+        else assert.equal(await page.locator('input[name="activity_title"]').count(), 0);
         await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
         await page.waitForFunction(() => window.fixture.saved.length === 1);
         const result = await page.evaluate(() => window.fixture);
@@ -172,6 +175,8 @@ try {
         assert.equal(result.saved[0].serverConfirmed, true);
         assert.equal(result.financialWrites, 0);
         assert.equal(result.fetches, 0);
+        assert.equal(result.stored.name, result.source.name);
+        assert.equal(result.stored.activity_title ?? null, kind === 'training' ? null : 'Fixture custom visit');
         assert.deepEqual(result.stored.expenses, result.source.expenses);
         assert.equal(result.stored.actualDate, result.source.actualDate);
         assert.equal(result.source.participating_ipo_ids[0], 11);
@@ -180,11 +185,37 @@ try {
         await page.getByRole('button', { name: /^Remove Replacement IPO/ }).waitFor();
         assert.equal(await page.getByRole('button', { name: 'Remove Original IPO', exact: true }).count(), 0);
     }
+    await page.evaluate(() => window.loadFixture('ordinary', { activity_title: 'Clear me' }));
+    await page.getByLabel('Activity Title (optional)', { exact: true }).fill('   ');
+    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+    await page.waitForFunction(() => window.fixture.saved.length === 1);
+    assert.equal(await page.evaluate(() => window.fixture.stored.activity_title), null);
+
+    await page.evaluate(() => window.loadFixture('training'));
+    const typeSelect = page.locator('select').filter({ has: page.locator('option[value="Subproject Monitoring"]') });
+    await typeSelect.selectOption('Subproject Monitoring');
+    await page.getByLabel('Activity Title (optional)', { exact: true }).fill('Generic override');
+    await typeSelect.selectOption('Program Management Training');
+    assert.equal(await page.locator('input[name="name"]').inputValue(), 'Specific Training');
+    assert.equal(await page.locator('input[name="activity_title"]').count(), 0);
+    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+    await page.waitForFunction(() => window.fixture.saved.length === 1);
+    assert.equal(await page.evaluate(() => window.fixture.stored.name), 'Specific Training');
+    for (const mode of ['details', 'expenses', 'accomplishment']) {
+        await page.evaluate(mode => window.loadFixture('ordinary', { mode, activity_title: 'Stale draft', serverTitle: 'Latest saved title' }), mode);
+        await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+        await page.waitForFunction(() => window.fixture.saved.length === 1);
+        const actualOnly = await page.evaluate(() => window.fixture);
+        assert.equal(Object.hasOwn(actualOnly.writes.find(write => write.table === 'activities').payload, 'activity_title'), false);
+        assert.equal(actualOnly.stored.activity_title, 'Latest saved title');
+    }
     await page.evaluate(() => window.loadFixture('ordinary', { fail: true }));
+    await page.getByLabel('Activity Title (optional)', { exact: true }).fill('Keep failed draft');
     await replaceIpo();
     await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
     await page.waitForFunction(() => !document.querySelector('button[type="submit"]').disabled);
     assert.equal(await page.evaluate(() => window.fixture.saved.length), 0);
+    assert.equal(await page.getByLabel('Activity Title (optional)', { exact: true }).inputValue(), 'Keep failed draft');
     await page.getByRole('button', { name: /^Remove Replacement IPO/ }).waitFor();
 
     await page.evaluate(() => window.loadFixture('ordinary', { noRow: true }));
@@ -213,6 +244,7 @@ try {
     await page.locator('select').filter({ has: page.locator('option[value="Subproject Monitoring"]') }).selectOption('Subproject Monitoring');
     await page.locator('select').filter({ has: page.locator('option[value="fixture-region"]') }).selectOption('fixture-region');
     await page.locator('select').filter({ has: page.locator('option[value="Repeating"]') }).selectOption('Repeating');
+    await page.getByLabel('Activity Title (optional)', { exact: true }).fill('Repeat visit');
     await page.locator('.activity-ipo-selector__filters select').selectOption('All');
     await page.locator('input[name="date"]').fill('2026-10-15');
     await page.getByLabel('Available IPOs', { exact: true }).selectOption(['22']);
@@ -232,6 +264,7 @@ try {
     });
     const schedule = await page.evaluate(() => window.fixture.saved);
     assert.deepEqual(schedule.map(row => row.participating_ipo_ids), [[22], [33]]);
+    assert.deepEqual(schedule.map(row => row.activity_title), ['Repeat visit', 'Repeat visit']);
 
     await page.evaluate(() => window.loadFixture('create'));
     await page.locator('select[name="component"]').selectOption('Program Management');
@@ -244,6 +277,7 @@ try {
     await page.getByRole('button', { name: 'Create Activity', exact: true }).click();
     await page.waitForFunction(() => window.fixture.saved.length === 1);
     assert.deepEqual(await page.evaluate(() => window.fixture.saved[0].participating_ipo_ids), [22]);
+    assert.equal(await page.evaluate(() => window.fixture.saved[0].activity_title), null);
 
     await page.evaluate(() => window.loadFixture('create', { denied: true }));
     await page.locator('select[name="component"]').selectOption('Program Management');
@@ -267,12 +301,15 @@ try {
     await page.getByRole('button', { name: /^Remove Replacement IPO/ }).waitFor();
     for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
         await page.setViewportSize(viewport);
+        await page.getByLabel('Activity Title (optional)', { exact: true }).scrollIntoViewIfNeeded();
+        assert.equal(await page.getByLabel('Activity Title (optional)', { exact: true }).getAttribute('placeholder'), null);
+        await page.screenshot({ path: path.join(screenshots, `title-${viewport.width}.png`) });
         await page.locator('.activity-ipo-selector').scrollIntoViewIfNeeded();
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false, 'No page-wide horizontal overflow');
         await page.screenshot({ path: path.join(screenshots, `selector-${viewport.width}.png`) });
     }
     assert.deepEqual(errors, []);
-    console.log('PASS: Mocked browser saves for ordinary/cloned/completed transfer Activities and Trainings, single/repeating creation, scoped cache update/isolation/invalidation, permissions/failure/missing-row/clear, bulk selection, filters, desktop/mobile layout.');
+    console.log('PASS: Mocked browser saves and title trim/clear/failure preservation for ordinary/cloned/completed transfer Activities, Training subtype roundtrip, single/repeating creation, stale-title isolation for expense/accomplishment writes, scoped cache isolation, permissions and desktop/mobile layout.');
     console.log(`Screenshots: ${screenshots}`);
 } finally {
     await browser?.close();

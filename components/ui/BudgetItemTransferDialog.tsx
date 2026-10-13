@@ -14,6 +14,7 @@ import { getBudgetLineAmount } from '../../lib/budgetLineAdjustments';
 import { getActualDisbursementSummary, getActualObligationSummary } from '../../lib/financialActualSummary';
 import { resolveFundSourceUidFromLegacyLabel } from '../../lib/fundSources';
 import { X } from 'lucide-react';
+import { getActivityDisplayTitle, normalizeActivityTitle } from '../../lib/activityTitles';
 
 type SourceRecord = Subproject | Activity;
 type MetadataDraft = Record<string, string>;
@@ -32,7 +33,7 @@ interface BudgetItemTransferDialogProps {
 
 const metadataKeys = (sourceType: BudgetTransferSourceType) => sourceType === 'subproject'
     ? ['name', 'status', 'operatingUnit', 'fundingYear', 'fundType', 'fundSourceUid', 'tier', 'location', 'lat', 'lng', 'ipo_id', 'indigenousPeopleOrganization', 'packageType', 'startDate', 'estimatedCompletionDate', 'actualCompletionDate', 'remarks', 'accomplishmentRemarks']
-    : ['name', 'status', 'operatingUnit', 'fundingYear', 'fundType', 'fundSourceUid', 'tier', 'date', 'endDate', 'description', 'location', 'lat', 'lng', 'facilitator', 'participating_ipo_ids', 'participatingIpos', 'participantsMale', 'participantsFemale', 'component', 'actualDate', 'actualEndDate', 'remarks'];
+    : ['name', 'activity_title', 'status', 'operatingUnit', 'fundingYear', 'fundType', 'fundSourceUid', 'tier', 'date', 'endDate', 'description', 'location', 'lat', 'lng', 'facilitator', 'participating_ipo_ids', 'participatingIpos', 'participantsMale', 'participantsFemale', 'component', 'actualDate', 'actualEndDate', 'remarks'];
 
 const toMetadataDraft = (source: SourceRecord, sourceType: BudgetTransferSourceType, ipos: IPO[], fundSources: RefFundSource[]): MetadataDraft => {
     const record = source as unknown as Record<string, unknown>;
@@ -170,7 +171,9 @@ export const BudgetItemTransferDialog: React.FC<BudgetItemTransferDialogProps> =
         const output: Record<string, unknown> = {};
         metadataKeys(sourceType).forEach(key => {
             const value = metadata[key] ?? '';
-            if (key === 'fundingYear') {
+            if (key === 'activity_title') {
+                output[key] = normalizeActivityTitle(value);
+            } else if (key === 'fundingYear') {
                 output[key] = value && Number.isFinite(Number(value)) ? Number(value) : null;
             } else if (key === 'ipo_id') {
                 output[key] = value && value !== 'legacy' ? Number(value) : null;
@@ -251,7 +254,7 @@ export const BudgetItemTransferDialog: React.FC<BudgetItemTransferDialogProps> =
                 <header className="modal-card__header">
                     <div>
                         <h2 id={titleId}>Transfer budget items</h2>
-                        <p>{source.name} · {selectedLines.length} selected</p>
+                        <p>{sourceType === 'subproject' ? source.name : getActivityDisplayTitle(source as Activity)} · {selectedLines.length} selected</p>
                     </div>
                     <button className="modal-card__close" type="button" aria-label="Close transfer dialog" disabled={saving} onClick={onClose}><X aria-hidden="true" /></button>
                 </header>
@@ -260,7 +263,10 @@ export const BudgetItemTransferDialog: React.FC<BudgetItemTransferDialogProps> =
                         <section className="budget-transfer-dialog__section" aria-labelledby={`${titleId}-destination`}>
                             <h3 id={`${titleId}-destination`}>Destination preview</h3>
                             <div className="budget-transfer-dialog__fields">
-                                <TransferField label="Name" name="name" value={metadata.name} required onChange={setField} />
+                                <TransferField label="Name" name="name" value={metadata.name} required disabled={sourceType === 'activity' && (source as Activity).type === 'Activity'} onChange={setField} />
+                                {sourceType === 'activity' && (source as Activity).type === 'Activity' && (
+                                    <TransferField label="Activity Title (optional)" name="activity_title" value={metadata.activity_title} onChange={setField} />
+                                )}
                                 <TransferField label="Status" name="status" value={metadata.status} type="select" required options={['Proposed', 'Ongoing', 'Completed'].map(value => ({ value, label: value }))} onChange={setField} />
                                 <TransferField label="Operating Unit" name="operatingUnit" value={metadata.operatingUnit} type="select" disabled={!canChangeOperatingUnit} options={scopeUnits.map(value => ({ value, label: value }))} onChange={setField} />
                                 <TransferField label="Fund Year" name="fundingYear" value={metadata.fundingYear} type="select" options={[{ value: '', label: 'Not specified' }, ...yearOptions.map(value => ({ value, label: value }))]} onChange={setField} />

@@ -1,5 +1,6 @@
 
 // Author: 4K
+import { getActivityDisplayTitle, resolveActivitySelection } from '../lib/activityTitles';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { 
@@ -128,7 +129,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             const item = ipos.find(i => i.name === id);
             if (item) onSelectIpo(item);
         } else if (type === 'activity') {
-            const item = activities.find(a => a.uid === id || a.name === id);
+            const item = resolveActivitySelection(activities, id);
             if (item) onSelectActivity(item);
         } else if (type === 'marketing') {
             const item = marketingPartners.find(m => m.uid === id || m.companyName === id);
@@ -439,6 +440,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                 const itemString = JSON.stringify(item).toLowerCase();
                 
                 let searchableText = (item.name || '') + ' ' + 
+                                     (item.type === 'Activity' || item.type === 'Training' ? getActivityDisplayTitle(item) : '') + ' ' +
                                      (item.description || '') + ' ' + 
                                      (item.location || '') + ' ' + 
                                      (item.packageType || '') + ' ' + 
@@ -557,7 +559,13 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                 context.subprojects_list = filteredSubprojects.slice(0, maxItems).map(s => ({ name: s.name, budget: calculateBudget([s], 'sp'), status: s.status }));
             }
             if (q.includes('training')) {
-                context.trainings_list = filteredTrainings.slice(0, maxItems).map(t => ({ name: t.name, budget: calculateBudget([t], 'act'), status: t.status }));
+                context.trainings_list = filteredTrainings.slice(0, maxItems).map(t => ({ id: t.id, uid: t.uid, name: getActivityDisplayTitle(t), budget: calculateBudget([t], 'act'), status: t.status }));
+            }
+            if (q.includes('activity') || q.includes('activities')) {
+                context.activities_list = filteredActivities.slice(0, maxItems).map(activity => ({
+                    id: activity.id, uid: activity.uid, name: getActivityDisplayTitle(activity),
+                    activityType: activity.name, budget: calculateBudget([activity], 'act'), status: activity.status,
+                }));
             }
         }
 

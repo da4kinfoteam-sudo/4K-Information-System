@@ -1,3 +1,4 @@
+import { activityTitleForSave, getActivityDisplayTitle, normalizeActivityTitle } from '../lib/activityTitles';
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo, useRef } from 'react';
@@ -113,6 +114,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     const [activeTab, setActiveTab] = useState<'details' | 'expenses'>('details');
     const [selectedActivityType, setSelectedActivityType] = useState('');
+    const trainingNameDraft = useRef(activity?.type === 'Training' ? activity.name : '');
     const [conductType, setConductType] = useState<'Single' | 'Multi-day' | 'Repeating'>('Single');
     const [repeatingEntries, setRepeatingEntries] = useState<any[]>([]);
     const [currentRepeatingEntry, setCurrentRepeatingEntry] = useState<any>({
@@ -217,6 +219,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             };
 
             setFormData({ ...activity, expenses: activity.expenses || [] });
+            trainingNameDraft.current = activity.type === 'Training' ? activity.name : '';
             setInitialActivity({ ...activity, expenses: activity.expenses || [] });
             if (supabase && activity.id > 0 && mode !== 'details') {
                 void fetchFinancialObligationsForParent({ entityType: 'activity_expense', parentId: activity.id })
@@ -341,6 +344,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     };
 
     const handleActivityTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        if (formData.type === 'Training') trainingNameDraft.current = formData.name;
         const selectedName = e.target.value;
         setSelectedActivityType(selectedName);
         const ref = referenceActivities?.find(ra => ra.activity_name === selectedName && ra.component === formData.component);
@@ -352,7 +356,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
         setFormData(prev => ({ 
             ...prev, 
-            name: type === 'Training' && (!activity || activity.type !== 'Training') ? '' : selectedName, 
+            name: type === 'Training' ? trainingNameDraft.current : selectedName,
             type: type,
             reference_activity_id: ref?.id ? Number(ref.id) : null
         }));
@@ -797,9 +801,18 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         }
 
         if (mode === 'create' || mode === 'details') {
-            activitiesToSave = activitiesToSave.map(saved => ({ ...saved, ...reconcileActivityIpoLinks(saved, ipos) }));
+            activitiesToSave = activitiesToSave.map(saved => ({ ...saved, activity_title: activityTitleForSave(saved), ...reconcileActivityIpoLinks(saved, ipos) }));
         }
         if (mode === 'details' && activity) {
+            const oldTitle = normalizeActivityTitle(activity.activity_title);
+            const newTitle = normalizeActivityTitle(formData.activity_title);
+            if (oldTitle !== newTitle) {
+                activitiesToSave[0].history!.push({
+                    date: activitiesToSave[0].updated_at!,
+                    event: `Activity title changed (${activity.uid || activity.id}, ID ${activity.id}): ${JSON.stringify(oldTitle)} -> ${JSON.stringify(newTitle)}`,
+                    user: currentUser?.fullName || 'System',
+                });
+            }
             const before = reconcileActivityIpoLinks(activity, ipos);
             const after = reconcileActivityIpoLinks(formData, ipos);
             if (JSON.stringify(before) !== JSON.stringify(after)) {
@@ -830,7 +843,11 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     
                     // Sanitize date fields: convert empty strings to null
                     const sanitizedPayload: any = mode === 'details' ? buildActivityDetailsPayload(act) : { ...payload };
+                    if (mode === 'details' && normalizeActivityTitle(initialActivity.activity_title) === act.activity_title) {
+                        delete sanitizedPayload.activity_title;
+                    }
                     if (mode === 'expenses' || mode === 'accomplishment') {
+                        delete sanitizedPayload.activity_title;
                         delete sanitizedPayload.participatingIpos;
                         delete sanitizedPayload.participating_ipo_ids;
                     }
@@ -906,7 +923,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     const saved = activitiesToSave[i];
                     for (const ipoId of getActivityIpoIds(reconcileActivityIpoLinks(saved, ipos))) {
                         if (ipos.some(ipo => Number(ipo.id) === ipoId)) {
-                            await addIpoHistory(ipoId, `${mode === 'create' ? 'Created' : 'Updated'} ${saved.type}: ${saved.name} (${saved.uid || saved.id})`);
+                            await addIpoHistory(ipoId, `${mode === 'create' ? 'Created' : 'Updated'} ${saved.type}: ${getActivityDisplayTitle(saved)} (${saved.uid || saved.id})`);
                         }
                     }
                 }
@@ -1001,7 +1018,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
              <div className="detail-header">
                 <div className="detail-heading">
                 <h1 className="detail-title">
-                    {mode === 'create' ? 'Create New Activity' : `Edit ${mode === 'expenses' ? 'Expenses' : mode === 'accomplishment' ? 'Accomplishment' : 'Details'}: ${formData.name}`}
+                    {mode === 'create' ? 'Create New Activity' : `Edit ${mode === 'expenses' ? 'Expenses' : mode === 'accomplishment' ? 'Accomplishment' : 'Details'}: ${getActivityDisplayTitle(formData)}`}
                 </h1>
                 </div>
             </div>
@@ -1063,6 +1080,12 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                         {activityOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                     </select>
                                 </div>
+                                {formData.type === 'Activity' && (
+                                    <div className="form-field--full">
+                                        <label className="form-label" htmlFor="activity-title">Activity Title (optional)</label>
+                                        <input id="activity-title" type="text" name="activity_title" value={formData.activity_title ?? ''} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                )}
                                 {formData.type === 'Training' && (
                                     <div className="form-field--full">
                                         <label className="form-label">Specific Title <span className="form-required">*</span></label>

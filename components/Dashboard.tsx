@@ -1,5 +1,6 @@
 
 // Author: 4K 
+import { getActivityDisplayTitle, escapeActivityHtml } from '../lib/activityTitles';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
 import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, tiers, fundTypes, operatingUnits, ouToRegionMap, SystemSettings, filterYears } from '../constants';
@@ -212,7 +213,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings })
 
                      const marker = L.marker([jitterLat, jitterLng], { icon: greenIcon })
                         .addTo(mapRef.current)
-                        .bindPopup(`<b>${training.name}</b><br>Type: Training<br>Location: ${training.location}`);
+                        .bindPopup(`<b>${escapeActivityHtml(getActivityDisplayTitle(training))}</b><br>Type: Training<br>Location: ${escapeActivityHtml(training.location || '')}`);
                     markersRef.current.push(marker);
                 }
             });
@@ -752,6 +753,14 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         return () => { cancelled = true; };
     }, [currentUser, galleryActivityIds, galleryFeedKey, galleryIpoIds, gallerySubprojectIds]);
+
+    const displayedGalleryFeedItems = useMemo(() => {
+        const byId = new Map(filteredData.activities.map(activity => [activity.id, activity]));
+        return galleryFeedItems.map(item => {
+            const activity = item.entityType === 'activity' ? byId.get(item.entityId) : undefined;
+            return activity ? { ...item, entityName: getActivityDisplayTitle(activity) } : item;
+        });
+    }, [galleryFeedItems, filteredData.activities]);
 
     // ... (Dashboard Calculations and Helper functions remain same)
 
@@ -1347,9 +1356,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     </span>
                                     <span
                                         className="dashboard-activity-card__title"
-                                        title={[activity.name, activity.activityDescription].filter(Boolean).join(' · ')}
+                                        title={[activity.activityType === 'Subproject' ? activity.name : getActivityDisplayTitle(activity as Activity), activity.activityDescription].filter(Boolean).join(' · ')}
                                     >
-                                        <span>{activity.name}</span>
+                                        <span>{activity.activityType === 'Subproject' ? activity.name : getActivityDisplayTitle(activity as Activity)}</span>
                                         {activity.activityDescription && (
                                             <span className="dashboard-activity-card__description"> · {activity.activityDescription}</span>
                                         )}
@@ -1404,7 +1413,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             <ContentCard className="dashboard-panel dashboard-panel--gallery-feed">
                 <HomepageGalleryFeed
-                    items={galleryFeedItems}
+                    items={displayedGalleryFeedItems}
                     isLoading={isGalleryFeedLoading}
                     error={galleryFeedError}
                     onOpenItem={openGalleryFeedItem}

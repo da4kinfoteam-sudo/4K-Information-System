@@ -1,4 +1,5 @@
 // Author: 4K 
+import { getActivityDisplayTitle } from '../../lib/activityTitles';
 import React, { useMemo, useState } from 'react';
 import { Download, Printer, Search, X } from 'lucide-react';
 import { Subproject, Training, OtherActivity, IPO, ouToRegionMap } from '../../constants';
@@ -459,7 +460,7 @@ const PICSReport: React.FC<PICSReportProps> = ({
                 .filter(activity => {
                     if (!term) return true;
                     return [
-                        activity.name,
+                        getActivityDisplayTitle(activity),
                         activity.component,
                         activity.type,
                         activity.description,
@@ -750,7 +751,7 @@ const PICSReport: React.FC<PICSReportProps> = ({
                                         onClick={() => onSelectActivity(activity)}
                                     >
                                         <div className="pics-drilldown-card__title">
-                                            <strong>{activity.name}</strong>
+                                            <strong>{getActivityDisplayTitle(activity)}</strong>
                                             {badge && <span className={`status-badge status-badge--compact ${badge === 'Cancelled' ? 'status-badge--cancelled' : badge === 'Realignment' ? 'status-badge--orange' : 'status-badge--purple'}`}>{badge}</span>}
                                         </div>
                                         <p>{activity.description || 'No description provided.'}</p>

@@ -1,4 +1,5 @@
 // Author: 4K 
+import { getActivityDisplayTitle } from '../../lib/activityTitles';
 import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Search, Undo2, X } from 'lucide-react';
 import { Subproject, Activity, OfficeRequirement, StaffingRequirement } from '../../constants';
@@ -375,7 +376,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     uniqueId: `act-${act.id}`,
                     sourceType: 'Activity',
                     sourceId: act.id,
-                    name: act.name,
+                    name: getActivityDisplayTitle(act),
                     description: act.description || '',
                     subName: act.type,
                     targetDateStart: act.date,

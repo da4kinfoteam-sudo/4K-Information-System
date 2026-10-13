@@ -1,5 +1,6 @@
 
 // Author: 4K 
+import { getActivityDisplayTitle } from './lib/activityTitles';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -1051,7 +1052,7 @@ const AppContent: React.FC = () => {
             params: routeParams,
             role: currentUser?.role,
             context: {
-                activity: activeActivity ? { id: activeActivity.id, label: activeActivity.name || activeActivity.uid } : null,
+                activity: activeActivity ? { id: activeActivity.id, label: getActivityDisplayTitle(activeActivity) || activeActivity.uid } : null,
                 activityEditMode,
                 gadOperatingUnit: routeParams.get('ou'),
                 gadYear: Number(routeParams.get('year')) || null,

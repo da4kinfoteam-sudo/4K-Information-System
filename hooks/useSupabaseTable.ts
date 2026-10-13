@@ -142,6 +142,10 @@ export function useSupabaseTable<T extends { id: number | string }>(
                         
                         if (isExisting) {
                             const { id, ...updateData } = item as any;
+                            // Actual-only legacy setters must not replay a stale display title.
+                            if (tableName === 'activities' && updateData.activity_title === (prev.find(p => p.id === id) as any)?.activity_title) {
+                                delete updateData.activity_title;
+                            }
                             const { error } = await supabase.from(tableName).update(updateData).eq('id', id);
                             if (error) console.error(`Error updating ${tableName} ID ${id}:`, error);
                         } else {

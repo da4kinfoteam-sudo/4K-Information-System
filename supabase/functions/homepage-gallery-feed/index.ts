@@ -1,3 +1,4 @@
+import { getActivityDisplayTitle } from '../_shared/activityTitles.ts';
 import {
   adminClient,
   errorResponse,
@@ -89,7 +90,7 @@ const queryEntities = async (
 ) => {
   if (!ids.length) return [] as EntityRow[];
   const select = table === "activities"
-    ? "id,name,uid,operatingUnit,date,description,workflow_status"
+    ? "id,name,type,activity_title,uid,operatingUnit,date,description,workflow_status"
     : table === "subprojects"
       ? "id,name,uid,operatingUnit,remarks,estimatedCompletionDate,workflow_status"
       : "id,name,location,region,workflow_status";
@@ -105,7 +106,11 @@ const queryEntities = async (
       if (!isApproved(row) || (!allOus && operatingUnit && rowOperatingUnit !== operatingUnit)) return;
       rows.push({
         id: Number(row.id),
-        name: String(row.name || "Untitled item"),
+        name: (table === 'activities' ? getActivityDisplayTitle({
+          type: row.type as string | null,
+          name: row.name as string | null,
+          activity_title: row.activity_title as string | null,
+        }) : String(row.name || '')) || "Untitled item",
         uid: row.uid ? String(row.uid) : null,
         operatingUnit: rowOperatingUnit,
         region: row.region ? String(row.region) : null,

@@ -40,11 +40,30 @@ try {
     insert into roles_config (role,module,can_view,can_edit) values
     ('Super Admin','Subprojects',true,true),('Super Admin','Activities',true,true),
     ('Administrator','Subprojects',true,true),('User','Subprojects',true,false);`);
+  await db.exec(`insert into roles_config (role,module,can_view,can_edit) values ('Administrator','Activities',true,true);`);
   const migration = readFileSync(new URL('../supabase/migrations/202610090001_activity_subproject_budget_item_transfers.sql', import.meta.url), 'utf8');
   await db.exec(`insert into subprojects (name,status,"operatingUnit",details) values ('Unchanged legacy row','Proposed','NPMO','[]');
     insert into activities (name,status,"operatingUnit",expenses) values ('Unchanged legacy activity','Proposed','NPMO','[]');`);
   const originalSubproject = (await db.query('select to_jsonb(record_value) as record from subprojects record_value')).rows[0].record;
+  delete originalSubproject.budgetItemTransferId;
+  delete originalSubproject.isTransferTargetExcluded;
   await db.exec(migration);
+  const legacyActivity = (await db.query('select to_jsonb(record_value) as record from activities record_value limit 1')).rows[0].record;
+  await db.exec(readFileSync(new URL('../supabase/migrations/202610120001_activity_transfer_status_allowlist.sql', import.meta.url), 'utf8'));
+  const titleMigration = readFileSync(new URL('../supabase/migrations/202610130001_optional_activity_titles.sql', import.meta.url), 'utf8');
+  const originalFunction = (await db.query(`select pg_get_functiondef('public.submit_budget_item_transfer(bigint,text,text,bigint,text[],jsonb,jsonb,jsonb,text,uuid)'::regprocedure) as definition`)).rows[0].definition;
+  const functionSecurity = async () => (await db.query(`select oid,proowner,proacl::text,prosecdef,proconfig from pg_proc where oid='public.submit_budget_item_transfer(bigint,text,text,bigint,text[],jsonb,jsonb,jsonb,text,uuid)'::regprocedure`)).rows[0];
+  const originalSecurity = await functionSecurity();
+  await db.exec(titleMigration);
+  await db.exec(titleMigration);
+  const updatedFunction = (await db.query(`select pg_get_functiondef('public.submit_budget_item_transfer(bigint,text,text,bigint,text[],jsonb,jsonb,jsonb,text,uuid)'::regprocedure) as definition`)).rows[0].definition;
+  assert.equal(updatedFunction.replace("'name','activity_title','status'", "'name','status'"), originalFunction);
+  assert.deepEqual(await functionSecurity(), originalSecurity);
+  const afterTitleMigration = (await db.query('select to_jsonb(record_value) as record from activities record_value where id=$1', [legacyActivity.id])).rows[0].record;
+  assert.equal(afterTitleMigration.activity_title, legacyActivity.activity_title ?? null);
+  delete afterTitleMigration.activity_title;
+  delete legacyActivity.activity_title;
+  assert.deepEqual(afterTitleMigration, legacyActivity);
   const afterMigration = (await db.query(`select to_jsonb(record_value) - 'isTransferTargetExcluded' - 'budgetItemTransferId' as record
     from subprojects record_value where id=$1`, [originalSubproject.id])).rows[0].record;
   assert.deepEqual(afterMigration, originalSubproject);
@@ -60,6 +79,7 @@ try {
     const lines = [{ id: 101, particulars: 'Selected', amount: 100 }, { id: 102, particulars: 'Retained', amount: 200 }];
     const result = await db.query(`insert into ${table} (name,status,"operatingUnit",${quote(lineColumn)},workflow_status,updated_at)
       values ('Synthetic source',$1,'RFO I',$2,'APPROVED',now()) returning *`, [status, JSON.stringify(lines)]);
+    if (type === 'activity') return (await db.query(`update activities set type='Activity', activity_title='Source visit' where id=$1 returning *`, [result.rows[0].id])).rows[0];
     return result.rows[0];
   };
   const submit = async (type, source, actorId = 1, requestKey = crypto.randomUUID(), metadata = {}) => {
@@ -79,7 +99,14 @@ try {
       values ($1,$2,'101','2026-10-01',40)`, [entity, source.id]);
     if (type === 'subproject') await db.query(`insert into subproject_accomplishments (subproject_id,detail_id,quantity) values ($1,101,1)`, [source.id]);
     const key = crypto.randomUUID();
-    const result = await submit(type, source, 1, key);
+    const metadata = type === 'activity' ? { status: 'Completed', activity_title: 'Destination visit' } : {};
+    const result = await submit(type, source, 1, key, metadata);
+    if (type === 'activity') {
+      assert.equal(result.destination.activity_title, 'Destination visit');
+      assert.equal(result.source.activity_title, 'Source visit');
+      assert.equal(result.destination.type, 'Activity');
+      assert.equal(result.source.status, 'Completed');
+    }
     assert.equal(result.status, 'applied');
     const lineColumn = type === 'subproject' ? 'details' : 'expenses';
     assert.deepEqual(result.source[lineColumn].map(line => line.id), [102]);
@@ -91,9 +118,23 @@ try {
     assert.equal((await db.query(`select parent_id from financial_obligations where entity_type=$1 and item_id='102'`, [entity])).rows[0].parent_id, source.id);
     assert.equal((await db.query(`select parent_id from financial_disbursements where entity_type=$1 and item_id='101'`, [entity])).rows[0].parent_id, result.destination.id);
     if (type === 'subproject') assert.equal((await db.query(`select subproject_id from subproject_accomplishments where detail_id=101`)).rows[0].subproject_id, result.destination.id);
-    assert.equal((await submit(type, source, 1, key)).destination.id, result.destination.id);
+    assert.equal((await submit(type, source, 1, key, metadata)).destination.id, result.destination.id);
   }
   const pendingSource = await insertSource('subproject');
+  const training = await insertSource('activity');
+  await db.query(`update activities set type='Training', name='Specific Training', activity_title=null where id=$1`, [training.id]);
+  const trainingSource = (await db.query('select * from activities where id=$1', [training.id])).rows[0];
+  const trainingTransfer = await submit('activity', trainingSource, 1, crypto.randomUUID(), { name: 'Destination Training', status: 'Completed', activity_title: null });
+  assert.equal(trainingTransfer.destination.type, 'Training');
+  assert.equal(trainingTransfer.destination.name, 'Destination Training');
+  assert.equal(trainingTransfer.source.name, 'Specific Training');
+  assert.equal(trainingTransfer.destination.activity_title, null);
+  const pendingActivitySource = await insertSource('activity');
+  const pendingActivity = await submit('activity', pendingActivitySource, 2, crypto.randomUUID(), { activity_title: 'Pending destination visit', status: 'Completed' });
+  assert.equal(pendingActivity.status, 'pending');
+  const approvedActivity = (await db.query(`select resolve_budget_item_transfer(1,'fixture-password',$1,'approve',null) as result`, [pendingActivity.transfer_id])).rows[0].result;
+  assert.equal(approvedActivity.destination.activity_title, 'Pending destination visit');
+  assert.equal(approvedActivity.source.activity_title, 'Source visit');
   const pending = await submit('subproject', pendingSource, 2);
   assert.equal(pending.status, 'pending');
   assert.equal(pending.source.details.length, 2);

@@ -1,5 +1,6 @@
 // Author: 4K
 import React from 'react';
+import { getActivityDisplayTitle, normalizeActivityTitle } from '../../lib/activityTitles';
 import { 
     Subproject, Activity, IPO, Commodity, OfficeRequirement, StaffingRequirement, OtherProgramExpense,
     SubprojectDetail, ActivityExpense, fundTypes, tiers, objectTypes, ObjectType, philippineRegions, operatingUnits, Tier, FundType, RefFundSource
@@ -455,7 +456,9 @@ export const downloadActivitiesReport = (activities: Activity[], fundSources: Re
         'UID': a.uid || '',
         'Type': a.type,
         'Component': a.component,
-        'Activity Name': a.name,
+        'Activity Name': getActivityDisplayTitle(a),
+        'name': a.name,
+        'activity_title': normalizeActivityTitle(a.activity_title) || '',
         'Date': a.date,
         'Location': a.location,
         'Male Participants': a.participantsMale,
@@ -482,7 +485,7 @@ export const downloadActivitiesReport = (activities: Activity[], fundSources: Re
 export const downloadActivitiesTemplate = (fundSources: RefFundSource[]) => {
     const defaultSource = getNewSubprojectDefaultFundSource(fundSources);
     const headers = [
-        'uid', 'type', 'component', 'name', 'date', 'province', 'municipality', 'facilitator', 'description',
+        'uid', 'type', 'component', 'name', 'activity_title', 'date', 'province', 'municipality', 'facilitator', 'description',
         'participatingIpos', 'participantsMale', 'participantsFemale',
         'fundingYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'operatingUnit',
         'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount'
@@ -516,6 +519,7 @@ export const downloadActivitiesTemplate = (fundSources: RefFundSource[]) => {
 
     const instructions = [
         ["Column", "Description"],
+        ["activity_title", "Optional specific title for an Activity. Blank keeps its generic name. Training uses name instead."],
         ["participatingIpos", "Names of IPOs. Separate multiple IPOs with a semicolon (;). Example: 'IPO One; IPO Two'"],
         ["province", "Province name."],
         ["municipality", "City or Municipality name."],
@@ -569,6 +573,7 @@ export const handleActivitiesUpload = (
 
                 // Extract participating IPOs for this row (moved out of new entry block to support merging)
                 let rowParticipatingIpos: string[] = [];
+                const rowActivityTitle = normalizeActivityTitle(row.activity_title == null ? null : String(row.activity_title));
                 const rawIpos = (row.participatingIpos || '').toString().trim();
                 const sourceUidInput = row.fundSourceUid ?? row['Fund Source UID'] ?? row.fund_source_uid;
                 const sourceLabelInput = row.fundSource ?? row['Fund Source'] ?? row.fund_source;
@@ -620,6 +625,7 @@ export const handleActivitiesUpload = (
                             type: row.type,
                             component: row.component as any,
                             name: String(row.name),
+                            activity_title: rowActivityTitle,
                             date: String(row.date),
                             description: String(row.description || ''),
                             location: locationString,
@@ -642,6 +648,12 @@ export const handleActivitiesUpload = (
                 } else {
                     // Entry exists, merge participating IPOs
                     const entry = groupedData.get(uid);
+                    if (rowActivityTitle) {
+                        if (entry.common.activity_title && rowActivityTitle !== entry.common.activity_title) {
+                            throw new Error(`Row ${rowNum}: Activity UID ${uid} contains conflicting Activity Titles across its rows.`);
+                        }
+                        entry.common.activity_title = rowActivityTitle;
+                    }
                     if (entry.common.fundSourceUid !== fundSource.uid) {
                         throw new Error(`Row ${rowNum}: Activity UID ${uid} contains conflicting Fund Sources across its rows.`);
                     }
