@@ -143,4 +143,3 @@ try {
  assert.equal(errors.length,0,errors.join('\n'));
  console.log('PASS: Activity edit save, independent schedule addition, actual preservation, failure/double-submit guards, selection-only references, creation/tag controls and responsive layouts. Screenshots: '+screenshots);
 } finally {await browser?.close();await server.close();}
-
