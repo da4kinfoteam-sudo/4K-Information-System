@@ -25,6 +25,8 @@ import { collectFinancialLineItems } from '../../lib/financialAggregation';
 import { resolveSubprojectCompletionRollup } from '../../lib/subprojectCompletion';
 import { supabase } from '../../supabaseClient';
 import { DataTablePagination, LoadingState } from '../ui/enterprise';
+import { aggregateGadIpoMembership } from '../../lib/gadIpoMembership';
+import GadIpoMembershipSection from './GadIpoMembershipSection';
 
 type GadFilter = 'All' | GadPimmeClassification | 'Incomplete' | 'For Assessment';
 type AssessmentState = 'Completed' | 'Incomplete' | 'For Assessment';
@@ -52,6 +54,9 @@ interface GADDashboardProps {
     selectedFundType: string;
     navigateTo?: (path: string) => void;
     onSelectAssessment?: (operatingUnit: string, year: number) => void;
+    onSelectIpo?: (ipo: IPO) => void;
+    programDataLoading?: boolean;
+    programDataError?: string | null;
 }
 
 interface OuDashboardRow {
@@ -107,6 +112,7 @@ const getAssessmentState = (assessment?: GadAssessmentSummary): AssessmentState 
 const GADDashboard: React.FC<GADDashboardProps> = ({
     subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses,
     ipos, selectedYear, selectedOu, selectedTier, selectedFundType, navigateTo, onSelectAssessment,
+    onSelectIpo, programDataLoading, programDataError,
 }) => {
     const { currentUser, hasAccess, getVisibilityScope } = useAuth();
     const [assessments, setAssessments] = useState<GadAssessmentSummary[]>([]);
@@ -131,6 +137,11 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         const scoped = ownOuOnly ? operatingUnits.filter(ou => ou === currentUser.operatingUnit) : [...operatingUnits];
         return selectedOu === 'All' ? scoped : scoped.filter(ou => ou === selectedOu);
     }, [currentUser, getVisibilityScope, selectedOu]);
+
+    const membership = useMemo(() => aggregateGadIpoMembership({
+        ipos, subprojects, activities: [...trainings, ...otherActivities],
+    }, { year: selectedYear, operatingUnits: visibleOus, tier: selectedTier, fundType: selectedFundType }),
+    [ipos, subprojects, trainings, otherActivities, selectedYear, visibleOus, selectedTier, selectedFundType]);
 
     useEffect(() => {
         let active = true;
@@ -494,6 +505,11 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
                         </article>)}
                     </section>
 
+                    <GadIpoMembershipSection data={membership}
+                        scopeKey={JSON.stringify([selectedYear, visibleOus, selectedTier, selectedFundType])}
+                        loading={programDataLoading} error={programDataError}
+                        onSelectIpo={hasAccess('IPO Management', 'view') ? onSelectIpo : undefined} />
+
                     <section className="gad-dashboard-grid gad-dashboard-grid--three">
                         <article className="dashboard-panel gad-dashboard-chart"><h3>PIMME Classification Distribution</h3>
                             {classificationData.length ? <div className="gad-dashboard-donut"><ResponsiveContainer width="100%" height={280}><PieChart><Pie data={classificationData} dataKey="value" nameKey="name" innerRadius="58%" outerRadius="82%" paddingAngle={2}>{classificationData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip /><Legend /></PieChart></ResponsiveContainer><div className="gad-dashboard-donut__center"><strong>{completedRows.length}</strong><span>Assessed OUs</span></div></div> : <p className="dashboard-empty">No completed PIMME assessments.</p>}
@@ -518,7 +534,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
                         </article>
                     </section>
 
-                    <section className="dashboard-panel gad-dashboard-table-card"><h3>Attribution by OU</h3><div className="data-table-scroll custom-scrollbar"><table className="data-table gad-dashboard-table"><thead><tr>{[
+                    <section className="dashboard-panel gad-dashboard-table-card data-table-card--seamless"><h3>Attribution by OU</h3><div className="data-table-scroll custom-scrollbar"><table className="data-table gad-dashboard-table"><thead><tr>{[
                         ['ou', 'OU'], ['score', 'PIMME'], ['classification', 'Classification'], ['attributionRate', 'HGDG Attribution'], ['allocation', 'Allocation'], ['attributableAllocation', 'Attributed Allocation'], ['obligation', 'Actual Obligation'], ['attributableObligation', 'Attributed Obligation'], ['utilization', 'Utilization'], ['change', 'Previous / Change'],
                     ].map(([key, label]) => <th key={key}><button type="button" onClick={() => toggleSort(key as keyof OuDashboardRow)}>{label}</button></th>)}</tr></thead><tbody>
                         {attributionRows.map(row => <tr key={row.ou}><td><button className="table-action-link" type="button" onClick={() => openAssessment(row.ou)}>{row.ou}</button></td><td>{row.score === null ? row.state : `${row.score.toFixed(2)} / 20`}</td><td>{row.classification || row.state}</td><td>{`${formatNumber(row.attributionRate * 100, 2)}%`}</td><td>{formatCurrency(row.allocation)}</td><td>{formatCurrency(row.attributableAllocation)}</td><td>{formatCurrency(row.obligation)}</td><td>{row.attributableObligation === null ? 'No Data' : formatCurrency(row.attributableObligation)}</td><td>{row.utilization === null ? 'No Data' : `${formatNumber(row.utilization, 1)}%`}</td><td>{row.previousScore === null ? 'No baseline' : `${row.previousScore.toFixed(2)} (${row.change! >= 0 ? '+' : ''}${row.change!.toFixed(2)})`}</td></tr>)}
@@ -536,7 +552,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
                         {physicalMetrics.beneficiaries.reported ? <><div className="gad-dashboard-beneficiary-kpis"><span>Total recipients <b>{physicalMetrics.beneficiaries.male + physicalMetrics.beneficiaries.female}</b></span><span>Female <b>{physicalMetrics.beneficiaries.female} ({formatNumber(percent(physicalMetrics.beneficiaries.female, physicalMetrics.beneficiaries.male + physicalMetrics.beneficiaries.female) || 0, 1)}%)</b></span><span>Male <b>{physicalMetrics.beneficiaries.male} ({formatNumber(percent(physicalMetrics.beneficiaries.male, physicalMetrics.beneficiaries.male + physicalMetrics.beneficiaries.female) || 0, 1)}%)</b></span><span>Average / reported SP <b>{formatNumber((physicalMetrics.beneficiaries.male + physicalMetrics.beneficiaries.female) / physicalMetrics.beneficiaries.reported, 1)}</b></span></div><ResponsiveContainer width="100%" height={240}><BarChart data={physicalMetrics.beneficiaries.byOu}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="ou" /><YAxis /><Tooltip /><Legend /><Bar dataKey="female" name="Female" stackId="a" fill="#168a55" /><Bar dataKey="male" name="Male" stackId="a" fill="#2f6fed" /></BarChart></ResponsiveContainer></> : <p className="dashboard-empty">No Data. Existing records remain unreported until recipient counts are entered.</p>}
                     </section>
 
-                    <section className="dashboard-panel gad-dashboard-table-card"><h3>Detailed OU Summary</h3><div className="data-table-scroll custom-scrollbar"><table className="data-table gad-dashboard-table"><thead><tr><th>OU</th><th>PIMME</th><th>Classification</th><th>Attributed Allocation</th><th>Attributed Obligation</th><th>Women-Led IPOs Targeted</th><th>Women-Led IPOs Assisted</th><th>Training Female</th><th>Training Male</th><th>SP Female Beneficiaries</th><th>SP Male Beneficiaries</th><th>Beneficiary Coverage</th></tr></thead><tbody>{summaryRows.map(row => <tr key={row.ou}><td><button className="table-action-link" type="button" onClick={() => openAssessment(row.ou)}>{row.ou}</button></td><td>{row.score === null ? 'No Data' : row.score.toFixed(2)}</td><td>{row.classification || row.state}</td><td>{formatCurrency(row.attributableAllocation)}</td><td>{row.attributableObligation === null ? 'No Data' : formatCurrency(row.attributableObligation)}</td><td>{row.womenTargeted}</td><td>{row.womenAssisted}</td><td>{row.actualFemaleParticipants}</td><td>{row.actualMaleParticipants}</td><td>{row.beneficiaryCoverage === null ? 'No Data' : row.femaleBeneficiaries}</td><td>{row.beneficiaryCoverage === null ? 'No Data' : row.maleBeneficiaries}</td><td>{row.beneficiaryCoverage === null ? 'No Data' : `${formatNumber(row.beneficiaryCoverage, 1)}%`}</td></tr>)}</tbody></table></div><DataTablePagination currentPage={summaryPage} totalPages={summaryPages} totalItems={detailedRows.length} itemsPerPage={PAGE_SIZE} onPageChange={setSummaryPage} />
+                    <section className="dashboard-panel gad-dashboard-table-card data-table-card--seamless"><h3>Detailed OU Summary</h3><div className="data-table-scroll custom-scrollbar"><table className="data-table gad-dashboard-table"><thead><tr><th>OU</th><th>PIMME</th><th>Classification</th><th>Attributed Allocation</th><th>Attributed Obligation</th><th>Women-Led IPOs Targeted</th><th>Women-Led IPOs Assisted</th><th>Training Female</th><th>Training Male</th><th>SP Female Beneficiaries</th><th>SP Male Beneficiaries</th><th>Beneficiary Coverage</th></tr></thead><tbody>{summaryRows.map(row => <tr key={row.ou}><td><button className="table-action-link" type="button" onClick={() => openAssessment(row.ou)}>{row.ou}</button></td><td>{row.score === null ? 'No Data' : row.score.toFixed(2)}</td><td>{row.classification || row.state}</td><td>{formatCurrency(row.attributableAllocation)}</td><td>{row.attributableObligation === null ? 'No Data' : formatCurrency(row.attributableObligation)}</td><td>{row.womenTargeted}</td><td>{row.womenAssisted}</td><td>{row.actualFemaleParticipants}</td><td>{row.actualMaleParticipants}</td><td>{row.beneficiaryCoverage === null ? 'No Data' : row.femaleBeneficiaries}</td><td>{row.beneficiaryCoverage === null ? 'No Data' : row.maleBeneficiaries}</td><td>{row.beneficiaryCoverage === null ? 'No Data' : `${formatNumber(row.beneficiaryCoverage, 1)}%`}</td></tr>)}</tbody></table></div><DataTablePagination currentPage={summaryPage} totalPages={summaryPages} totalItems={detailedRows.length} itemsPerPage={PAGE_SIZE} onPageChange={setSummaryPage} />
                     </section>
                 </>
             )}

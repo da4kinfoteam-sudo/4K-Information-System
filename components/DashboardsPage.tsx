@@ -35,6 +35,8 @@ export interface DashboardsPageProps {
     setExternalFilters?: (filters: any) => void;
     navigateTo?: (page: string) => void;
     onDataScopeChange?: (scope: Partial<DataScope>) => void;
+    programDataLoading?: boolean;
+    programDataError?: string | null;
 }
 
 const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
@@ -230,6 +232,9 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                         staffingReqs={financialSourceData.staffingReqs}
                         otherProgramExpenses={financialSourceData.otherProgramExpenses}
                         ipos={financialSourceData.ipos}
+                        onSelectIpo={props.onSelectIpo}
+                        programDataLoading={props.programDataLoading}
+                        programDataError={props.programDataError}
                         selectedYear={selectedYear}
                         selectedOu={selectedOu}
                         selectedTier={selectedTier}

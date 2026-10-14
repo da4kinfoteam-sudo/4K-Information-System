@@ -12,6 +12,8 @@
     "test:lod-overrides": "node --experimental-strip-types scripts/run-lod-override-check.mjs",
     "test:gad-pimme": "node --experimental-strip-types scripts/run-gad-pimme-check.mjs",
     "test:gad-attribution": "node --experimental-strip-types scripts/run-gad-attribution-check.mjs",
+    "test:gad-membership": "node scripts/run-gad-membership-check.mjs",
+    "test:gad-membership-ui": "node scripts/run-gad-membership-ui-check.mjs",
     "test:financial-breakdown": "node scripts/run-financial-breakdown-hierarchy-check.mjs",
     "test:financial-obligation-sync": "node --experimental-strip-types scripts/run-financial-obligation-sync-check.mjs",
     "test:subproject-budget-lifecycle": "node --experimental-strip-types scripts/run-subproject-budget-lifecycle-check.mjs",
