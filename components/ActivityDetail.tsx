@@ -1,3 +1,4 @@
+import { groupActivityExpenses } from '../lib/activityBudgetSchedules';
 
 import { getActivityDisplayTitle } from '../lib/activityTitles';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -618,12 +619,12 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                 </thead>
                                 <tbody>
                                     {activity.expenses.length > 0 ? (
-                                        activity.expenses.map(exp => (
+                                        groupActivityExpenses(activity.expenses).flatMap(group => group.rows.map((exp, index) => (
                                             <tr key={exp.id} className={`${isBudgetLineExcludedFromTargets(exp) ? 'budget-item-card--excluded' : ''} ${exp.isCancelled ? 'budget-item-card--cancelled' : ''} ${exp.isRealignment ? 'budget-item-card--realignment' : ''} ${exp.isSavings ? 'budget-item-card--savings' : ''}`}>
                                                 {canStartBudgetTransfer && <td className="data-table__cell--selection"><input type="checkbox" className="form-checkbox" aria-label={`Select ${exp.expenseParticular} for transfer`} checked={selectedTransferItemIds.includes(String(exp.id))} disabled={!eligibleTransferIds.has(String(exp.id))} onChange={() => toggleTransferItem(String(exp.id))} /></td>}
-                                                <td className="data-table__primary">
+                                                {index === 0 && <td className="data-table__primary" rowSpan={group.rows.length} title={exp.expenseParticular}>
                                                     {exp.expenseParticular}
-                                                </td>
+                                                </td>}
                                                 <td>
                                                     {getBudgetLineTag(exp) ? (
                                                         <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(exp)?.toLowerCase()}`}>
@@ -633,17 +634,14 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                         <span className="detail-empty">-</span>
                                                     )}
                                                 </td>
-                                                <td>
+                                                {index === 0 && <td rowSpan={group.rows.length} title={getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}>
                                                     {exp.uacsCode}
-                                                    {getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode) && (
-                                                        <span className="detail-list-copy block">{getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}</span>
-                                                    )}
-                                                </td>
+                                                </td>}
                                                 <td>{formatMonthYear(exp.obligationMonth)}</td>
                                                 <td>{formatMonthYear(exp.disbursementMonth)}</td>
                                                 <td className="data-table__numeric">{formatCurrency(getBudgetLineAmount(exp))}</td>
                                             </tr>
-                                        ))
+                                        )))
                                     ) : (
                                         <tr><td colSpan={canStartBudgetTransfer ? 7 : 6} className="text-center italic">No expenses recorded.</td></tr>
                                     )}

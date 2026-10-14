@@ -28238,6 +28238,10 @@ button.lod-table-state:hover {
 .reference-combobox__option svg { width: 16px; height: 16px; flex-shrink: 0; }
 .reference-combobox__option.is-active { background: var(--surface-muted, #f0f5f2); }
 .reference-combobox__empty { padding: 0.75rem; }
+.activity-budget-editor > .subproject-budget-editor__scroll > table { min-width: 880px; width: 100%; }
+.activity-budget-editor .subproject-budget-editor__draft-scroll table { min-width: 900px; }
+.activity-budget-editor .data-table__actions { flex-wrap: nowrap; }
+.activity-budget-editor .subproject-budget-editor__scroll td[rowspan] { vertical-align: top; }
 @media (max-width: 900px) {
   .subproject-budget-editor__draft .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
