@@ -1,4 +1,5 @@
 import type { Activity, OtherProgramExpense, OfficeRequirement, StaffingRequirement, Subproject } from '../constants';
+import { isActivityExpenseActualEligible } from './activitySupplementalBudget';
 import { getBudgetLineTag, isRecordOrLineExcludedFromTargets } from './budgetLineAdjustments';
 import { isTransferAccomplishmentActive } from './budgetItemTransferRules';
 import { normalizeStaffingExpenses } from './staffingExpenseIdentity';
@@ -37,6 +38,9 @@ export interface HomepageFinancialStats {
 }
 
 export type FinancialLine = {
+    fundingOrigin?: string;
+    supplementUid?: string | null;
+    supplementStatus?: string;
     id?: number | string;
     amount?: number;
     pricePerUnit?: number;
@@ -348,7 +352,7 @@ const addLineItem = (
         targetDate?: string;
     }
 ) => {
-    if (!isTransferAccomplishmentActive(record)) return;
+    if (!isTransferAccomplishmentActive(record) || !isActivityExpenseActualEligible(line)) return;
     const fallbackYear = getRecordYear(record);
     const lineParentStatus = metadata.sourceType === 'subproject' ? record.status : undefined;
     const isTaggedExclusion = isRecordOrLineExcludedFromTargets(record, line, lineParentStatus);

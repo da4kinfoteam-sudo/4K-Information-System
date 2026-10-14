@@ -1,6 +1,7 @@
 // Author: 4K
 import React from 'react';
 import { getActivityDisplayTitle, normalizeActivityTitle } from '../../lib/activityTitles';
+import { getActivityBudgetSummary } from '../../lib/activitySupplementalBudget';
 import { 
     Subproject, Activity, IPO, Commodity, OfficeRequirement, StaffingRequirement, OtherProgramExpense,
     SubprojectDetail, ActivityExpense, fundTypes, tiers, objectTypes, ObjectType, philippineRegions, operatingUnits, Tier, FundType, RefFundSource
@@ -472,7 +473,10 @@ export const downloadActivitiesReport = (activities: Activity[], fundSources: Re
         'Location': a.location,
         'Male Participants': a.participantsMale,
         'Female Participants': a.participantsFemale,
-        'Total Budget': isParentExcludedFromTargets(a) ? 0 : a.expenses.reduce((sum, e) => sum + (isBudgetLineExcludedFromTargets(e) ? 0 : getBudgetLineAmount(e)), 0),
+        'Total Budget': getActivityBudgetSummary(a).target,
+        'Original Allocation': getActivityBudgetSummary(a).original ?? '',
+        'Supplemental Budget': getActivityBudgetSummary(a).supplemental,
+        'Current Active Budget': getActivityBudgetSummary(a).current,
         'Funding Year': a.fundingYear,
         'Fund Type': a.fundType,
         'Tier': a.tier,
@@ -494,6 +498,9 @@ export const downloadActivitiesReport = (activities: Activity[], fundSources: Re
         'UACS Code': row.uacsCode, 'Obligation Month': row.obligationMonth, 'Disbursement Month': row.disbursementMonth,
         Amount: getBudgetLineAmount(row), Cancelled: !!row.isCancelled, Savings: !!row.isSavings, Realignment: !!row.isRealignment,
         Reason: row.adjustmentReason || '',
+        'Funding Origin': row.fundingOrigin || '', 'Supplement UID': row.supplementUid || '',
+        'Supplement Source': row.supplementalSource || '', 'Supplement Approval': row.supplementStatus || '',
+        'Revision Pending': !!row.supplementRevisionPending,
     })));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(schedules), "Budget Schedules");
     XLSX.writeFile(wb, "Activities_Report.xlsx");
@@ -505,7 +512,7 @@ export const downloadActivitiesTemplate = (fundSources: RefFundSource[]) => {
         'uid', 'type', 'component', 'name', 'activity_title', 'date', 'province', 'municipality', 'facilitator', 'description',
         'participatingIpos', 'participantsMale', 'participantsFemale',
         'fundingYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'operatingUnit',
-        'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount', 'expense_budgetItemGroupId'
+        'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount', 'expense_budgetItemGroupId', 'expense_supplementalSource'
     ];
     const exampleData = [
         {
@@ -543,7 +550,8 @@ export const downloadActivitiesTemplate = (fundSources: RefFundSource[]) => {
         ["operatingUnit", "e.g., RPMO 4A. If specified, this takes precedence over your current account's OU."],
         ["fundSourceUid / fundSource", "Use the canonical Fund Source UID where available, or its unambiguous current label. If both are blank, the active 4K Fund default is used for a new record."],
         ["expense_uacsCode", "UACS Code used to identify Expense Particular and Object Type."],
-        ["expense_amount", "Amount for the expense entry."]
+        ["expense_amount", "Amount for the expense entry."],
+        ["expense_supplementalSource", "Optional Savings or Realignment. Imported supplemental schedules are unsubmitted drafts; complete their authorization and approval in Supplemental Information. Approval or ledger UIDs cannot be imported."]
     ];
 
     const wb = XLSX.utils.book_new();
@@ -587,6 +595,11 @@ export const handleActivitiesUpload = (
                 const rowNum = index + 2;
                 const uid = String(row.uid || '').trim();
                 if (!uid) return; // Skip empty rows
+                if (row.expense_supplementUid || row.supplementUid || row['Supplement UID'] || row.expense_supplementStatus || row.supplementStatus || row['Supplement Approval']) {
+                    throw new Error(`Row ${rowNum}: Supplemental approval and ledger identities cannot be imported.`);
+                }
+                const supplementalSource = String(row.expense_supplementalSource || '').trim();
+                if (supplementalSource && !['Savings','Realignment'].includes(supplementalSource)) throw new Error(`Row ${rowNum}: Select Savings or Realignment for supplemental funding.`);
 
                 // Extract participating IPOs for this row (moved out of new entry block to support merging)
                 let rowParticipatingIpos: string[] = [];
@@ -713,7 +726,8 @@ export const handleActivitiesUpload = (
                         budgetItemGroupId: row.expense_budgetItemGroupId ? String(row.expense_budgetItemGroupId).trim() : null,
                         obligationMonth: String(row.expense_obligationMonth || ''),
                         disbursementMonth: String(row.expense_disbursementMonth || ''),
-                        amount: Number(row.expense_amount)
+                        amount: Number(row.expense_amount),
+                        ...(supplementalSource ? { fundingOrigin: 'SupplementalDraft', supplementStatus: 'DRAFT', supplementalSource } : {})
                     });
                 }
             });

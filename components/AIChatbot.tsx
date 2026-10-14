@@ -1,6 +1,7 @@
 
 // Author: 4K
 import { getActivityDisplayTitle, resolveActivitySelection } from '../lib/activityTitles';
+import { getActivityBudgetSummary } from '../lib/activitySupplementalBudget';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { 
@@ -780,7 +781,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             // Activities (Trainings and Other Activities) use their component field
             targetActivities.forEach(a => {
                 const cat = a.component || 'Program Management';
-                const amt = a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0;
+                const amt = getActivityBudgetSummary(a).target;
                 if (componentAllocation.hasOwnProperty(cat)) {
                     componentAllocation[cat] += amt;
                 } else {
@@ -931,9 +932,9 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             fActivities.forEach(a => {
                 const cat = a.component || 'Program Management';
                 const targetCat = componentAllocation.hasOwnProperty(cat) ? cat : 'Program Management';
-                const alloc = a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0;
-                const obli = a.expenses?.reduce((es, e) => es + (e.actualObligationAmount || 0), 0) || 0;
-                const disb = a.expenses?.reduce((es, e) => es + (e.actualDisbursementAmount || 0), 0) || 0;
+                const alloc = getActivityBudgetSummary(a).target;
+                const obli = getActivityBudgetSummary(a).obligated;
+                const disb = getActivityBudgetSummary(a).disbursed;
                 componentAllocation[targetCat] += alloc;
                 componentObligated[targetCat] += obli;
                 componentDisbursed[targetCat] += disb;

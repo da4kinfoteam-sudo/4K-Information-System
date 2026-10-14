@@ -1,3 +1,4 @@
+import { isActivityExpenseActualEligible } from '../../lib/activitySupplementalBudget';
 
 // Author: 4K
 import { getActivityDisplayTitle } from '../../lib/activityTitles';
@@ -542,7 +543,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
  // Activities
  filteredActivities.forEach(act => {
- (act.expenses || []).forEach(e => {
+ (act.expenses || []).filter(isActivityExpenseActualEligible).forEach(e => {
  const obs = getObligations('Activity', act.id, e.id);
  const dibs = getDisbursements('Activity', act.id, e.id);
 

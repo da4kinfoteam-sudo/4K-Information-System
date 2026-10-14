@@ -306,6 +306,11 @@ export interface IPO extends BaseEntity {
 export interface ActivityExpense {
     id: number;
     budgetItemGroupId?: string | null;
+    fundingOrigin?: 'Supplemental' | 'SupplementalDraft';
+    supplementUid?: string | null;
+    supplementStatus?: 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN';
+    supplementalSource?: 'Savings' | 'Realignment';
+    supplementRevisionPending?: boolean;
     objectType: ObjectType;
     expenseParticular: string;
     uacsCode: string;
@@ -331,6 +336,7 @@ export interface ActivityExpense {
 }
 
 export interface Activity extends BaseEntity {
+    original_budget_snapshot?: { expenses: ActivityExpense[]; capturedAt: string; kind: 'initial' | 'legacy_confirmed'; reason?: string } | null;
     uid?: string;
     type: 'Training' | 'Activity'; // Database Discriminator
     reference_activity_id?: number | string | null;

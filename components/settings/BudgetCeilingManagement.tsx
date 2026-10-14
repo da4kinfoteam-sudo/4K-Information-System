@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import { operatingUnits, Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, filterYears } from '../../constants';
 import { isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
+import { getActivityBudgetSummary } from '../../lib/activitySupplementalBudget';
 
 interface BudgetCeilingManagementProps {
     subprojects: Subproject[];
@@ -83,7 +84,7 @@ const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
             (!tier || a.tier === tier) &&
             (!fundType || a.fundType === fundType)
         ).forEach(a => {
-            a.expenses.forEach(e => total += (e.amount || 0));
+            total += getActivityBudgetSummary(a).target;
         });
 
         // Office Requirements

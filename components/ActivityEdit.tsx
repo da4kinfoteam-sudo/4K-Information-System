@@ -1,3 +1,4 @@
+import { getActivityBudgetSummary, isOriginalActivityBudgetLocked, isSupplementalExpense, isActivityExpenseActualEligible } from '../lib/activitySupplementalBudget';
 import { ActivityBudgetEditor } from './ui/ActivityBudgetEditor';
 import { remapActivityExpenseGroups, rescheduleActivityTargets, validateActivitySchedule } from '../lib/activityBudgetSchedules';
 import { getChangedActivityActualIds, persistActivityDraft } from '../lib/activityDraftPersistence';
@@ -141,6 +142,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     const [actualsLoadError, setActualsLoadError] = useState('');
     const budgetBaseline = useRef<Activity>(activity || defaultFormData);
 
+    const supplementalBudgetSummary = getActivityBudgetSummary(formData);
     const budgetAdjustmentSummary = useMemo(() => summarizeBudgetAdjustments(formData.expenses || []), [formData.expenses]);
 
     useEffect(() => {
@@ -252,6 +254,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         return ['Proposed', 'Ongoing', 'Completed', 'Cancelled'];
     }, []);
 
+    const originalBudgetLocked = !!activity && isOriginalActivityBudgetLocked(activity);
     const isDetailsLocked = mode === 'create' ? !hasAccess('Activities', 'edit') : !!activity && !getStatusDecision({
         moduleKey: 'activities', item: activity, action: mode === 'expenses' ? 'editBudget' : 'editDetails',
         hasModuleAccess: hasAccess('Activities', 'edit'),
@@ -445,6 +448,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
+        if (mode === 'expenses' && originalBudgetLocked) { alert('The original budget is locked. Use Supplemental Information.'); return; }
         if (budgetDraftPending) { alert('Apply or discard the expense schedule draft before saving.'); return; }
         if (actualsLoading || actualsLoadError) { alert(actualsLoadError || 'Wait for existing actuals to finish loading.'); return; }
         if (saveInFlight.current) return;
@@ -652,6 +656,9 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     
                     // Sanitize date fields: convert empty strings to null
                     const sanitizedPayload: any = mode === 'details' ? buildActivityDetailsPayload(act) : { ...payload };
+                    if (mode === 'details' && originalBudgetLocked) {
+                        for (const field of ['fundingYear','fundType','tier','fundSourceUid','fundSource','isSavings','isRealignment']) delete sanitizedPayload[field];
+                    }
                     if (mode === 'details' && normalizeActivityTitle(initialActivity.activity_title) === act.activity_title) {
                         delete sanitizedPayload.activity_title;
                     }
@@ -970,7 +977,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                     </div>
                                 </fieldset>
 
-                                <fieldset className="form-fieldset" disabled={isDetailsLocked}>
+                                <fieldset className="form-fieldset" disabled={isDetailsLocked || originalBudgetLocked}>
                                     <legend className="form-legend">Funding</legend>
                                     <div className="form-grid form-grid--compact">
                                         <div><label className="form-label">Fund Year</label><input type="number" name="fundingYear" value={formData.fundingYear} onChange={handleNumericChange} className={commonInputClasses} /></div>
@@ -990,16 +997,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                             disabled={isDetailsLocked}
                                             onChange={(fundSourceUid, fundSource) => setFormData(previous => ({ ...previous, fundSourceUid, fundSource }))}
                                         />
-                                        <div className="form-check-group">
-                                            <label className="form-check">
-                                                <input type="checkbox" checked={formData.isRealignment || false} onChange={e => setFormData(prev => ({ ...prev, isRealignment: e.target.checked, isSavings: e.target.checked ? false : prev.isSavings }))} className="form-checkbox" />
-                                                <span>Realignment</span>
-                                            </label>
-                                            <label className="form-check">
-                                                <input type="checkbox" checked={formData.isSavings || false} onChange={e => setFormData(prev => ({ ...prev, isSavings: e.target.checked, isRealignment: e.target.checked ? false : prev.isRealignment }))} className="form-checkbox" />
-                                                <span>Savings</span>
-                                            </label>
-                                        </div>
                                     </div>
                                 </fieldset>
                             </>
@@ -1044,21 +1041,22 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 {((mode === 'create' && activeTab === 'expenses') || mode === 'expenses') && (
                      <fieldset className="form-fieldset" disabled={isDetailsLocked}>
                         <legend className="form-legend">Expenses</legend>
-                        <ActivityBudgetEditor items={formData.expenses} parent={formData} uacsCodes={uacsCodes}
-                            disabled={isDetailsLocked || isSaving} onApply={handleApplyExpenses} onRemove={handleRemoveExpense}
+                        <ActivityBudgetEditor items={formData.expenses.filter(row => !isSupplementalExpense(row,formData))} parent={formData} uacsCodes={uacsCodes}
+                            showAdjustmentTags={false} disabled={isDetailsLocked || isSaving || originalBudgetLocked} onApply={handleApplyExpenses} onRemove={handleRemoveExpense}
                             onDraftChange={setBudgetDraftPending} />
                         <div className="budget-adjustment-summary">
                             <div className="budget-adjustment-summary__header">
                                 <h4>Expense Calculator</h4>
                             </div>
                             <div className="budget-adjustment-summary__grid">
-                                <div><span>Allocation</span><strong>{formatCurrency(budgetAdjustmentSummary.originalPlannedBudget)}</strong></div>
-                                <div><span>Active Target</span><strong>{formatCurrency(budgetAdjustmentSummary.activeTargetBudget)}</strong></div>
+                                <div><span>Allocation</span><strong>{supplementalBudgetSummary.original === null ? '-' : formatCurrency(supplementalBudgetSummary.original)}</strong></div>
+                                <div><span>Active Target</span><strong>{formatCurrency(supplementalBudgetSummary.target)}</strong></div>
                                 <div><span>Cancelled</span><strong>{formatCurrency(budgetAdjustmentSummary.cancelledAmount)}</strong></div>
-                                <div><span>Realigned</span><strong>{formatCurrency(budgetAdjustmentSummary.realignedAmount)}</strong></div>
-                                <div><span>Savings</span><strong>{formatCurrency(budgetAdjustmentSummary.savingsAmount)}</strong></div>
-                                <div><span>Actual Obligated</span><strong>{formatCurrency(budgetAdjustmentSummary.actualObligated)}</strong></div>
-                                <div><span>Actual Disbursed</span><strong>{formatCurrency(budgetAdjustmentSummary.actualDisbursed)}</strong></div>
+                                <div><span>Realignment Supplements</span><strong>{formatCurrency(supplementalBudgetSummary.realignment)}</strong></div>
+                                <div><span>Supplemental Budget</span><strong>{formatCurrency(supplementalBudgetSummary.supplemental)}</strong></div>
+                                <div><span>Unobligated Balance</span><strong>{formatCurrency(supplementalBudgetSummary.unobligated)}</strong></div>
+                                <div><span>Actual Obligated</span><strong>{formatCurrency(supplementalBudgetSummary.obligated)}</strong></div>
+                                <div><span>Actual Disbursed</span><strong>{formatCurrency(supplementalBudgetSummary.disbursed)}</strong></div>
                             </div>
                         </div>
                      </fieldset>
@@ -1099,7 +1097,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                          
                         <fieldset className="form-fieldset">
                             <legend className="form-legend">Budget Utilization</legend>
-                            {formData.expenses.map((exp) => (
+                            {formData.expenses.filter(isActivityExpenseActualEligible).map((exp) => (
                                 <div key={exp.id} className="budget-utilization-item">
                                     <p className="budget-utilization-title">
                                         {exp.expenseParticular} ({exp.uacsCode})

@@ -3,7 +3,7 @@ import { User, UserRole } from '../constants';
 export const DCF_POLICY_SETTINGS_KEY = 'dcf_editing_policy';
 
 export type DcfModuleKey = 'subprojects' | 'activities' | 'office_requirements' | 'staffing_requirements' | 'other_program_expenses';
-export type DcfPolicyAction = 'editDetails' | 'editBudget' | 'editPhysicalAccomplishment' | 'editFinancialAccomplishment' | 'delete';
+export type DcfPolicyAction = 'editDetails' | 'editBudget' | 'editSupplementalBudget' | 'editPhysicalAccomplishment' | 'editFinancialAccomplishment' | 'delete';
 export type StandardDcfStatus = 'Proposed' | 'Ongoing' | 'Completed' | 'Cancelled';
 export type StaffingDcfStatus = 'Proposed' | 'Filled' | 'Unfilled';
 export type DcfPolicyStatus = StandardDcfStatus | StaffingDcfStatus;
@@ -49,6 +49,7 @@ export const DCF_MODULES: Array<{ key: DcfModuleKey; label: string; moduleName: 
 export const DCF_POLICY_ACTIONS: Array<{ key: DcfPolicyAction; label: string; shortLabel: string }> = [
     { key: 'editDetails', label: 'Edit Details', shortLabel: 'Details' },
     { key: 'editBudget', label: 'Edit Budget / Expenses', shortLabel: 'Budget' },
+    { key: 'editSupplementalBudget', label: 'Edit Supplemental Budget', shortLabel: 'Supplemental' },
     { key: 'editPhysicalAccomplishment', label: 'Edit Physical Accomplishment', shortLabel: 'Physical' },
     { key: 'editFinancialAccomplishment', label: 'Edit Financial Accomplishment', shortLabel: 'Financial' },
     { key: 'delete', label: 'Delete', shortLabel: 'Delete' },
@@ -57,6 +58,7 @@ export const DCF_POLICY_ACTIONS: Array<{ key: DcfPolicyAction; label: string; sh
 const ADMIN_ACTIONS: Record<DcfPolicyAction, boolean> = {
     editDetails: true,
     editBudget: true,
+    editSupplementalBudget: true,
     editPhysicalAccomplishment: true,
     editFinancialAccomplishment: true,
     delete: true,
@@ -65,6 +67,7 @@ const ADMIN_ACTIONS: Record<DcfPolicyAction, boolean> = {
 const GUEST_ACTIONS: Record<DcfPolicyAction, boolean> = {
     editDetails: false,
     editBudget: false,
+    editSupplementalBudget: false,
     editPhysicalAccomplishment: false,
     editFinancialAccomplishment: false,
     delete: false,
@@ -73,6 +76,7 @@ const GUEST_ACTIONS: Record<DcfPolicyAction, boolean> = {
 const PROPOSED_RULES: Record<DcfPolicyAction, boolean> = {
     editDetails: true,
     editBudget: true,
+    editSupplementalBudget: true,
     editPhysicalAccomplishment: false,
     editFinancialAccomplishment: false,
     delete: true,
@@ -81,6 +85,7 @@ const PROPOSED_RULES: Record<DcfPolicyAction, boolean> = {
 const ONGOING_RULES: Record<DcfPolicyAction, boolean> = {
     editDetails: false,
     editBudget: false,
+    editSupplementalBudget: true,
     editPhysicalAccomplishment: true,
     editFinancialAccomplishment: true,
     delete: false,
@@ -89,6 +94,7 @@ const ONGOING_RULES: Record<DcfPolicyAction, boolean> = {
 const LOCKED_RULES: Record<DcfPolicyAction, boolean> = {
     editDetails: false,
     editBudget: false,
+    editSupplementalBudget: false,
     editPhysicalAccomplishment: false,
     editFinancialAccomplishment: false,
     delete: false,
@@ -112,6 +118,10 @@ const buildRoleRules = (role: UserRole): DcfRolePolicyRules => {
             }
         });
         roleRules[module.key] = statusRules;
+        for (const status of module.statuses) {
+            statusRules[status]!.editSupplementalBudget = module.key === 'activities' && role !== 'Guest' && status !== 'Cancelled'
+                && (status === 'Proposed' || status === 'Ongoing' || role === 'Super Admin' || role === 'Administrator');
+        }
     });
     return roleRules;
 };
@@ -197,6 +207,7 @@ export const getDcfRuleValue = (
     status: DcfPolicyStatus,
     action: DcfPolicyAction
 ): boolean => {
+    if (moduleKey === 'activities' && action === 'editBudget' && status !== 'Proposed') return false;
     return !!policy.roleRules[role]?.[moduleKey]?.[status]?.[action];
 };
 
@@ -241,6 +252,14 @@ export const canEditDcfSection = ({
 }): DcfPolicyDecision => {
     if (!user) {
         return { allowed: false, code: 'blocked_by_permission', message: 'No signed-in user.' };
+    }
+
+    if (moduleKey === 'activities' && action === 'editBudget' && status !== 'Proposed') {
+        return { allowed: false, code: 'blocked_by_status', message: 'Original budget is locked. Use Supplemental Information for additional funding.' };
+    }
+    if (action === 'editSupplementalBudget') {
+        const allowed = moduleKey === 'activities' && status !== 'Cancelled' && hasModuleAccess && getDcfRuleValue(policy,user.role,moduleKey,status,action);
+        return { allowed, code: allowed ? 'allowed' : 'blocked_by_permission', message: allowed ? 'Supplemental editing is allowed.' : 'Supplemental editing is disabled for this role or status.' };
     }
 
     const isOverrideRole = policy.monthLock.overrideRoles.includes(user.role);

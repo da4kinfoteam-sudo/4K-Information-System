@@ -1,5 +1,6 @@
 ﻿
 // Author: 4K
+import { getActivityBudgetSummary, hasProtectedActivityBudgetHistory } from '../lib/activitySupplementalBudget';
 import { getActivityDisplayTitle } from '../lib/activityTitles';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
@@ -17,7 +18,6 @@ import type { DataScope } from '../lib/scopedDataFetch';
 import { DcfScopeFilterPanel, matchesDcfScope, useDcfScopeFilters } from './ui/DcfScopeFilters';
 import { ConfirmDialog, DataTablePagination, SortableTableHeader } from './ui/enterprise';
 import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from './ui/MajorDataTable';
-import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import { getFundSourceFilterOptions, getFundSourceFilterValue, getFundSourceLabel, getFundSourceSortLabel } from '../lib/fundSources';
 import { resolveBudgetItemTransfer, type BudgetItemTransferResult } from '../lib/budgetItemTransfer';
 import { buildActivityClonePayload } from '../lib/recordCloning';
@@ -27,11 +27,7 @@ import { getActivityIpoSelection } from '../lib/activityIpoLinks';
 declare const XLSX: any;
 
 const calculateActivityBudget = (activity: Activity) => {
-    if (activity.isTransferTargetExcluded) return 0;
-    return (activity.expenses || []).reduce(
-        (total, expense) => total + (isBudgetLineExcludedFromTargets(expense) ? 0 : getBudgetLineAmount(expense)),
-        0
-    );
+    return getActivityBudgetSummary(activity).target;
 };
 
 interface ActivitiesProps {
@@ -114,7 +110,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     const [isColumnFilterOpen, setIsColumnFilterOpen] = useState(false);
 
     // Sorting
-    type SortKeys = keyof Activity | 'totalParticipants' | 'budget';
+    type SortKeys = keyof Activity | 'totalParticipants' | 'budget' | 'supplementalBudget';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
 
     const dcfFilters = useDcfScopeFilters({
@@ -256,6 +252,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                 } else if (sortConfig.key === 'totalParticipants') {
                     aValue = a.participantsMale + a.participantsFemale;
                     bValue = b.participantsMale + b.participantsFemale;
+                } else if (sortConfig.key === 'supplementalBudget') {
+                    aValue = getActivityBudgetSummary(a).supplemental;
+                    bValue = getActivityBudgetSummary(b).supplemental;
                 } else if (sortConfig.key === 'budget') {
                     aValue = calculateActivityBudget(a);
                     bValue = calculateActivityBudget(b);
@@ -328,7 +327,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         setSavedColumnFilters({});
     }
 
-    const canDeleteActivityByPolicy = (activity: Activity) => getDeleteDecision({
+    const canDeleteActivityByPolicy = (activity: Activity) => hasProtectedActivityBudgetHistory(activity)
+        ? { ...getDeleteDecision({ moduleKey: 'activities', item: activity, hasModuleAccess: canEdit }), allowed: false, message: 'Frozen or supplemental budget history must be retained. This Activity cannot be deleted.' }
+        : getDeleteDecision({
         moduleKey: 'activities',
         item: activity,
         hasModuleAccess: canEdit,
@@ -637,6 +638,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                             <SortableTableHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Fund Source" columnKey="fundSourceUid" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Budget" columnKey="budget" sortConfig={sortConfig} onSort={handleSort} />
+                            <SortableTableHeader label="Supplemental Budget" columnKey="supplementalBudget" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Status" columnKey="status" sortConfig={sortConfig} onSort={handleSort} />
                             <th>Workflow Status</th>
                         </tr></thead>
@@ -662,11 +664,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     <td><TruncatedTableCell value={ipoPreview} fullText={participatingIpos.join(', ') || 'No participating IPO'} /></td>
                                     <td>{activity.fundingYear || '—'}</td><td>{activity.fundType || '—'}</td><td>{activity.tier || '—'}</td><td><TruncatedTableCell value={getFundSourceLabel(activity, fundSources) || '—'} /></td>
                                     <td className="data-table__cell--numeric">{currency.format(totalBudget)}</td>
+                                    <td className="data-table__cell--numeric">{currency.format(getActivityBudgetSummary(activity).supplemental)}</td>
                                     <td><span className={getStatusBadge(activity.status)}>{activity.status || 'Unknown'}</span></td>
                                     <td><div className="data-table__actions">{getWorkflowStatusBadge(activity.workflow_status)}{activity.workflow_status === 'PENDING' && canApprove(currentUser?.role) && <><button onClick={(event) => handleApprove(activity.id, event)} className="action-mini action-mini--approve" aria-label={`Approve ${getActivityDisplayTitle(activity)}`}><Check aria-hidden="true" /></button><button onClick={(event) => handleReject(activity.id, event)} className="action-mini action-mini--reject" aria-label={`Reject ${getActivityDisplayTitle(activity)}`}><X aria-hidden="true" /></button></>}</div></td>
                                 </tr>;
                             })}
-                            {paginatedActivities.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 12 : 11}>No activities match the current filters.</td></tr>}
+                            {paginatedActivities.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 13 : 12}>No activities match the current filters.</td></tr>}
                         </tbody>
                     </table>
                 </div>
