@@ -488,6 +488,14 @@ export const downloadActivitiesReport = (activities: Activity[], fundSources: Re
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Activities Report");
+    const schedules = activities.flatMap(parent => (parent.expenses || []).map(row => ({
+        UID: parent.uid || '', 'Activity Name': getActivityDisplayTitle(parent), 'Expense ID': row.id,
+        'Group ID': row.budgetItemGroupId || '', 'Object Type': row.objectType, 'Expense Particular': row.expenseParticular,
+        'UACS Code': row.uacsCode, 'Obligation Month': row.obligationMonth, 'Disbursement Month': row.disbursementMonth,
+        Amount: getBudgetLineAmount(row), Cancelled: !!row.isCancelled, Savings: !!row.isSavings, Realignment: !!row.isRealignment,
+        Reason: row.adjustmentReason || '',
+    })));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(schedules), "Budget Schedules");
     XLSX.writeFile(wb, "Activities_Report.xlsx");
 };
 
@@ -497,7 +505,7 @@ export const downloadActivitiesTemplate = (fundSources: RefFundSource[]) => {
         'uid', 'type', 'component', 'name', 'activity_title', 'date', 'province', 'municipality', 'facilitator', 'description',
         'participatingIpos', 'participantsMale', 'participantsFemale',
         'fundingYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'operatingUnit',
-        'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount'
+        'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount', 'expense_budgetItemGroupId'
     ];
     const exampleData = [
         {
@@ -702,6 +710,7 @@ export const handleActivitiesUpload = (
                         objectType: objectType as any,
                         expenseParticular: expenseParticular,
                         uacsCode: uacsCode,
+                        budgetItemGroupId: row.expense_budgetItemGroupId ? String(row.expense_budgetItemGroupId).trim() : null,
                         obligationMonth: String(row.expense_obligationMonth || ''),
                         disbursementMonth: String(row.expense_disbursementMonth || ''),
                         amount: Number(row.expense_amount)

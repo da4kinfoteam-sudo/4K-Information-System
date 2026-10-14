@@ -1,3 +1,4 @@
+import { remapActivityExpenseGroups } from './activityBudgetSchedules';
 import type { Activity, ActivityExpense, Subproject, SubprojectDetail } from '../constants';
 import { normalizeActivityTitle } from './activityTitles';
 import { remapClonedBudgetGroups } from './subprojectBudgetSchedules';
@@ -69,7 +70,7 @@ export const buildActivityClonePayload = (source: Activity, context: CloneContex
         actualParticipantsMale: 0,
         actualParticipantsFemale: 0,
         newTargetDate: undefined,
-        expenses: (source.expenses || []).map(line => cloneFinancialLine(line, reservedIds)),
+        expenses: remapActivityExpenseGroups(source.expenses || []).map(line => cloneFinancialLine(line, reservedIds)),
     };
 };
 

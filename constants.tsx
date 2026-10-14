@@ -305,6 +305,7 @@ export interface IPO extends BaseEntity {
 
 export interface ActivityExpense {
     id: number;
+    budgetItemGroupId?: string | null;
     objectType: ObjectType;
     expenseParticular: string;
     uacsCode: string;

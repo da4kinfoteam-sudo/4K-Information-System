@@ -56,7 +56,8 @@ try {
     }
     const form = await readFile(new URL('../components/ActivityEdit.tsx', import.meta.url), 'utf8');
     const app = await readFile(new URL('../App.tsx', import.meta.url), 'utf8');
-    assert.match(form, /if \(mode !== 'details'\)\s*\{\s*await syncActivityObligations/);
+    assert.match(form, /if \(mode === 'accomplishment'\)\s*\{\s*const obligationIds/);
+    assert.match(form, /syncActivityObligations\(activity!\.id, data\.expenses\.filter/);
     assert.match(form, /update\(sanitizedPayload\)\.eq\('id', activity!\.id\)\.select\(\)\.single\(\)/);
     assert.match(form, /participating_ipo_ids: entry\.participating_ipo_ids/);
     assert.match(app, /onUpdateActivity=\{handleActivitySaved\}/);

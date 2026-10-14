@@ -1,8 +1,12 @@
+import { ActivityBudgetEditor } from './ui/ActivityBudgetEditor';
+import { remapActivityExpenseGroups, rescheduleActivityTargets, validateActivitySchedule } from '../lib/activityBudgetSchedules';
+import { getChangedActivityActualIds, persistActivityDraft } from '../lib/activityDraftPersistence';
+import { createBudgetScheduleId } from '../lib/subprojectBudgetSchedules';
 import { activityTitleForSave, getActivityDisplayTitle, normalizeActivityTitle } from '../lib/activityTitles';
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo, useRef } from 'react';
-import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, RefFundSource, philippineRegions, operatingUnits, ouToRegionMap } from '../constants';
+import { Activity, ActivityExpense, IPO, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, RefFundSource, philippineRegions, operatingUnits, ouToRegionMap } from '../constants';
 import LocationPicker from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
@@ -10,10 +14,8 @@ import { getMonetaryChanges } from '../lib/logUtils';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { normalizePolicyMonth, useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 import { supabase } from '../supabaseClient';
-import { Pencil, Trash2 } from 'lucide-react';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
-import { MonthYearPicker } from './ui/MonthYearPicker';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
 import {
     ensureOriginalBudgetSnapshot,
@@ -49,13 +51,6 @@ const commonInputClasses = "form-control";
 const formatCurrency = (amount: number) => {
     const finiteAmount = Number.isFinite(amount) ? amount : 0;
     return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(finiteAmount);
-};
-
-const formatActivityMonthYear = (dateString?: string) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
 };
 
 const defaultFormData: Activity = {
@@ -140,96 +135,72 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         }
     }, [mode, activity, fundSources]);
 
-    // Expense Edit State
-    const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
     const [missingFields, setMissingFields] = useState<string[]>([]);
-    const [currentExpense, setCurrentExpense] = useState({
-        objectType: 'MOOE' as ObjectType,
-        expenseParticular: '',
-        uacsCode: '',
-        obligationMonth: '',
-        disbursementMonth: '',
-        amount: '',
-        isRealignment: false,
-        isSavings: false,
-        isCancelled: false,
-        adjustmentReason: '',
-    });
+    const [budgetDraftPending, setBudgetDraftPending] = useState(false);
+    const [actualsLoading, setActualsLoading] = useState(false);
+    const [actualsLoadError, setActualsLoadError] = useState('');
+    const budgetBaseline = useRef<Activity>(activity || defaultFormData);
 
     const budgetAdjustmentSummary = useMemo(() => summarizeBudgetAdjustments(formData.expenses || []), [formData.expenses]);
-
-    // Helper to get month index from YYYY-MM-DD string
-    const getMonthFromDateStr = (dateStr: string) => {
-        if (!dateStr) return '';
-        const parts = dateStr.split('-');
-        if (parts.length > 1) return (parseInt(parts[1]) - 1).toString();
-        return '';
-    };
-
-    // Helper for Actuals (Accomplishments)
-    const updateActualDateFromMonth = (id: number, field: keyof ActivityExpense, monthIndex: string) => {
-        setFormData(prev => ({
-            ...prev,
-            expenses: prev.expenses.map(e => {
-                if (e.id === id) {
-                    let newValue = '';
-                    if (monthIndex !== '') {
-                        const mIndex = parseInt(monthIndex);
-                        const year = prev.fundingYear || new Date().getFullYear();
-                        newValue = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
-                    }
-                    return { ...e, [field]: newValue };
-                }
-                return e;
-            })
-        }));
-    };
 
     useEffect(() => {
         let cancelled = false;
         if (activity) {
-            const applyObligationRows = (centralRows: Awaited<ReturnType<typeof fetchFinancialObligationsForParent>> | null) => {
+            const applyObligationRows = (centralRows: Awaited<ReturnType<typeof fetchFinancialObligationsForParent>> | null, disbursementRows: any[] = []) => {
                 const processedActivity: Activity = {
                     ...activity,
                     expenses: (activity.expenses || []).map(exp => {
                     const centralObligations = centralRows?.filter(row => row.itemId === String(exp.id)) || [];
-                    if (centralObligations.length > 0) return { ...exp, obligations: centralObligations };
-                    const hasAmount = Number(exp.actualObligationAmount) !== 0;
+                    const centralDisbursements = disbursementRows.filter(row => String(row.item_id) === String(exp.id)).map(row => ({ id: row.id, date: row.disbursement_date, amount: Number(row.amount), remarks: row.remarks || '' }));
+                    const disbursements = centralDisbursements.length ? centralDisbursements : exp.disbursements?.length ? exp.disbursements : Number(exp.actualDisbursementAmount || 0) !== 0 ? [{ id: `legacy-${exp.id}`, date: exp.actualDisbursementDate || '', amount: exp.actualDisbursementAmount || 0, remarks: 'Legacy Record' }] : exp.disbursements;
+                    if (centralObligations.length > 0) return { ...exp, obligations: centralObligations, disbursements };
+                    const hasAmount = Number(exp.actualObligationAmount || 0) !== 0;
                     const hasNoObligations = !exp.obligations || exp.obligations.length === 0;
                     if (hasAmount && hasNoObligations) {
                         return {
-                            ...exp,
+                            ...exp, disbursements,
                             obligations: [{
-                                id: Date.now() + Math.random(),
+                                id: `legacy-obligation-${exp.id}`,
                                 date: exp.actualObligationDate || '',
                                 amount: exp.actualObligationAmount || 0,
                                 remarks: 'Legacy Record'
                             }]
                         };
                     }
-                    return exp;
+                    return { ...exp, disbursements };
                     }),
                 };
                 if (cancelled) return;
                 setFormData(previous => ({
                     ...previous,
-                    expenses: previous.expenses.map(expense => processedActivity.expenses.find(item => item.id === expense.id) || expense),
+                    expenses: previous.expenses.map(expense => {
+                        const loaded = processedActivity.expenses.find(item => item.id === expense.id);
+                        return loaded ? { ...expense, obligations: loaded.obligations, disbursements: loaded.disbursements } : expense;
+                    }),
                 }));
                 setInitialActivity(previous => ({ ...previous, expenses: processedActivity.expenses }));
             };
 
+            budgetBaseline.current = structuredClone(activity);
+            setActualsLoadError('');
             setFormData({ ...activity, expenses: activity.expenses || [] });
             trainingNameDraft.current = activity.type === 'Training' ? activity.name : '';
             setInitialActivity({ ...activity, expenses: activity.expenses || [] });
-            if (supabase && activity.id > 0 && mode !== 'details') {
-                void fetchFinancialObligationsForParent({ entityType: 'activity_expense', parentId: activity.id })
-                    .then(rows => applyObligationRows(rows))
+            if (supabase && activity.id > 0 && mode === 'accomplishment') {
+                setActualsLoading(true);
+                void Promise.all([
+                    fetchFinancialObligationsForParent({ entityType: 'activity_expense', parentId: activity.id }),
+                    supabase.from('financial_disbursements').select('*').eq('entity_type', 'activity_expense').eq('parent_id', activity.id),
+                ]).then(([rows, disbursements]) => {
+                    if (disbursements.error) throw disbursements.error;
+                    applyObligationRows(rows, disbursements.data || []);
+                })
                     .catch(error => {
                         console.error('Failed to load authoritative activity obligations:', error);
-                        applyObligationRows(null);
-                    });
+                        if (!cancelled) setActualsLoadError('Existing financial actuals could not be loaded. Reopen the activity before saving.');
+                    }).finally(() => { if (!cancelled) setActualsLoading(false); });
             } else {
-                applyObligationRows(null);
+                setActualsLoading(false);
             }
             if (activity.endDate && activity.endDate !== activity.date) {
                 setConductType('Multi-day');
@@ -281,9 +252,10 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         return ['Proposed', 'Ongoing', 'Completed', 'Cancelled'];
     }, []);
 
-    const isDetailsLocked = useMemo(() => {
-        return false;
-    }, []);
+    const isDetailsLocked = mode === 'create' ? !hasAccess('Activities', 'edit') : !!activity && !getStatusDecision({
+        moduleKey: 'activities', item: activity, action: mode === 'expenses' ? 'editBudget' : 'editDetails',
+        hasModuleAccess: hasAccess('Activities', 'edit'),
+    }).allowed;
 
     // --- Handlers ---
 
@@ -315,32 +287,11 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     const handleNumericChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        const numValue = parseFloat(value) || 0;
-        
-        setFormData(prev => {
-            const newData = { ...prev, [name]: numValue };
-            
-            if (name === 'fundingYear') {
-                newData.expenses = newData.expenses.map(exp => {
-                    const updatedExp = { ...exp };
-                    if (updatedExp.actualObligationDate) {
-                        const month = getMonthFromDateStr(updatedExp.actualObligationDate);
-                        if (month !== '') {
-                            updatedExp.actualObligationDate = `${numValue}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
-                        }
-                    }
-                    if (updatedExp.actualDisbursementDate) {
-                        const month = getMonthFromDateStr(updatedExp.actualDisbursementDate);
-                        if (month !== '') {
-                            updatedExp.actualDisbursementDate = `${numValue}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
-                        }
-                    }
-                    return updatedExp;
-                });
-            }
-            
-            return newData;
-        });
+        const numValue = value === '' ? 0 : Number(value);
+        if (name === 'fundingYear' && budgetDraftPending) { alert('Apply or discard the schedule draft before changing Fund Year.'); return; }
+        const reschedule = mode === 'create' && name === 'fundingYear' && formData.fundingYear !== numValue && formData.expenses.length > 0
+            && window.confirm('Reschedule planned expense months to this Fund Year? Actual dates will remain unchanged.');
+        setFormData(previous => ({ ...previous, [name]: numValue, ...(reschedule ? { expenses: rescheduleActivityTargets(previous.expenses, numValue) } : {}) }));
     };
 
     const handleActivityTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -397,188 +348,35 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         setCurrentRepeatingEntry({ id: 0, date: '', endDate: '', isMultiDay: false, participantsMale: 0, participantsFemale: 0, participatingIpos: [], participating_ipo_ids: [] });
     };
 
-    // Budget Handlers
-    const availableUacsCodes = useMemo(() => {
-        let codes: { code: string, desc: string }[] = [];
-        if (currentExpense.expenseParticular) {
-            const ot = currentExpense.objectType;
-            const ep = currentExpense.expenseParticular;
-            if (uacsCodes[ot] && uacsCodes[ot][ep]) {
-                Object.entries(uacsCodes[ot][ep]).forEach(([code, desc]) => {
-                    codes.push({ code, desc: desc as string });
-                });
-            }
-        } else {
-            Object.entries(uacsCodes).forEach(([ot, eps]) => {
-                Object.entries(eps).forEach(([ep, codesObj]) => {
-                    Object.entries(codesObj as Record<string, string>).forEach(([code, desc]) => {
-                        codes.push({ code, desc });
-                    });
-                });
-            });
-        }
-        return codes;
-    }, [currentExpense.expenseParticular, currentExpense.objectType, uacsCodes]);
+    const getUacsDescription = (objectType: string, particular: string, code: string) => uacsCodes[objectType]?.[particular]?.[code] || '';
 
-    const getUacsDescription = (ot: string, ep: string, code: string) => {
-        if (uacsCodes[ot] && uacsCodes[ot][ep] && uacsCodes[ot][ep][code]) {
-            return uacsCodes[ot][ep][code];
-        }
-        return '';
-    };
-
-    const handleExpenseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        if (name === 'objectType') {
-            setCurrentExpense(prev => ({ ...prev, objectType: value as ObjectType, expenseParticular: '', uacsCode: '' }));
-        } else if (name === 'expenseParticular') {
-            setCurrentExpense(prev => ({ ...prev, expenseParticular: value, uacsCode: '' }));
-        } else if (name === 'uacsCode') {
-            let foundOt = currentExpense.objectType;
-            let foundEp = currentExpense.expenseParticular;
-            
-            let isMatch = false;
-            if (foundEp && uacsCodes[foundOt] && uacsCodes[foundOt][foundEp] && uacsCodes[foundOt][foundEp][value]) {
-                isMatch = true;
-            }
-
-            if (!isMatch) {
-                for (const ot in uacsCodes) {
-                    for (const ep in uacsCodes[ot]) {
-                        if (uacsCodes[ot][ep][value]) {
-                            foundOt = ot as ObjectType;
-                            foundEp = ep;
-                            break;
-                        }
-                    }
-                }
-            }
-            
-            setCurrentExpense(prev => ({ ...prev, uacsCode: value, objectType: foundOt, expenseParticular: foundEp }));
-        } else {
-            setCurrentExpense(prev => ({...prev, [name]: value}));
-        }
-    };
-
-    const handleEditExpense = (expense: ActivityExpense) => {
-        const normalizedExpense = normalizeBudgetLineStatus(expense);
-        setEditingExpenseId(normalizedExpense.id);
-        setCurrentExpense({
-            objectType: normalizedExpense.objectType,
-            expenseParticular: normalizedExpense.expenseParticular,
-            uacsCode: normalizedExpense.uacsCode,
-            obligationMonth: normalizedExpense.obligationMonth,
-            disbursementMonth: normalizedExpense.disbursementMonth,
-            amount: String(normalizedExpense.amount),
-            isRealignment: !!normalizedExpense.isRealignment,
-            isSavings: !!normalizedExpense.isSavings,
-            isCancelled: !!normalizedExpense.isCancelled,
-            adjustmentReason: normalizedExpense.adjustmentReason || '',
+    // Target changes are staged; adjustment history follows the confirmed parent save.
+    const handleApplyExpenses = (rows: ActivityExpense[]) => {
+        setFormData(previous => {
+            const staged = new Map(rows.map(row => {
+                const before = previous.expenses.find(item => item.id === row.id);
+                const snapshot = ensureOriginalBudgetSnapshot(before || row);
+                return [String(row.id), normalizeBudgetLineStatus({ ...row, originalPlannedAmount: snapshot.originalPlannedAmount, originalCapturedAt: snapshot.originalCapturedAt })];
+            }));
+            const expenses = previous.expenses.map(row => staged.get(String(row.id)) || row);
+            const reserved = new Set(previous.expenses.map(row => String(row.id)));
+            return { ...previous, expenses: [...expenses, ...rows.filter(row => !reserved.has(String(row.id))).map(row => staged.get(String(row.id))!)] };
         });
-    }
-
-    const resetCurrentExpense = () => {
-        setCurrentExpense({ objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '', amount: '', isRealignment: false, isSavings: false, isCancelled: false, adjustmentReason: '' });
     };
-
-    const handleCancelEditExpense = () => {
-        setEditingExpenseId(null);
-        resetCurrentExpense();
-    }
-
-    const persistExpenseAdjustmentHistory = async (action: any, beforeSnapshot: any, afterSnapshot: any, reason: string) => {
-        if (!activity?.id) return;
-        try {
-            await writeBudgetItemAdjustmentHistory({
-                sourceType: 'activity_expense',
-                parentId: activity.id,
-                itemId: afterSnapshot?.id || beforeSnapshot?.id,
-                action,
-                beforeSnapshot,
-                afterSnapshot,
-                reason,
-                currentUser,
-            });
-        } catch {
-            // Keep the local edit; the parent activity save remains authoritative for the nested expense.
-        }
-    };
-
-    const handleAddExpense = async () => {
-        if (!currentExpense.amount || !currentExpense.obligationMonth || !currentExpense.disbursementMonth || !currentExpense.uacsCode) {
-            alert('Please fill out all expense fields (UACS, Dates, Amount).'); return;
-        }
-        if ((currentExpense.isCancelled || currentExpense.isRealignment || currentExpense.isSavings) && !currentExpense.adjustmentReason.trim()) {
-            alert('A short reason is required when adding a cancelled, realignment, or savings expense.');
-            return;
-        }
-        const newExpense: ActivityExpense = ensureOriginalBudgetSnapshot(normalizeBudgetLineStatus({
-            id: Date.now(),
-            ...currentExpense,
-            amount: parseFloat(currentExpense.amount),
-            // Init actuals
-            actualObligationAmount: 0, actualObligationDate: '', actualDisbursementAmount: 0, actualDisbursementDate: '', actualAmount: 0
-        }));
-
-        if (editingExpenseId !== null) {
-            const beforeExpense = formData.expenses.find(e => e.id === editingExpenseId);
-            const afterExpense = { ...beforeExpense, ...newExpense, id: editingExpenseId };
-            setFormData(prev => ({ ...prev, expenses: prev.expenses.map(e => e.id === editingExpenseId ? afterExpense : e) }));
-            if (beforeExpense && (beforeExpense.isCancelled || beforeExpense.isRealignment || beforeExpense.isSavings || afterExpense.isCancelled || afterExpense.isRealignment || afterExpense.isSavings)) {
-                await persistExpenseAdjustmentHistory(
-                    afterExpense.isCancelled ? 'cancel'
-                        : afterExpense.isRealignment ? 'tag_realignment'
-                            : afterExpense.isSavings ? 'tag_savings'
-                                : beforeExpense.isCancelled ? 'restore'
-                                    : 'clear_tag',
-                    beforeExpense,
-                    afterExpense,
-                    currentExpense.adjustmentReason || 'Updated expense adjustment.'
-                );
-            }
-            setEditingExpenseId(null);
-        } else {
-            setFormData(prev => ({ ...prev, expenses: [...prev.expenses, newExpense] }));
-            if (newExpense.isRealignment || newExpense.isSavings) {
-                await persistExpenseAdjustmentHistory('create_adjustment_item', null, newExpense, newExpense.adjustmentReason || 'Created expense adjustment item.');
-            }
-        }
-        resetCurrentExpense();
-    };
-
-    const handleExpenseTagChange = async (expenseId: number, tag: 'Cancelled' | 'Realignment' | 'Savings' | null) => {
-        const beforeExpense = formData.expenses.find(e => e.id === expenseId);
-        if (!beforeExpense) return;
-        const reason = requestAdjustmentReason(tag ? `marking this expense as ${tag}` : 'clearing this expense tag');
-        if (!reason) return;
-        const afterExpense = {
-            ...beforeExpense,
-            isCancelled: tag === 'Cancelled',
-            isRealignment: tag === 'Realignment',
-            isSavings: tag === 'Savings',
-            adjustmentReason: reason,
-        };
-        setFormData(prev => ({ ...prev, expenses: prev.expenses.map(e => e.id === expenseId ? afterExpense : e) }));
-        await persistExpenseAdjustmentHistory(tag === 'Cancelled' ? 'cancel' : tag === 'Realignment' ? 'tag_realignment' : tag === 'Savings' ? 'tag_savings' : beforeExpense.isCancelled ? 'restore' : 'clear_tag', beforeExpense, afterExpense, reason);
-    };
-
-    const handleRemoveExpense = async (expense: ActivityExpense) => {
-        const isSavedLine = !!(activity?.expenses || []).some(existing => existing.id === expense.id);
-        const hasActuals = ((expense.obligations?.length || 0) > 0)
-            || ((expense.disbursements?.length || 0) > 0)
-            || hasActualObligationRecords(expense)
-            || Number(expense.actualDisbursementAmount) > 0;
+    const handleRemoveExpense = (expense: ActivityExpense) => {
+        const isSavedLine = !!activity?.expenses?.some(row => row.id === expense.id);
+        const hasActuals = !!expense.obligations?.length || !!expense.disbursements?.length || hasActualObligationRecords(expense) || Number(expense.actualDisbursementAmount || 0) !== 0;
         if (isSavedLine || hasActuals) {
-            await handleExpenseTagChange(expense.id, 'Cancelled');
-            return;
-        }
-        setFormData(prev => ({...prev, expenses: prev.expenses.filter(item => item.id !== expense.id)}));
-        if (editingExpenseId === expense.id) {
-            handleCancelEditExpense();
-        }
+            const reason = requestAdjustmentReason('cancelling this expense');
+            if (!reason) return;
+            handleApplyExpenses([{ ...expense, isCancelled: true, isRealignment: false, isSavings: false, adjustmentReason: reason }]);
+        } else setFormData(previous => ({ ...previous, expenses: previous.expenses.filter(row => row.id !== expense.id) }));
+    };
+    const leaveForm = () => {
+        if (budgetDraftPending && !window.confirm('Discard the unsaved schedule draft?')) return;
+        onBack();
     };
 
-    // Accomplishment Handlers
     const handleExpenseAccomplishmentChange = (id: number, field: keyof ActivityExpense, value: any) => {
         setFormData(prev => ({
             ...prev,
@@ -619,8 +417,8 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         const months = [
             ...(hasMonthChanged(formData.actualDate, initialActivity.actualDate) ? [formData.actualDate] : []),
             ...(hasMonthChanged(formData.actualEndDate, initialActivity.actualEndDate) ? [formData.actualEndDate] : []),
-            ...formData.expenses.flatMap((exp, index) => {
-                const originalExpense = initialActivity.expenses.find(item => item.id === exp.id) || initialActivity.expenses[index];
+            ...formData.expenses.flatMap(exp => {
+                const originalExpense = initialActivity.expenses.find(item => item.id === exp.id);
                 return [
                     ...getChangedRecordMonths(exp.obligations || [], originalExpense?.obligations || []),
                     ...getChangedRecordMonths(exp.disbursements || [], originalExpense?.disbursements || []),
@@ -647,6 +445,8 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
+        if (budgetDraftPending) { alert('Apply or discard the expense schedule draft before saving.'); return; }
+        if (actualsLoading || actualsLoadError) { alert(actualsLoadError || 'Wait for existing actuals to finish loading.'); return; }
         if (saveInFlight.current) return;
         saveInFlight.current = true;
         setIsSaving(true);
@@ -657,6 +457,14 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             return;
         }
 
+        if (mode === 'create' || mode === 'expenses') {
+            const issue = formData.expenses.map(row => {
+                const original = activity?.expenses?.find(item => item.id === row.id);
+                if (original && JSON.stringify(original) === JSON.stringify(row)) return null;
+                return validateActivitySchedule(row, { uacsCodes }, original);
+            }).find(Boolean);
+            if (issue) { alert(issue); return; }
+        }
         if (mode === 'accomplishment') {
             const obligationError = (formData.expenses || [])
                 .map(expense => getActualObligationValidationError(expense.obligations || []))
@@ -729,6 +537,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             }
         }
 
+        const repeatingExpenseIds = new Set<string>(formData.expenses.map(row => String(row.id)));
         if (mode === 'create') {
              if (conductType === 'Repeating') {
                 activitiesToSave = repeatingEntries.map((entry, idx) => ({
@@ -740,7 +549,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     participantsFemale: entry.participantsFemale,
                     participatingIpos: entry.participatingIpos,
                     participating_ipo_ids: entry.participating_ipo_ids,
-                    expenses: formData.expenses.map((exp, eIdx) => ({ ...exp, id: Date.now() + Math.random() + eIdx })), 
+                    expenses: remapActivityExpenseGroups(formData.expenses).map(exp => ({ ...exp, id: createBudgetScheduleId(repeatingExpenseIds) })),
                     id: 0,
                     workflow_status,
                     created_at: new Date().toISOString(),
@@ -860,7 +669,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                             sanitizedPayload[field] = null;
                         }
                     });
-                    if (sanitizedPayload.expenses) {
+                    if (sanitizedPayload.expenses && mode === 'accomplishment') {
                         sanitizedPayload.expenses = sanitizedPayload.expenses.map((exp: any) => {
                             const sanitizedExp = { ...exp };
                             if (sanitizedExp.obligations && sanitizedExp.obligations.length === 0) {
@@ -898,25 +707,32 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                              persisted.push(data[0] as Activity);
                              logAction(`Created ${act.type}`, act.name, undefined, act.type, String(createdId));
                              
-                             // Sync obligations for new activity
-                             await syncActivityObligations(createdId, act.expenses);
-                             await syncActivityDisbursements(createdId, act.expenses);
+                             // Planned schedules have no central actual records to synchronize.
                          }
                     } else {
-                         const { data, error } = await supabase.from('activities').update(sanitizedPayload).eq('id', activity!.id).select().single();
-                         if (error) throw error;
-                         if (!data) throw new Error('No saved activity was returned. Reload before retrying.');
-                         activitiesToSave[i] = data as Activity;
-                         persisted.push(data as Activity);
+                         let data: Activity;
+                         if (mode === 'expenses' || mode === 'accomplishment') {
+                             data = await persistActivityDraft(mode === 'expenses' ? budgetBaseline.current : initialActivity, { ...act, expenses: sanitizedPayload.expenses }, mode);
+                         } else {
+                             const result = await supabase.from('activities').update(sanitizedPayload).eq('id', activity!.id).select().single();
+                             if (result.error) throw result.error;
+                             if (!result.data) throw new Error('No saved activity was returned. Reload before retrying.');
+                             data = result.data as Activity;
+                         }
+                         activitiesToSave[i] = data;
+                         persisted.push(data);
                          
                          const metadata = mode === 'details' ? undefined : getMonetaryChanges(activity, sanitizedPayload, 'Activity');
                          logAction(`Updated ${act.type}`, act.name, undefined, act.type, String(activity!.id), metadata);
                          
                          // Sync obligations for updated activity
-                         if (mode !== 'details') {
-                             await syncActivityObligations(activity!.id, act.expenses);
-                             await syncActivityDisbursements(activity!.id, act.expenses);
+                         if (mode === 'accomplishment') {
+                             const obligationIds = getChangedActivityActualIds(initialActivity.expenses, formData.expenses, 'obligation');
+                             const disbursementIds = getChangedActivityActualIds(initialActivity.expenses, formData.expenses, 'disbursement');
+                             await syncActivityObligations(activity!.id, data.expenses.filter(row => obligationIds.has(String(row.id))));
+                             await syncActivityDisbursements(activity!.id, data.expenses.filter(row => disbursementIds.has(String(row.id))));
                          }
+                         if (mode === 'expenses') await persistExpenseAdjustmentHistory(data);
                     }
                     
                     // IPO History Log
@@ -980,38 +796,39 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     const syncActivityDisbursements = async (parentId: number, expenses: ActivityExpense[]) => {
         if (!supabase) return;
-        const entityType = 'activity_expense';
-        
-        await supabase.from('financial_disbursements').delete().eq('entity_type', entityType).eq('parent_id', parentId);
-        
-        const syncPayload: any[] = [];
-        expenses.forEach(exp => {
-            if (exp.disbursements && exp.disbursements.length > 0) {
-                const latestDb = [...exp.disbursements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-                exp.actualDisbursementAmount = exp.disbursements.reduce((sum, d) => sum + (d.amount || 0), 0);
-                exp.actualDisbursementDate = latestDb.date;
-
-                exp.disbursements.forEach(d => {
-                    syncPayload.push({
-                        entity_type: entityType,
-                        parent_id: parentId,
-                        item_id: exp.id?.toString() || null,
-                        disbursement_date: d.date,
-                        amount: d.amount || 0,
-                        remarks: d.remarks || ''
-                    });
-                });
-            }
-        });
-
-        if (syncPayload.length > 0) {
-            await supabase.from('financial_disbursements').insert(syncPayload);
+        for (const exp of expenses) {
+            const { error: deleteError } = await supabase.from('financial_disbursements').delete()
+                .eq('entity_type', 'activity_expense').eq('parent_id', parentId).eq('item_id', String(exp.id));
+            if (deleteError) throw deleteError;
+            const records = exp.disbursements || [];
+            if (!records.length) continue;
+            const { error } = await supabase.from('financial_disbursements').insert(records.map(row => ({
+                entity_type: 'activity_expense', parent_id: parentId, item_id: String(exp.id),
+                disbursement_date: row.date, amount: row.amount || 0, remarks: row.remarks || '',
+            })));
+            if (error) throw error;
+        }
+    };
+    const persistExpenseAdjustmentHistory = async (saved: Activity) => {
+        for (const row of saved.expenses) {
+            const before = budgetBaseline.current.expenses.find(item => item.id === row.id);
+            const intended = formData.expenses.find(item => item.id === row.id);
+            if (!intended || JSON.stringify(before) === JSON.stringify(intended)) continue;
+            if (JSON.stringify(before) === JSON.stringify(row)) continue;
+            if (![before?.isCancelled, before?.isSavings, before?.isRealignment, row.isCancelled, row.isSavings, row.isRealignment].some(Boolean)) continue;
+            await writeBudgetItemAdjustmentHistory({
+                sourceType: 'activity_expense', parentId: saved.id, itemId: row.id,
+                action: !before ? 'create_adjustment_item' : row.isCancelled ? 'cancel' : row.isRealignment ? 'tag_realignment' : row.isSavings ? 'tag_savings' : before.isCancelled ? 'restore' : 'clear_tag',
+                beforeSnapshot: before || null, afterSnapshot: row,
+                reason: row.adjustmentReason || 'Updated expense adjustment.', currentUser,
+            });
         }
     };
 
-    const TabButton = ({ name, label }: { name: any, label: string }) => (
-        <button type="button" onClick={() => setActiveTab(name)} className={`data-tab ${activeTab === name ? 'is-active' : ''}`}>{label}</button>
-    );
+    const changeTab = (name: 'details' | 'expenses') => {
+        if (budgetDraftPending) { alert('Apply or discard the expense schedule draft before changing tabs.'); return; }
+        setActiveTab(name);
+    };
 
     return (
         <div className="form-page animate-fadeIn">
@@ -1024,7 +841,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             </div>
 
             <form onSubmit={handleSubmit} className="form-card">
-                <fieldset className="activity-form-save-boundary" disabled={isSaving}>
+                <fieldset className="activity-form-save-boundary" disabled={isSaving || actualsLoading}>
                 {monthLockMessage && (
                     <div className="notice notice--warning" role="status">
                         {monthLockMessage}
@@ -1035,8 +852,8 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 {mode === 'create' && (
                     <div className="data-tabs">
                         <div className="data-tabs__nav">
-                            <button type="button" onClick={() => setActiveTab('details')} className={`data-tab ${activeTab === 'details' ? 'is-active' : ''}`}>Basic Info</button>
-                            <button type="button" onClick={() => setActiveTab('expenses')} className={`data-tab ${activeTab === 'expenses' ? 'is-active' : ''}`}>Expenses</button>
+                            <button type="button" onClick={() => changeTab('details')} className={`data-tab ${activeTab === 'details' ? 'is-active' : ''}`}>Basic Info</button>
+                            <button type="button" onClick={() => changeTab('expenses')} className={`data-tab ${activeTab === 'expenses' ? 'is-active' : ''}`}>Expenses</button>
                         </div>
                     </div>
                 )}
@@ -1227,155 +1044,9 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 {((mode === 'create' && activeTab === 'expenses') || mode === 'expenses') && (
                      <fieldset className="form-fieldset" disabled={isDetailsLocked}>
                         <legend className="form-legend">Expenses</legend>
-                        <div className="mb-4 budget-item-list">
-                            {formData.expenses.map((exp, idx) => (
-                                <div key={idx} className={`budget-item-card ${editingExpenseId === exp.id ? 'budget-item-card--editing' : ''} ${isBudgetLineExcludedFromTargets(exp) ? 'budget-item-card--excluded' : ''} ${exp.isCancelled ? 'budget-item-card--cancelled' : ''} ${exp.isRealignment ? 'budget-item-card--realignment' : ''} ${exp.isSavings ? 'budget-item-card--savings' : ''}`}>
-                                    <div className="budget-item-card__summary">
-                                        <span className="budget-item-card__title">
-                                            {exp.expenseParticular || 'Unspecified expense'}
-                                            {getBudgetLineTag(exp) && <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(exp)?.toLowerCase()} ml-2`}>{getBudgetLineTag(exp)}</span>}
-                                        </span>
-                                        <div className="budget-item-card__meta">
-                                            <div>
-                                                {exp.uacsCode || 'No UACS code'}
-                                                {getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode) && (
-                                                    <> - {getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}</>
-                                                )}
-                                            </div>
-                                            <span className="block mt-1">
-                                                Obligation: {formatActivityMonthYear(exp.obligationMonth)} | Disbursement: {formatActivityMonthYear(exp.disbursementMonth)}
-                                            </span>
-                                        </div>
-                                        {isBudgetLineExcludedFromTargets(exp) && <span className="budget-line-exclusion-note">{exp.adjustmentReason || 'No adjustment justification recorded.'}</span>}
-                                    </div>
-                                    {!isDetailsLocked && (
-                                        <div className="budget-item-card__actions">
-                                            <span className="budget-item-card__total">{formatCurrency(getBudgetLineAmount(exp))}</span>
-                                            <div className="budget-item-card__buttons">
-                                                <button type="button" onClick={() => handleEditExpense(exp)} className="table-action table-action--primary" title="Edit expense" aria-label="Edit expense">
-                                                    <Pencil className="btn-symbol" aria-hidden="true" />
-                                                </button>
-                                                <button type="button" onClick={() => handleRemoveExpense(exp)} className="table-action table-action--danger" title="Remove expense" aria-label="Remove expense">
-                                                    <Trash2 className="btn-symbol" aria-hidden="true" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                        
-                        {!isDetailsLocked && (
-                            <div className="form-subsection">
-                                <h4 className="form-section__title">{editingExpenseId !== null ? 'Update Expense' : 'Add New Expense'}</h4>
-                                <div className="form-grid form-grid--compact form-grid--align-end">
-                                    {/* Row 1: UACS Selection */}
-                                    <div><label className="form-label form-label--compact">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                    <div><label className="form-label form-label--compact">Particular</label><select name="expenseParticular" value={currentExpense.expenseParticular} onChange={handleExpenseChange} className={commonInputClasses}><option value="">Select</option>{uacsCodes[currentExpense.objectType] && Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                    <div>
-                                        <label className="form-label form-label--compact">UACS Code</label>
-                                        <input 
-                                            type="text"
-                                            name="uacsCode" 
-                                            value={currentExpense.uacsCode} 
-                                            onChange={handleExpenseChange} 
-                                            list="uacs-codes-list-activity-edit"
-                                            placeholder="Search UACS..."
-                                            className={commonInputClasses}
-                                        />
-                                        <datalist id="uacs-codes-list-activity-edit">
-                                            {availableUacsCodes.map((item) => (
-                                                <option key={item.code} value={item.code}>{item.code} - {item.desc}</option>
-                                            ))}
-                                        </datalist>
-                                        {currentExpense.uacsCode && availableUacsCodes.find(c => c.code === currentExpense.uacsCode)?.desc && (
-                                            <p className="form-help">{availableUacsCodes.find(c => c.code === currentExpense.uacsCode)?.desc}</p>
-                                        )}
-                                    </div>
-                                    
-                                    {/* Row 2: Financial Details */}
-                                    <div>
-                                        <label className="form-label form-label--compact">Obligation Month</label>
-                                        <MonthYearPicker
-                                            value={currentExpense.obligationMonth}
-                                            onChange={(val) => setCurrentExpense(prev => ({ ...prev, obligationMonth: val }))}
-                                            placeholder="Select month"
-                                            defaultYear={formData.fundingYear}
-                                            className="h-9"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="form-label form-label--compact">Disbursement Month</label>
-                                        <MonthYearPicker
-                                            value={currentExpense.disbursementMonth}
-                                            onChange={(val) => setCurrentExpense(prev => ({ ...prev, disbursementMonth: val }))}
-                                            placeholder="Select month"
-                                            defaultYear={formData.fundingYear}
-                                            className="h-9"
-                                        />
-                                    </div>
-                                    <div><label className="form-label form-label--compact">Amount</label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={commonInputClasses} /></div>
-                                    <div className="md:col-span-3 budget-line-adjustment-options">
-                                        {editingExpenseId !== null && (
-                                            <label className="form-check">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={currentExpense.isCancelled}
-                                                    onChange={e => setCurrentExpense(prev => ({
-                                                        ...prev,
-                                                        isCancelled: e.target.checked,
-                                                        isRealignment: e.target.checked ? false : prev.isRealignment,
-                                                        isSavings: e.target.checked ? false : prev.isSavings,
-                                                    }))}
-                                                    className="form-checkbox"
-                                                />
-                                                Cancelled
-                                            </label>
-                                        )}
-                                        <label className="form-check">
-                                            <input
-                                                type="checkbox"
-                                                checked={currentExpense.isRealignment}
-                                                onChange={e => setCurrentExpense(prev => ({
-                                                    ...prev,
-                                                    isRealignment: e.target.checked,
-                                                    isCancelled: e.target.checked ? false : prev.isCancelled,
-                                                    isSavings: e.target.checked ? false : prev.isSavings,
-                                                }))}
-                                                className="form-checkbox"
-                                            />
-                                            Realignment
-                                        </label>
-                                        <label className="form-check">
-                                            <input
-                                                type="checkbox"
-                                                checked={currentExpense.isSavings}
-                                                onChange={e => setCurrentExpense(prev => ({
-                                                    ...prev,
-                                                    isSavings: e.target.checked,
-                                                    isCancelled: e.target.checked ? false : prev.isCancelled,
-                                                    isRealignment: e.target.checked ? false : prev.isRealignment,
-                                                }))}
-                                                className="form-checkbox"
-                                            />
-                                            Savings
-                                        </label>
-                                        {(currentExpense.isCancelled || currentExpense.isRealignment || currentExpense.isSavings) && (
-                                            <input type="text" name="adjustmentReason" value={currentExpense.adjustmentReason} onChange={handleExpenseChange} placeholder="Reason for this adjustment" className={`${commonInputClasses} budget-line-adjustment-options__reason`} />
-                                        )}
-                                    </div>
-                                
-                                    <div className="form-field--full form-action-row">
-                                        {editingExpenseId !== null && (
-                                            <button type="button" onClick={handleCancelEditExpense} className="btn btn-secondary">Cancel</button>
-                                        )}
-                                        <button type="button" onClick={handleAddExpense} className="btn btn-primary">
-                                            {editingExpenseId !== null ? 'Update Expense' : 'Add Expense'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                        <ActivityBudgetEditor items={formData.expenses} parent={formData} uacsCodes={uacsCodes}
+                            disabled={isDetailsLocked || isSaving} onApply={handleApplyExpenses} onRemove={handleRemoveExpense}
+                            onDraftChange={setBudgetDraftPending} />
                         <div className="budget-adjustment-summary">
                             <div className="budget-adjustment-summary__header">
                                 <h4>Expense Calculator</h4>
@@ -1485,10 +1156,10 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 )}
 
                 <div className="form-footer">
-                    <button type="button" onClick={onBack} className="btn btn-secondary" disabled={isSaving}>
+                    <button type="button" onClick={leaveForm} className="btn btn-secondary" disabled={isSaving || actualsLoading}>
                         Cancel
                     </button>
-                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                    <button type="submit" className="btn btn-primary" disabled={isSaving || actualsLoading}>
                         {isSaving ? 'Saving...' : mode === 'create' ? 'Create Activity' : 'Save Changes'}
                     </button>
                 </div>
