@@ -28242,6 +28242,28 @@ button.lod-table-state:hover {
 .activity-budget-editor .subproject-budget-editor__draft-scroll table { min-width: 900px; }
 .activity-budget-editor .data-table__actions { flex-wrap: nowrap; }
 .activity-budget-editor .subproject-budget-editor__scroll td[rowspan] { vertical-align: top; }
+.activity-supplemental-modal { width: min(1400px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; }
+.activity-supplemental-modal .modal-card__header,
+.activity-supplemental-modal .modal-card__footer { flex: 0 0 auto; }
+.activity-supplemental-modal .modal-card__header h2 { font-size: 1.125rem; font-weight: 600; margin: 0; }
+.activity-supplemental-body { min-height: 0; overflow-y: auto; padding: 1.25rem; }
+.activity-supplemental-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 1rem; }
+.activity-supplemental-table { margin-top: 1rem; max-height: 420px; }
+.activity-supplemental-table table { min-width: 1450px; }
+.activity-supplemental-table th, .activity-supplemental-table td { white-space: nowrap; }
+.activity-supplemental-table th { text-align: center; }
+.activity-supplemental-table td[title] { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.activity-supplemental-section .record-detail-kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.activity-supplemental-section .record-detail-kpi__label,
+.activity-supplemental-section .record-detail-kpi__value { letter-spacing: 0; }
+@media (max-width: 960px) {
+  .activity-supplemental-section .record-detail-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .activity-supplemental-modal { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .activity-supplemental-body { padding: 0.75rem; }
+  .activity-supplemental-modal .modal-card__footer { flex-wrap: wrap; }
+}
 @media (max-width: 900px) {
   .subproject-budget-editor__draft .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

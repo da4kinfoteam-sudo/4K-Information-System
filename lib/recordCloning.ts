@@ -1,4 +1,5 @@
 import { remapActivityExpenseGroups } from './activityBudgetSchedules';
+import { isSupplementalExpense } from './activitySupplementalBudget';
 import type { Activity, ActivityExpense, Subproject, SubprojectDetail } from '../constants';
 import { normalizeActivityTitle } from './activityTitles';
 import { remapClonedBudgetGroups } from './subprojectBudgetSchedules';
@@ -28,6 +29,7 @@ const createCloneBase = <T extends Activity | Subproject>(source: T, context: Cl
         physical_accomplishment_submitted_at, budgetItemTransferId,
         isTransferTargetExcluded, ...planned
     } = structuredClone(source);
+    delete (planned as Partial<Activity>).original_budget_snapshot;
     return {
         ...planned,
         status: 'Proposed' as const,
@@ -65,12 +67,20 @@ export const buildActivityClonePayload = (source: Activity, context: CloneContex
         ...createCloneBase(source, context),
         uid: createCloneUid(source.type === 'Training' ? 'TRN' : 'ACT', context.createdAt),
         activity_title: normalizeActivityTitle(source.activity_title),
+        isSavings: false,
+        isRealignment: false,
         actualDate: undefined,
         actualEndDate: undefined,
         actualParticipantsMale: 0,
         actualParticipantsFemale: 0,
         newTargetDate: undefined,
-        expenses: remapActivityExpenseGroups(source.expenses || []).map(line => cloneFinancialLine(line, reservedIds)),
+        expenses: remapActivityExpenseGroups(source.expenses || []).map(line => {
+            const clone = cloneFinancialLine(line, reservedIds);
+            if (!isSupplementalExpense(line, source)) return clone;
+            const { supplementUid, supplementRevisionPending, ...draft } = clone;
+            return { ...draft, fundingOrigin: 'SupplementalDraft' as const, supplementStatus: 'DRAFT' as const,
+                supplementalSource: line.supplementalSource || (line.isSavings || source.isSavings ? 'Savings' as const : 'Realignment' as const) };
+        }),
     };
 };
 

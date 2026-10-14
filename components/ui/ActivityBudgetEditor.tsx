@@ -16,10 +16,12 @@ export const ActivityBudgetEditor: React.FC<ActivityBudgetReferences & {
     items: ActivityExpense[];
     parent: Partial<Activity>;
     disabled?: boolean;
+    showAdjustmentTags?: boolean;
+    includeSupplementalAmounts?: boolean;
     onApply: (rows: ActivityExpense[]) => void;
     onRemove: (row: ActivityExpense) => void;
     onDraftChange: (pending: boolean) => void;
-}> = ({ items, parent, uacsCodes, disabled = false, onApply, onRemove, onDraftChange }) => {
+}> = ({ items, parent, uacsCodes, disabled = false, showAdjustmentTags = true, includeSupplementalAmounts = false, onApply, onRemove, onDraftChange }) => {
     const [draft, setDraft] = useState<Draft | null>(null);
     const [error, setError] = useState('');
     const groups = useMemo(() => groupActivityExpenses(items), [items]);
@@ -57,7 +59,7 @@ export const ActivityBudgetEditor: React.FC<ActivityBudgetReferences & {
         if (issue) { setError(issue); return; }
         onApply(rows); setDraft(null); setError('');
     };
-    const total = (rows: ActivityExpense[]) => rows.reduce((sum, row) => sum + (isBudgetLineExcludedFromTargets(row) || isParentExcludedFromTargets(parent) ? 0 : getBudgetLineAmount(row)), 0);
+    const total = (rows: ActivityExpense[]) => rows.reduce((sum, row) => sum + ((includeSupplementalAmounts ? row.isCancelled : isBudgetLineExcludedFromTargets(row) || isParentExcludedFromTargets(parent)) ? 0 : getBudgetLineAmount(row)), 0);
     const shared = draft?.shared;
     const options = shared ? getUacsOptions({ uacsCodes, particularTypes: {} }, shared.objectType, shared.expenseParticular) : [];
     return <div className="subproject-budget-editor activity-budget-editor">
@@ -87,12 +89,12 @@ export const ActivityBudgetEditor: React.FC<ActivityBudgetReferences & {
                     setDraft(previous => previous && ({ ...previous, shared: { ...previous.shared, objectType, expenseParticular, uacsCode } }));
                 }} />
             </div>
-            <div className="subproject-budget-editor__draft-scroll"><table className="data-table"><thead><tr><th>Obligation Month</th><th>Disbursement Month</th><th>Amount</th><th>Tag</th><th>Reason</th><th>Actions</th></tr></thead><tbody>{draft.rows.map(row => <tr key={row.id}>
+            <div className="subproject-budget-editor__draft-scroll"><table className="data-table"><thead><tr><th>Obligation Month</th><th>Disbursement Month</th><th>Amount</th>{showAdjustmentTags && <><th>Tag</th><th>Reason</th></>}<th>Actions</th></tr></thead><tbody>{draft.rows.map(row => <tr key={row.id}>
                 <td><MonthYearPicker ariaLabel={`Obligation month ${row.id}`} value={row.obligationMonth} defaultYear={parent.fundingYear} onChange={value => updateRow(row.id, { obligationMonth: value })} /></td>
                 <td><MonthYearPicker ariaLabel={`Disbursement month ${row.id}`} value={row.disbursementMonth} defaultYear={parent.fundingYear} onChange={value => updateRow(row.id, { disbursementMonth: value })} /></td>
                 <td><input aria-label={`Amount ${row.id}`} className="form-control form-control--compact" type="number" min="0.01" step="0.01" value={Number.isFinite(row.amount) ? row.amount : ''} onChange={event => updateRow(row.id, { amount: event.target.value === '' ? NaN : Number(event.target.value) })} /></td>
-                <td><select aria-label={`Tag ${row.id}`} className="form-control form-control--compact" value={getBudgetLineTag(row) || ''} onChange={event => updateRow(row.id, { isCancelled: event.target.value === 'Cancelled', isRealignment: event.target.value === 'Realignment', isSavings: event.target.value === 'Savings' })}><option value="" />{items.some(item => item.id === row.id) && <option>Cancelled</option>}<option>Realignment</option><option>Savings</option></select></td>
-                <td><input aria-label={`Reason ${row.id}`} className="form-control form-control--compact" value={row.adjustmentReason || ''} onChange={event => updateRow(row.id, { adjustmentReason: event.target.value })} /></td>
+                {showAdjustmentTags && <><td><select aria-label={`Tag ${row.id}`} className="form-control form-control--compact" value={getBudgetLineTag(row) || ''} onChange={event => updateRow(row.id, { isCancelled: event.target.value === 'Cancelled', isRealignment: event.target.value === 'Realignment', isSavings: event.target.value === 'Savings' })}><option value="" />{items.some(item => item.id === row.id) && <option>Cancelled</option>}<option>Realignment</option><option>Savings</option></select></td>
+                <td><input aria-label={`Reason ${row.id}`} className="form-control form-control--compact" value={row.adjustmentReason || ''} onChange={event => updateRow(row.id, { adjustmentReason: event.target.value })} /></td></>}
                 <td>{!items.some(item => item.id === row.id) && <button type="button" className="table-action table-action--danger" title="Remove draft schedule" aria-label={`Remove draft schedule ${row.id}`} onClick={() => setDraft(previous => previous && ({ ...previous, rows: previous.rows.filter(item => item.id !== row.id) }))}><Trash2 /></button>}</td>
             </tr>)}</tbody></table></div>
             {error && <p className="form-error" role="alert">{error}</p>}

@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
 import { formatCurrency, getObjectTypeByCode, ReportExcelRequest, ReportPrintRequest, withReportYearLabel } from './ReportUtils';
-import { getBudgetLineAmount } from '../../lib/budgetLineAdjustments';
+import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 
 interface BPFormsReportProps {
     data: {
@@ -229,6 +229,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         
         data.trainings.forEach(t => {
             t.expenses.forEach(e => {
+                if (isBudgetLineExcludedFromTargets(e)) return;
                 addLineItem({
                     component: t.component, packageType: t.component === 'Program Management' ? 'Activities' : undefined, activityName: t.name,
                     objectType: e.objectType, uacsCode: e.uacsCode, amount: getBudgetLineAmount(e),
@@ -243,6 +244,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         
         data.otherActivities.forEach(oa => {
             oa.expenses.forEach(e => {
+                if (isBudgetLineExcludedFromTargets(e)) return;
                 const packageType = oa.component === 'Program Management' ? 'Activities' : undefined;
                 addLineItem({
                     component: oa.component, packageType, activityName: oa.name,

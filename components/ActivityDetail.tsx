@@ -1,3 +1,5 @@
+import { ActivitySupplementalSection } from './ui/ActivitySupplementalSection';
+import { getActivityBudgetSummary, isOriginalActivityBudgetLocked, isSupplementalExpense, isActivityExpenseActualEligible } from '../lib/activitySupplementalBudget';
 import { groupActivityExpenses } from '../lib/activityBudgetSchedules';
 
 import { getActivityDisplayTitle } from '../lib/activityTitles';
@@ -207,7 +209,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     });
     const accomplishmentDecision = physicalAccomplishmentDecision.allowed ? physicalAccomplishmentDecision : financialAccomplishmentDecision;
     const canEditDetails = detailsDecision.allowed;
-    const canEditExpenses = expensesDecision.allowed;
+    const canEditExpenses = expensesDecision.allowed && !isOriginalActivityBudgetLocked(activity);
     const transferPermission = canTransferBudgetItems(currentUser?.role, 'Activities', rolesConfigs, currentUser?.permissions_override);
     const canStartBudgetTransfer = !!currentUser && transferPermission && canEdit
         && activity.status !== 'Cancelled'
@@ -269,18 +271,10 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
             : eligibleTransferLines.map(line => String(line.id)));
     };
 
-    const totalBudget = useMemo(() => {
-       if (activity.isTransferTargetExcluded) return 0;
-       return activity.expenses.reduce((acc, item) => acc + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)), 0);
-    }, [activity.expenses, activity.isTransferTargetExcluded]);
-    const totalObligated = useMemo(
-        () => activity.expenses.reduce((total, expense) => total + getActualObligationSummary(expense).amount, 0),
-        [activity.expenses]
-    );
-    const totalDisbursed = useMemo(
-        () => activity.expenses.reduce((total, expense) => total + getActualDisbursementSummary(expense).amount, 0),
-        [activity.expenses]
-    );
+    const budgetSummary = getActivityBudgetSummary(activity);
+    const totalBudget = budgetSummary.target;
+    const totalObligated = budgetSummary.obligated;
+    const totalDisbursed = budgetSummary.disbursed;
     const targetParticipantCount = activity.isTransferTargetExcluded ? 0 : (activity.participantsMale || 0) + (activity.participantsFemale || 0);
     const actualParticipantCount = (activity.actualParticipantsMale || 0) + (activity.actualParticipantsFemale || 0);
     const monitoringReference = useMemo(() => referenceActivities.find(ref =>
@@ -502,8 +496,9 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
 
             <RecordKpiGrid aria-label="Activity overview statistics">
                 <RecordKpiCard label="Target Budget" value={formatRecordMetricCurrency(totalBudget)} title={formatCurrency(totalBudget)} note="Active target budget" icon={<Wallet />} />
-                <RecordKpiCard label="Obligated" value={formatRecordMetricCurrency(totalObligated)} title={formatCurrency(totalObligated)} note={`${totalBudget > 0 ? Math.round((totalObligated / totalBudget) * 100) : 0}% of target`} icon={<Landmark />} />
-                <RecordKpiCard label="Disbursed" value={formatRecordMetricCurrency(totalDisbursed)} title={formatCurrency(totalDisbursed)} note={`${totalBudget > 0 ? Math.round((totalDisbursed / totalBudget) * 100) : 0}% of target`} icon={<Banknote />} />
+                <RecordKpiCard label="Supplemental Budget" value={formatRecordMetricCurrency(budgetSummary.supplemental)} title={formatCurrency(budgetSummary.supplemental)} icon={<Wallet />} />
+                <RecordKpiCard label="Obligated" value={formatRecordMetricCurrency(totalObligated)} title={formatCurrency(totalObligated)} note={`${budgetSummary.current > 0 ? Math.round((totalObligated / budgetSummary.current) * 100) : 0}% of active budget`} icon={<Landmark />} />
+                <RecordKpiCard label="Disbursed" value={formatRecordMetricCurrency(totalDisbursed)} title={formatCurrency(totalDisbursed)} note={`${budgetSummary.current > 0 ? Math.round((totalDisbursed / budgetSummary.current) * 100) : 0}% of active budget`} icon={<Banknote />} />
                 <RecordKpiCard label="Target Participants" value={formatRecordMetricNumber(targetParticipantCount)} title={targetParticipantCount.toLocaleString()} note={`M: ${activity.participantsMale || 0} · F: ${activity.participantsFemale || 0}`} icon={<Users />} />
                 <RecordKpiCard label="Actual Participants" value={formatRecordMetricNumber(actualParticipantCount)} title={actualParticipantCount.toLocaleString()} note={`M: ${activity.actualParticipantsMale || 0} · F: ${activity.actualParticipantsFemale || 0}`} icon={<UserCheck />} />
                 <RecordKpiCard label="Participating IPOs" value={formatRecordMetricNumber(participatingIpos.length)} title={participatingIpos.length.toLocaleString()} note="Linked organizations" icon={<Users />} />
@@ -618,8 +613,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {activity.expenses.length > 0 ? (
-                                        groupActivityExpenses(activity.expenses).flatMap(group => group.rows.map((exp, index) => (
+                                    {activity.expenses.some(row => !isSupplementalExpense(row,activity)) ? (
+                                        groupActivityExpenses(activity.expenses.filter(row => !isSupplementalExpense(row,activity))).flatMap(group => group.rows.map((exp, index) => (
                                             <tr key={exp.id} className={`${isBudgetLineExcludedFromTargets(exp) ? 'budget-item-card--excluded' : ''} ${exp.isCancelled ? 'budget-item-card--cancelled' : ''} ${exp.isRealignment ? 'budget-item-card--realignment' : ''} ${exp.isSavings ? 'budget-item-card--savings' : ''}`}>
                                                 {canStartBudgetTransfer && <td className="data-table__cell--selection"><input type="checkbox" className="form-checkbox" aria-label={`Select ${exp.expenseParticular} for transfer`} checked={selectedTransferItemIds.includes(String(exp.id))} disabled={!eligibleTransferIds.has(String(exp.id))} onChange={() => toggleTransferItem(String(exp.id))} /></td>}
                                                 {index === 0 && <td className="data-table__primary" rowSpan={group.rows.length} title={exp.expenseParticular}>
@@ -655,6 +650,9 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                             </table>
                         </div>
                     </RecordPanel>
+
+                    <ActivitySupplementalSection activity={activity} uacsCodes={uacsCodes} onUpdate={onUpdateActivity}
+                        transferSelection={canStartBudgetTransfer ? { selectedIds: selectedTransferItemIds, eligibleIds: eligibleTransferIds, onToggle: toggleTransferItem, onTransfer: () => setTransferDialogOpen(true) } : undefined} />
 
                     {/* NEW: Accomplishment Report Section */}
                     <RecordPanel
@@ -705,7 +703,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {activity.expenses.map(exp => {
+                                                {activity.expenses.filter(isActivityExpenseActualEligible).map(exp => {
                                                     const obligationSummary = getActualObligationSummary(exp);
                                                     const disbursementSummary = getActualDisbursementSummary(exp);
 

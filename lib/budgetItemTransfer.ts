@@ -1,4 +1,5 @@
 import type { Activity, ActivityExpense, RoleConfig, Subproject, SubprojectDetail } from '../constants';
+import { isNewSupplementalExpense, isActivityExpenseActualEligible } from './activitySupplementalBudget';
 import { supabase } from '../supabaseClient';
 import type { BudgetTransferSourceType, ParentActualAllocation } from './budgetItemTransferRules';
 export {
@@ -21,7 +22,8 @@ export const getTransferEligibleLines = (
     const lines = sourceType === 'subproject'
         ? (record as Subproject).details || []
         : (record as Activity).expenses || [];
-    return lines.filter(line => !line.isCancelled && !('isSuperseded' in line && line.isSuperseded));
+    return lines.filter(line => !line.isCancelled && !('isSuperseded' in line && line.isSuperseded)
+        && (!isNewSupplementalExpense(line as ActivityExpense) || (isActivityExpenseActualEligible(line as ActivityExpense) && !(line as ActivityExpense).supplementRevisionPending)));
 };
 
 export const canTransferBudgetItems = (

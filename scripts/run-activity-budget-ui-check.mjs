@@ -110,8 +110,7 @@ try {
  await draft.getByRole('button',{name:/Obligation month/}).click();await page.getByRole('button',{name:'Jan 2026',exact:true}).click();
  await draft.getByRole('button',{name:/Disbursement month/}).click();await page.getByRole('button',{name:'Mar 2026',exact:true}).click();
  await draft.getByRole('spinbutton').fill('2500');
- await draft.getByRole('combobox',{name:/Tag/}).selectOption('Savings');
- await draft.getByRole('textbox',{name:/Reason/}).fill('Fixture savings');
+ assert.equal(await draft.getByRole('combobox',{name:/Tag/}).count(),0);
  await page.getByRole('button',{name:'Basic Info',exact:true}).click();
  assert.equal(await page.locator('.subproject-budget-editor__draft').count(),1);
  await page.getByRole('button',{name:'Apply',exact:true}).click();
@@ -121,7 +120,7 @@ try {
  await page.getByRole('button',{name:'Create Activity',exact:true}).click();
  await page.waitForFunction(()=>window.fixture.saved.length===1);
  f=await page.evaluate(()=>window.fixture);
- assert.equal(f.saved[0].expenses.length,1);assert.equal(f.saved[0].expenses[0].isSavings,true);
+ assert.equal(f.saved[0].expenses.length,1);assert.equal(!!f.saved[0].expenses[0].isSavings,false);
  assert.equal(f.financialWrites,0);assert.equal(f.writes.length,1);
  await page.evaluate(()=>window.loadFixture('expenses',{type:'Training',name:'Specific Training',reference_activity_id:2}));
  await page.getByRole('button',{name:'Edit schedule 1',exact:true}).click();
