@@ -6616,6 +6616,23 @@ button.bar1-drilldown-card:focus-visible {
   padding: 1rem;
 }
 
+:is(.data-table-card, .dashboard-panel).data-table-card--seamless {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.data-table-card--seamless > .data-table-scroll {
+  border: 0;
+  border-top: 1px solid var(--app-border);
+  border-radius: 0;
+}
+
+.data-table-card--seamless > .data-table-pagination {
+  margin: 0;
+  padding: 0.625rem 0.75rem;
+}
+
 .data-table-toolbar {
   border-bottom: 1px solid var(--app-border);
   display: grid;
@@ -22307,6 +22324,28 @@ button.bar1-drilldown-card:focus-visible {
 .gad-dashboard-classification-filter { display: grid; gap: 0.25rem; min-width: min(100%, 15rem); }
 .gad-dashboard-classification-filter > span { color: var(--app-text-muted); font-size: var(--font-size-label); font-weight: var(--font-weight-semibold); }
 .gad-dashboard-kpis { display: grid; gap: 0.75rem; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.gad-membership { display: grid; gap: 1rem; min-width: 0; }
+.gad-membership .gad-membership-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.gad-membership-kpis .gad-dashboard-kpi strong { font-size: 1.85rem; }
+.gad-membership-chart__body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(14rem, 1fr); gap: 1rem; align-items: center; }
+.gad-membership-chart__plot { min-width: 0; width: 100%; max-width: 36rem; justify-self: center; }
+.gad-membership-chart__legend { display: grid; gap: .75rem; max-width: 32rem; }
+.gad-membership-sex { display: grid; grid-template-columns: .75rem minmax(0, 1fr) auto auto; align-items: center; gap: .75rem; min-height: 44px; padding: .5rem; background: transparent; border: 1px solid var(--app-border); border-radius: 4px; color: inherit; font: inherit; text-align: left; }
+.gad-membership-swatch { width: .75rem; height: .75rem; }
+.gad-membership-chart__selection { min-height: 1.5rem; font-size: var(--font-size-label); }
+.gad-membership .gad-membership-table { min-width: 94rem; }
+.gad-membership-table th:first-child, .gad-membership-table td:first-child { width: 22rem; min-width: 22rem; }
+.gad-membership-table th:last-child, .gad-membership-table td:last-child { text-align: left; }
+.gad-membership-table th:nth-child(3), .gad-membership-table td:nth-child(3) { text-align: right; }
+.gad-membership-table tfoot td { border-top: 1px solid var(--app-border); font-weight: var(--font-weight-semibold); }
+.gad-membership-name { display: inline-block; vertical-align: middle; max-width: 20rem; }
+.gad-membership-name, .gad-membership-name .table-action-link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gad-membership-name .table-action-link { max-width: 100%; display: inline-block; vertical-align: middle; }
+@media (max-width: 760px) {
+  .gad-membership .gad-membership-kpis, .gad-membership-chart__body { grid-template-columns: minmax(0, 1fr); }
+  .gad-membership-kpis .gad-dashboard-kpi strong { font-size: 1.35rem; }
+  .gad-membership-chart__legend { max-width: none; }
+}
 .gad-dashboard-kpi { display: grid; gap: 0.35rem; min-height: 7.5rem; min-width: 0; padding: 0.9rem; }
 .gad-dashboard-kpi__heading { align-items: center; color: var(--app-text-muted); display: flex; font-size: var(--font-size-caption); font-weight: var(--font-weight-bold); gap: 0.5rem; justify-content: space-between; text-transform: uppercase; }
 .gad-dashboard-kpi__heading svg { color: var(--brand-primary); height: 1rem; width: 1rem; }
@@ -22333,7 +22372,6 @@ button.bar1-drilldown-card:focus-visible {
 .gad-dashboard-financial__flow > svg { color: var(--brand-primary); height: 1rem; width: 1rem; }
 .gad-dashboard-progress, .gad-dashboard-sex-bars i { background: var(--app-surface-muted); border-radius: 999px; display: block; height: 0.5rem; margin-top: 1rem; overflow: hidden; }
 .gad-dashboard-progress span, .gad-dashboard-sex-bars i b { background: var(--brand-primary); display: block; height: 100%; }
-.gad-dashboard-table-card { overflow: hidden; padding: 0; }
 .gad-dashboard-table-card > h3 { padding: 1rem 1rem 0; }
 .gad-dashboard-table { min-width: 74rem; }
 .gad-dashboard-table th,
@@ -22343,7 +22381,6 @@ button.bar1-drilldown-card:focus-visible {
 .gad-dashboard-table th:nth-child(n + 4),
 .gad-dashboard-table td:nth-child(n + 4) { text-align: right; }
 .gad-dashboard-table th button { background: none; border: 0; color: inherit; cursor: pointer; font: inherit; padding: 0; text-align: inherit; }
-.gad-dashboard-table-card .data-table-pagination { border-top: 1px solid var(--app-border); }
 .gad-dashboard-metric-list, .gad-dashboard-sex-bars { display: grid; gap: 0.65rem; }
 .gad-dashboard-metric-list span, .gad-dashboard-beneficiary-kpis span { align-items: center; border-bottom: 1px solid var(--app-border); color: var(--app-text-muted); display: flex; gap: 0.5rem; justify-content: space-between; padding-bottom: 0.55rem; }
 .gad-dashboard-metric-list b, .gad-dashboard-beneficiary-kpis b, .gad-dashboard-sex-bars strong { color: var(--app-text); }

@@ -1656,6 +1656,8 @@ const AppContent: React.FC = () => {
             const dashboardPage = resolveDashboardPage(routePath, currentUser?.role);
             return <DashboardsPage
                 activePage={dashboardPage.page}
+                programDataLoading={isRouteDataLoading}
+                programDataError={globalRefreshError}
                 subprojects={visibleSubprojects}
                 ipos={ipos}
                 trainings={visibleActivities.filter(a => a.type === 'Training')}
