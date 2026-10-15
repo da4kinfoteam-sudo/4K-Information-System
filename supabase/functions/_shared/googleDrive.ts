@@ -446,7 +446,7 @@ export async function requireGadPimmeEditor(userId: unknown) {
   const override = user.permissions_override?.[GAD_PIMME_DRIVE_MODULE];
   if (override && typeof override.can_edit === "boolean") {
     if (override.can_edit) return user;
-    throw new Error("You do not have permission to manage GAD PIMME evidence files.");
+    throw new Error("You do not have permission to manage GAD PIMME MOVs.");
   }
 
   const { data, error } = await adminClient()
@@ -457,7 +457,7 @@ export async function requireGadPimmeEditor(userId: unknown) {
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (data?.can_edit) return user;
-  throw new Error("You do not have permission to manage GAD PIMME evidence files.");
+  throw new Error("You do not have permission to manage GAD PIMME MOVs.");
 }
 
 export async function requireGadPimmeViewer(userId: unknown) {
@@ -465,13 +465,13 @@ export async function requireGadPimmeViewer(userId: unknown) {
   const override = user.permissions_override?.[GAD_PIMME_DRIVE_MODULE];
   if (override && typeof override.can_view === "boolean") {
     if (override.can_view) return user;
-    throw new Error("You do not have permission to view GAD PIMME evidence files.");
+    throw new Error("You do not have permission to view GAD PIMME MOVs.");
   }
   const { data, error } = await adminClient().from("roles_config").select("can_view")
     .eq("role", user.role).eq("module", GAD_PIMME_DRIVE_MODULE).maybeSingle();
   if (error) throw new Error(error.message);
   if (data?.can_view) return user;
-  throw new Error("You do not have permission to view GAD PIMME evidence files.");
+  throw new Error("You do not have permission to view GAD PIMME MOVs.");
 }
 
 export function getEnvironmentStatus() {
@@ -1983,6 +1983,27 @@ export async function listGadPimmeFiles(operatingUnitInput: unknown, yearInput: 
   return data || [];
 }
 
+export async function listGadPimmeAssessmentMovs(operatingUnitInput: unknown, yearInput: unknown, user: UserRow) {
+  const identity = assertGadPimmeIdentity(operatingUnitInput, yearInput, "box16-1.1");
+  await assertGadPimmeOuAccess(user, identity.operatingUnit);
+  const client = adminClient();
+  const { data: assessment, error } = await client.from("gad_pimme_assessments").select("id")
+    .eq("operating_unit", identity.operatingUnit).eq("year", identity.year).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!assessment) return [];
+  const files = [];
+  // Supabase caps individual result sets; paginate metadata without reading Drive binaries.
+  for (let offset = 0; ; offset += 500) {
+    const { data, error: filesError } = await client.from("gad_pimme_files")
+      .select("id,assessment_id,question_key,file_id,file_name,web_view_link,web_content_link")
+      .eq("assessment_id", assessment.id).is("deleted_at", null)
+      .order("id", { ascending: true }).range(offset, offset + 499);
+    if (filesError) throw new Error(filesError.message);
+    files.push(...(data || []));
+    if (!data || data.length < 500) return files;
+  }
+}
+
 export async function uploadGadPimmeFile(operatingUnitInput: unknown, yearInput: unknown, questionKeyInput: unknown, file: File, user: UserRow) {
   const identity = assertGadPimmeIdentity(operatingUnitInput, yearInput, questionKeyInput);
   await assertGadPimmeOuAccess(user, identity.operatingUnit);
@@ -2021,7 +2042,7 @@ export async function deleteGadPimmeFile(fileRowId: number, user: UserRow) {
   const { data: fileRow, error: fileError } = await supabase.from("gad_pimme_files").select("*,gad_pimme_assessments(operating_unit)")
     .eq("id", fileRowId).is("deleted_at", null).maybeSingle();
   if (fileError) throw new Error(fileError.message);
-  if (!fileRow) throw new Error("GAD PIMME evidence file was not found.");
+  if (!fileRow) throw new Error("GAD PIMME MOV was not found.");
   await assertGadPimmeOuAccess(user, fileRow.gad_pimme_assessments?.operating_unit);
   const { accessToken } = await connectedDrive();
   await deleteDriveFile(accessToken, fileRow.file_id);
