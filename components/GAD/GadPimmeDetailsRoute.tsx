@@ -30,7 +30,7 @@ const GadPimmeDetailsRoute: React.FC<Props> = ({ operatingUnit, year, onBack, on
         return <ErrorState title="GAD PIMME record unavailable" message="The selected Operating Unit or year was not found or is outside your configured visibility scope."
             action={<button type="button" className="btn btn-secondary" onClick={onBack}>Back to Gender and Development</button>} />;
     }
-    return <GadPimmeDetails operatingUnit={operatingUnit!} initialYear={year!} canEdit={access.canEdit} onBack={onBack} onSelectYear={onSelectYear} />;
+    return <GadPimmeDetails key={`${operatingUnit}:${year}`} operatingUnit={operatingUnit!} initialYear={year!} canEdit={access.canEdit} onBack={onBack} onSelectYear={onSelectYear} />;
 };
 
 export default GadPimmeDetailsRoute;

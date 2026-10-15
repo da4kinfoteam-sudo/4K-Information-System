@@ -1,6 +1,7 @@
 import { User } from '../constants';
 import { IPO_DRIVE_FILE_ACCEPT, formatFileSize, isAllowedIpoDriveFile } from './googleDriveStorage';
 import { supabase } from '../supabaseClient';
+import type { GadPimmeExportMov } from './gadPimmeExcel';
 
 export interface GadPimmeEvidenceFile {
     id: number;
@@ -16,6 +17,7 @@ export interface GadPimmeEvidenceFile {
     uploaded_by: number | null;
     uploaded_by_name: string | null;
     uploaded_at: string;
+    deleted_at?: string | null;
 }
 
 export const GAD_PIMME_EVIDENCE_ACCEPT = IPO_DRIVE_FILE_ACCEPT;
@@ -43,15 +45,22 @@ const result = async <T>(data: T | null, error: any): Promise<T> => {
                 if (parseError instanceof Error && parseError.message !== 'Unexpected end of JSON input') throw parseError;
             }
         }
-        throw new Error(error?.message || 'Evidence request failed.');
+        throw new Error(error?.message || 'MOVs request failed.');
     }
-    if (!data) throw new Error('Evidence request returned no data.');
+    if (!data) throw new Error('MOVs request returned no data.');
     return data;
 };
 
 export const listGadPimmeEvidence = async (user: User | null, operatingUnit: string, year: number, questionKey: string) => {
     const { data, error } = await requireClient().functions.invoke<{ files: GadPimmeEvidenceFile[] }>('gad-pimme-files-list', {
         body: { user_id: userId(user), operating_unit: operatingUnit, year, question_key: questionKey },
+    });
+    return (await result(data, error)).files;
+};
+
+export const listGadPimmeAssessmentMovs = async (user: User | null, operatingUnit: string, year: number) => {
+    const { data, error } = await requireClient().functions.invoke<{ files: GadPimmeExportMov[] }>('gad-pimme-files-list', {
+        body: { user_id: userId(user), operating_unit: operatingUnit, year, all_questions: true },
     });
     return (await result(data, error)).files;
 };

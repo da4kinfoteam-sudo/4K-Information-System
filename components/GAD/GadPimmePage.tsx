@@ -7,8 +7,9 @@ import { supabase } from '../../supabaseClient';
 import { getGadPimmeListStatus } from '../../lib/gadPimmeScoring';
 import { getVisibleGadPimmeOperatingUnits } from '../../lib/gadPimmeAccess';
 import { DataTablePagination, LoadingState } from '../ui/enterprise';
+import type { GadPimmeStoredSignatories } from '../../lib/gadPimmeSignatories';
 
-export interface GadPimmeAssessmentRecord {
+export interface GadPimmeAssessmentRecord extends GadPimmeStoredSignatories {
     id: number;
     operating_unit: string;
     year: number;
@@ -73,7 +74,7 @@ const GadPimmePage: React.FC<GadPimmePageProps> = ({ onSelectAssessment }) => {
                 setLoading(false);
                 return;
             }
-            const result = await supabase.from('gad_pimme_assessments').select('*')
+            const result = await supabase.from('gad_pimme_assessments').select('id,operating_unit,year,box16_score,box17_score,total_score,answered_count,status,updated_at')
                 .in('operating_unit', visibleOus).lte('year', currentYear);
             if (cancelled) return;
             if (result.error) setError(result.error.message || 'Unable to load GAD PIMME assessments.');

@@ -12,7 +12,7 @@ Deno.serve(async (request) => {
       file: await uploadGadPimmeFile(form.get("operating_unit"), form.get("year"), form.get("question_key"), file, user)
     });
   } catch (error) {
-    return errorResponse(error instanceof Error ? error.message : "Unable to upload GAD PIMME evidence.", 400);
+    return errorResponse(error instanceof Error ? error.message : "Unable to upload GAD PIMME MOVs.", 400);
   }
 });
 
