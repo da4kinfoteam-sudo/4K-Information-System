@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useDcfPolicy } from '../contexts/DcfPolicyContext';
 import { useLogAction } from './useLogAction';
@@ -121,6 +121,7 @@ export const useDcfPolicyGuard = () => {
     const { currentUser } = useAuth();
     const { policy, serverDate, loading, error } = useDcfPolicy();
     const { logAction } = useLogAction();
+    const overrideReason = useRef('');
 
     const getStatusDecision = useCallback(({
         moduleKey,
@@ -247,6 +248,7 @@ export const useDcfPolicyGuard = () => {
             return false;
         }
         await logOverride(decision, context, reason);
+        if (reason) overrideReason.current = reason;
         return true;
     }, [logOverride, requestOverrideReason]);
 
@@ -262,5 +264,6 @@ export const useDcfPolicyGuard = () => {
         getMonthLockMessage,
         isMonthSelectionAllowed,
         ensureDecisionAllowed,
+        getLastOverrideReason: () => overrideReason.current,
     };
 };

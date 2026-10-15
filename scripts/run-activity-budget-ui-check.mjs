@@ -12,7 +12,18 @@ const screenshots = await mkdtemp(path.join(tmpdir(), '4kis-budget-schedule-ui-'
 const servePreview = process.argv.includes('--serve');
 const mocks = {
     'LocationPicker': `import React from 'react'; export default function LocationPicker({value,onChange}) { return React.createElement('input',{ 'aria-label':'Fixture location',value,onChange:event=>onChange(event.target.value)}); }`,
-    'supabaseClient': `export const supabase = { from(table) { let action = 'read', payload; const filters = []; const q = {
+    'supabaseClient': `const snapshot = activity => ({activity,stages:Object.fromEntries(activity.expenses.map(row=>[String(row.id),Object.fromEntries(['obligation','disbursement'].map(stage=>[stage,{source:'central',entries:(row[stage==='obligation'?'obligations':'disbursements']||[]).map(entry=>({...entry,id:String(entry.id),remarks:entry.remarks||''}))}]))]))});
+    export const supabase = { async rpc(name,args) {
+        const f=window.fixture;
+        if(name==='read_activity_accomplishments')return {data:[snapshot(f.latest||f.stored||f.source)],error:null};
+        if(name!=='save_activity_accomplishment')throw Error('Unexpected RPC');
+        f.actualRpcWrites=(f.actualRpcWrites||0)+1;
+        if(f.fail)return {data:null,error:{message:'Synthetic save failure'}};
+        const activity=structuredClone(f.stored||f.source);
+        for(const edit of args.p_edits){const row=activity.expenses.find(item=>String(item.id)===edit.itemId);const key=edit.stage==='obligation'?'obligations':'disbursements';
+            for(const op of edit.operations){if(op.action==='update')row[key]=row[key].map(entry=>String(entry.id)===op.id?{...entry,...op.value}:entry);else if(op.action==='insert')row[key].push({id:Date.now(),...op.value});else row[key]=row[key].filter(entry=>String(entry.id)!==op.id);}}
+        Object.assign(activity,args.p_physical);f.stored=activity;return {data:snapshot(activity),error:null};
+    }, from(table) { let action = 'read', payload; const filters = []; const q = {
         select() { return q; }, eq(key,value) { filters.push([key,value]); return q; }, is() { return q; }, order() { return q; }, maybeSingle() { return q; }, single() { return q; },
         insert(value) { action = 'insert'; payload = value; return q; }, update(value) { action = 'update'; payload = value; return q; }, delete() { action = 'delete'; return q; },
         then(resolve) { return new Promise(done => setTimeout(() => {
@@ -137,8 +148,8 @@ try {
  assert.equal(f.saved[0].expenses[0].disbursements[0].amount,250);
  assert.equal(f.saved[0].expenses[1].disbursements[0].amount,200);
  assert.equal(f.obligationWrites||0,0);
- assert.equal(f.financialOps.length,2);
- for(const op of f.financialOps)if(op.action==='delete')assert.equal(op.filters.some(([key,value])=>key==='item_id'&&value==='1'),true);
+ assert.equal(f.actualRpcWrites,1);
+ assert.equal(f.financialWrites,0);
  assert.equal(errors.length,0,errors.join('\n'));
  console.log('PASS: Activity edit save, independent schedule addition, actual preservation, failure/double-submit guards, selection-only references, creation/tag controls and responsive layouts. Screenshots: '+screenshots);
 } finally {await browser?.close();await server.close();}

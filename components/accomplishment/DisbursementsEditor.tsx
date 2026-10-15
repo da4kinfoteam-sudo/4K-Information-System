@@ -7,12 +7,13 @@ import { Plus, Trash2 } from 'lucide-react';
 interface DisbursementsEditorProps {
     disbursements: DisbursementRecord[];
     onChange: (disbursements: DisbursementRecord[], totalAmount: number) => void;
+    onRemove?: (id: number | string) => void;
     defaultYear?: string;
     readOnly?: boolean;
     validateMonthChange?: (month: string) => boolean | Promise<boolean>;
 }
 
-export const DisbursementsEditor: React.FC<DisbursementsEditorProps> = ({ disbursements = [], onChange, defaultYear, readOnly = false, validateMonthChange }) => {
+export const DisbursementsEditor: React.FC<DisbursementsEditorProps> = ({ disbursements = [], onChange, onRemove, defaultYear, readOnly = false, validateMonthChange }) => {
     const getTotal = (items: DisbursementRecord[]) => items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
     const handleAdd = () => {
@@ -33,6 +34,7 @@ export const DisbursementsEditor: React.FC<DisbursementsEditorProps> = ({ disbur
     };
 
     const handleDelete = (id: number) => {
+        onRemove?.(id);
         const updated = disbursements.filter(db => db.id !== id);
         onChange(updated, getTotal(updated));
     };
