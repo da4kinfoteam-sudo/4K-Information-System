@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Users } from 'lucide-react';
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import type { IPO } from '../../constants';
 import type { GadMembershipData, GadMembershipRow } from '../../lib/gadIpoMembership';
 import { DataTablePagination, LoadingState, SortableTableHeader } from '../ui/enterprise';
+import { useFixedPageTableViewport } from '../../hooks/useFixedPageTableViewport';
+import GadSexPieChart, { type GadSexChartValues } from './GadSexPieChart';
 
 interface Props {
     data: GadMembershipData;
@@ -11,6 +12,8 @@ interface Props {
     loading?: boolean;
     error?: string | null;
     onSelectIpo?: (ipo: IPO) => void;
+    subprojectInclusion: GadSexChartValues;
+    trainingInclusion: GadSexChartValues;
 }
 const formatCount = (value: number | null) => value === null ? '-' : value.toLocaleString('en-PH');
 type SortKey = Exclude<keyof GadMembershipRow, 'ipo'> | 'name';
@@ -20,12 +23,12 @@ const columns: [SortKey, string][] = [
     ['trainingsLinked', 'Trainings Linked'], ['trainingsConducted', 'Trainings Conducted'], ['womenLed', 'Women-Led'],
 ];
 
-export default function GadIpoMembershipSection({ data, scopeKey, loading, error, onSelectIpo }: Props) {
+export default function GadIpoMembershipSection({ data, scopeKey, loading, error, onSelectIpo, subprojectInclusion, trainingInclusion }: Props) {
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [sort, setSort] = useState<{ key: SortKey; direction: 'ascending' | 'descending' }>({ key: 'name', direction: 'ascending' });
-    const [selectedSex, setSelectedSex] = useState<string | null>(null);
-    useEffect(() => { setPage(1); setSelectedSex(null); }, [scopeKey]);
+    useEffect(() => { setPage(1); }, [scopeKey]);
+    const { scrollRef, viewportStyle } = useFixedPageTableViewport(!loading && !error);
     const sortedRows = useMemo(() => [...data.rows].sort((a, b) => {
         const av = sort.key === 'name' ? a.ipo.name : a[sort.key];
         const bv = sort.key === 'name' ? b.ipo.name : b[sort.key];
@@ -37,16 +40,8 @@ export default function GadIpoMembershipSection({ data, scopeKey, loading, error
     const currentPage = Math.min(page, totalPages);
     useEffect(() => { setPage(value => Math.min(value, totalPages)); }, [totalPages]);
     const pageRows = sortedRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-    const sexTotal = (data.female.value || 0) + (data.male.value || 0);
-    const sexData = [
-        { name: 'Female', value: data.female.value || 0, color: '#168a55', reported: data.female.reported },
-        { name: 'Male', value: data.male.value || 0, color: '#2f6fed', reported: data.male.reported },
-    ];
     const diagnostics = `${data.diagnostics.unresolvedLinks} unresolved links (${data.diagnostics.ambiguousNames} ambiguous names); ${data.diagnostics.mismatchedTotals} IPO totals differ from reported Male + Female.`;
     const coverage = `Current IPO registry membership, not historical membership. ${diagnostics}`;
-    const sexValue = (item: typeof sexData[number]) => item.reported ? `${formatCount(item.value)} (${sexTotal ? (item.value / sexTotal * 100).toFixed(1) : '0.0'}%)` : 'No Data';
-    const sexLabel = (item: typeof sexData[number]) => `${item.name}: ${sexValue(item)}; ${item.reported} of ${data.rows.length} IPOs reported. ${coverage}`;
-    const activeSex = sexData.find(item => item.name === selectedSex);
     const cards = [
         { label: 'Total IPO Members', metric: data.total },
         { label: 'Total Female Members', metric: data.female },
@@ -64,37 +59,15 @@ export default function GadIpoMembershipSection({ data, scopeKey, loading, error
                 </article>;
             })}
         </div>
-        <article className="dashboard-panel gad-dashboard-chart gad-membership-chart" aria-labelledby="gad-membership-chart-title">
-            <h3 id="gad-membership-chart-title" title={coverage}>IPO Membership by Sex</h3>
-            {sexTotal > 0 ? <div className="gad-membership-chart__body">
-                <div className="gad-membership-chart__plot" role="img" aria-label={sexData.map(sexLabel).join(' ')}>
-                    <ResponsiveContainer width="100%" height={260}>
-                        <PieChart accessibilityLayer>
-                            <Pie data={sexData.filter(item => item.value > 0)} dataKey="value" nameKey="name" outerRadius="82%" isAnimationActive={false}
-                                onMouseEnter={item => setSelectedSex(item.name)} onMouseLeave={() => setSelectedSex(null)} onClick={item => setSelectedSex(item.name)}>
-                                {sexData.filter(item => item.value > 0).map(item => <Cell key={item.name} fill={item.color} />)}
-                            </Pie>
-                            <Tooltip formatter={(value, name) => [`${formatCount(Number(value))} (${(Number(value) / sexTotal * 100).toFixed(1)}%)`, name]} />
-                        </PieChart>
-                    </ResponsiveContainer>
-                </div>
-                <div className="gad-membership-chart__legend">
-                    {sexData.map(item => <button key={item.name} type="button" className="gad-membership-sex" title={sexLabel(item)} aria-label={sexLabel(item)}
-                        aria-pressed={selectedSex === item.name} onFocus={() => setSelectedSex(item.name)} onBlur={() => setSelectedSex(null)}
-                        onClick={() => setSelectedSex(item.name)}>
-                        <span className="gad-membership-swatch" style={{ backgroundColor: item.color }} aria-hidden="true" />
-                        <span>{item.name}</span><strong>{item.reported ? formatCount(item.value) : 'No Data'}</strong>
-                        <span>{item.reported ? `${(item.value / sexTotal * 100).toFixed(1)}%` : '-'}</span>
-                    </button>)}
-                    <output className="gad-membership-chart__selection" aria-live="polite" title={coverage}>
-                        {activeSex ? `${activeSex.name}: ${sexValue(activeSex)}` : ''}
-                    </output>
-                </div>
-            </div> : <p className="dashboard-empty">{data.male.value === null && data.female.value === null ? 'No reported sex-disaggregated membership.' : 'No reported members to chart.'}</p>}
-        </article>
+        <div className="gad-dashboard-grid gad-dashboard-grid--three" aria-label="Sex-disaggregated charts">
+            <GadSexPieChart title="IPO Membership by Sex" female={data.female.value} male={data.male.value}
+                context={`Female reported by ${data.female.reported} and Male by ${data.male.reported} of ${data.rows.length} IPOs. ${coverage}`} />
+            <GadSexPieChart title="Subprojects Inclusion Male/Female" {...subprojectInclusion} />
+            <GadSexPieChart title="Trainings Inclusion Male/Female" {...trainingInclusion} />
+        </div>
         <section className="dashboard-panel gad-dashboard-table-card data-table-card--seamless gad-membership-table-card" aria-labelledby="gad-membership-table-title">
             <h3 id="gad-membership-table-title" title={coverage}>Targeted IPOs</h3>
-            <div className="data-table-scroll custom-scrollbar" tabIndex={0} role="region" aria-label="Targeted IPO table">
+            <div ref={scrollRef} style={viewportStyle} className="data-table-scroll data-table-scroll--fixed-page custom-scrollbar" tabIndex={0} role="region" aria-label="Targeted IPO table">
                 <table className="data-table gad-dashboard-table gad-membership-table">
                     <thead><tr>{columns.map(([key, label]) => <SortableTableHeader key={key} label={label} columnKey={key} sortConfig={sort}
                         onSort={() => { setSort(previous => ({ key, direction: previous.key === key && previous.direction === 'ascending' ? 'descending' : 'ascending' })); setPage(1); }} />)}</tr></thead>
