@@ -1953,6 +1953,7 @@ const AppContent: React.FC = () => {
                             setSubprojects={setSubprojects}
                             activities={visibleActivities}
                             setActivities={setActivities}
+                            onActivitySaved={handleActivitySaved}
                             officeReqs={visibleOfficeReqs}
                             setOfficeReqs={setOfficeReqs}
                             staffingReqs={visibleStaffingReqs}

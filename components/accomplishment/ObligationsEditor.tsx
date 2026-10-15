@@ -7,12 +7,13 @@ import { Plus, Trash2 } from 'lucide-react';
 interface ObligationsEditorProps {
     obligations: ObligationRecord[];
     onChange: (obligations: ObligationRecord[], totalAmount: number) => void;
+    onRemove?: (id: number | string) => void;
     defaultYear?: string;
     readOnly?: boolean;
     validateMonthChange?: (month: string) => boolean | Promise<boolean>;
 }
 
-export const ObligationsEditor: React.FC<ObligationsEditorProps> = ({ obligations = [], onChange, defaultYear, readOnly = false, validateMonthChange }) => {
+export const ObligationsEditor: React.FC<ObligationsEditorProps> = ({ obligations = [], onChange, onRemove, defaultYear, readOnly = false, validateMonthChange }) => {
     const getTotal = (items: ObligationRecord[]) => items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
     const handleAdd = () => {
@@ -33,6 +34,7 @@ export const ObligationsEditor: React.FC<ObligationsEditorProps> = ({ obligation
     };
 
     const handleDelete = (id: number) => {
+        onRemove?.(id);
         const updated = obligations.filter(ob => ob.id !== id);
         onChange(updated, getTotal(updated));
     };

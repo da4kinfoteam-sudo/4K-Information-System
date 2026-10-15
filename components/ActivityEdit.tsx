@@ -1,7 +1,8 @@
 import { getActivityBudgetSummary, isOriginalActivityBudgetLocked, isSupplementalExpense, isActivityExpenseActualEligible } from '../lib/activitySupplementalBudget';
 import { ActivityBudgetEditor } from './ui/ActivityBudgetEditor';
 import { remapActivityExpenseGroups, rescheduleActivityTargets, validateActivitySchedule } from '../lib/activityBudgetSchedules';
-import { getChangedActivityActualIds, persistActivityDraft } from '../lib/activityDraftPersistence';
+import { persistActivityDraft } from '../lib/activityDraftPersistence';
+import { buildActivityActualEdits, getActivityPhysicalChanges, hydrateActivityAccomplishment, readActivityAccomplishments, saveActivityAccomplishment, type ActivityAccomplishmentSnapshot, type ActivityAccomplishmentRequest, type ActivityActualRemovals } from '../lib/activityAccomplishmentPersistence';
 import { createBudgetScheduleId } from '../lib/subprojectBudgetSchedules';
 import { activityTitleForSave, getActivityDisplayTitle, normalizeActivityTitle } from '../lib/activityTitles';
 
@@ -29,7 +30,6 @@ import {
     writeBudgetItemAdjustmentHistory
 } from '../lib/budgetLineAdjustments';
 import { getActualObligationValidationError, hasActualObligationRecords } from '../lib/financialObligationUtils';
-import { fetchFinancialObligationsForParent, replaceFinancialObligationRecords } from '../lib/financialObligationSync';
 import { getFundSourceByUid, getNewFundSourceDefault, resolveFundSourceUidFromLegacyLabel } from '../lib/fundSources';
 import { FundSourceField } from './ui/FundSourceField';
 import { ActivityIpoSelector } from './ui/ActivityIpoSelector';
@@ -99,7 +99,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     const { currentUser, hasAccess } = useAuth();
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
-    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
     const isAdmin = currentUser?.role === 'Administrator';
 
     const [formData, setFormData] = useState<Activity>(activity || defaultFormData);
@@ -141,6 +141,9 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     const [actualsLoading, setActualsLoading] = useState(false);
     const [actualsLoadError, setActualsLoadError] = useState('');
     const budgetBaseline = useRef<Activity>(activity || defaultFormData);
+    const accomplishmentBaseline = useRef<ActivityAccomplishmentSnapshot | null>(null);
+    const accomplishmentRequest = useRef<ActivityAccomplishmentRequest>({});
+    const actualRemovals = useRef<ActivityActualRemovals>({});
 
     const supplementalBudgetSummary = getActivityBudgetSummary(formData);
     const budgetAdjustmentSummary = useMemo(() => summarizeBudgetAdjustments(formData.expenses || []), [formData.expenses]);
@@ -148,41 +151,9 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     useEffect(() => {
         let cancelled = false;
         if (activity) {
-            const applyObligationRows = (centralRows: Awaited<ReturnType<typeof fetchFinancialObligationsForParent>> | null, disbursementRows: any[] = []) => {
-                const processedActivity: Activity = {
-                    ...activity,
-                    expenses: (activity.expenses || []).map(exp => {
-                    const centralObligations = centralRows?.filter(row => row.itemId === String(exp.id)) || [];
-                    const centralDisbursements = disbursementRows.filter(row => String(row.item_id) === String(exp.id)).map(row => ({ id: row.id, date: row.disbursement_date, amount: Number(row.amount), remarks: row.remarks || '' }));
-                    const disbursements = centralDisbursements.length ? centralDisbursements : exp.disbursements?.length ? exp.disbursements : Number(exp.actualDisbursementAmount || 0) !== 0 ? [{ id: `legacy-${exp.id}`, date: exp.actualDisbursementDate || '', amount: exp.actualDisbursementAmount || 0, remarks: 'Legacy Record' }] : exp.disbursements;
-                    if (centralObligations.length > 0) return { ...exp, obligations: centralObligations, disbursements };
-                    const hasAmount = Number(exp.actualObligationAmount || 0) !== 0;
-                    const hasNoObligations = !exp.obligations || exp.obligations.length === 0;
-                    if (hasAmount && hasNoObligations) {
-                        return {
-                            ...exp, disbursements,
-                            obligations: [{
-                                id: `legacy-obligation-${exp.id}`,
-                                date: exp.actualObligationDate || '',
-                                amount: exp.actualObligationAmount || 0,
-                                remarks: 'Legacy Record'
-                            }]
-                        };
-                    }
-                    return { ...exp, disbursements };
-                    }),
-                };
-                if (cancelled) return;
-                setFormData(previous => ({
-                    ...previous,
-                    expenses: previous.expenses.map(expense => {
-                        const loaded = processedActivity.expenses.find(item => item.id === expense.id);
-                        return loaded ? { ...expense, obligations: loaded.obligations, disbursements: loaded.disbursements } : expense;
-                    }),
-                }));
-                setInitialActivity(previous => ({ ...previous, expenses: processedActivity.expenses }));
-            };
-
+            accomplishmentBaseline.current = null;
+            accomplishmentRequest.current = {};
+            actualRemovals.current = {};
             budgetBaseline.current = structuredClone(activity);
             setActualsLoadError('');
             setFormData({ ...activity, expenses: activity.expenses || [] });
@@ -190,12 +161,12 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             setInitialActivity({ ...activity, expenses: activity.expenses || [] });
             if (supabase && activity.id > 0 && mode === 'accomplishment') {
                 setActualsLoading(true);
-                void Promise.all([
-                    fetchFinancialObligationsForParent({ entityType: 'activity_expense', parentId: activity.id }),
-                    supabase.from('financial_disbursements').select('*').eq('entity_type', 'activity_expense').eq('parent_id', activity.id),
-                ]).then(([rows, disbursements]) => {
-                    if (disbursements.error) throw disbursements.error;
-                    applyObligationRows(rows, disbursements.data || []);
+                void readActivityAccomplishments([activity.id], currentUser).then(([snapshot]) => {
+                    if (cancelled) return;
+                    accomplishmentBaseline.current = snapshot;
+                    const hydrated = hydrateActivityAccomplishment(snapshot);
+                    setFormData(hydrated);
+                    setInitialActivity(hydrated);
                 })
                     .catch(error => {
                         console.error('Failed to load authoritative activity obligations:', error);
@@ -480,14 +451,16 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         }
 
         if (mode !== 'create' && activity) {
-            const action = mode === 'details'
-                ? 'editDetails'
-                : mode === 'expenses'
-                    ? 'editBudget'
-                    : 'editPhysicalAccomplishment';
-            const hasModuleAccess = mode === 'accomplishment'
-                ? hasAccess('Accomplishment - Physical', 'edit') || hasAccess('Accomplishment - Financial', 'edit')
-                : hasAccess('Activities', 'edit');
+            const actions: Array<'editDetails' | 'editBudget' | 'editPhysicalAccomplishment' | 'editFinancialAccomplishment'> = [];
+            if (mode === 'accomplishment') {
+                if (!accomplishmentBaseline.current) { alert('Existing actuals are unavailable. Your draft has not been saved.'); return; }
+                if (Object.keys(getActivityPhysicalChanges(accomplishmentBaseline.current.activity, formData)).length) actions.push('editPhysicalAccomplishment');
+                try {
+                    if (buildActivityActualEdits(accomplishmentBaseline.current, formData, actualRemovals.current).length) actions.push('editFinancialAccomplishment');
+                } catch (error) { alert(error.message); return; }
+            } else actions.push(mode === 'details' ? 'editDetails' : 'editBudget');
+            for (const action of actions) {
+            const hasModuleAccess = hasAccess(action === 'editPhysicalAccomplishment' ? 'Accomplishment - Physical' : action === 'editFinancialAccomplishment' ? 'Accomplishment - Financial' : 'Activities', 'edit');
             const decision = getStatusDecision({
                 moduleKey: 'activities',
                 item: activity,
@@ -504,6 +477,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 entityType: 'activity',
             });
             if (!allowed) return;
+            }
         }
 
         if (!(await validateActivityAccomplishmentMonthsForSave())) return;
@@ -718,8 +692,20 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                          }
                     } else {
                          let data: Activity;
-                         if (mode === 'expenses' || mode === 'accomplishment') {
-                             data = await persistActivityDraft(mode === 'expenses' ? budgetBaseline.current : initialActivity, { ...act, expenses: sanitizedPayload.expenses }, mode);
+                         if (mode === 'accomplishment') {
+                             if (!accomplishmentBaseline.current) throw new Error('Existing financial entries have not loaded. Your draft was not saved.');
+                             const confirmed = await saveActivityAccomplishment({
+                                 base: accomplishmentBaseline.current, draft: formData, actor: currentUser,
+                                 removals: actualRemovals.current, request: accomplishmentRequest.current,
+                                 reason: getLastOverrideReason?.() || '',
+                             });
+                             accomplishmentBaseline.current = confirmed;
+                             data = hydrateActivityAccomplishment(confirmed);
+                             setFormData(data);
+                             setInitialActivity(data);
+                             actualRemovals.current = {};
+                         } else if (mode === 'expenses') {
+                             data = await persistActivityDraft(budgetBaseline.current, { ...act, expenses: sanitizedPayload.expenses }, mode);
                          } else {
                              const result = await supabase.from('activities').update(sanitizedPayload).eq('id', activity!.id).select().single();
                              if (result.error) throw result.error;
@@ -732,13 +718,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                          const metadata = mode === 'details' ? undefined : getMonetaryChanges(activity, sanitizedPayload, 'Activity');
                          logAction(`Updated ${act.type}`, act.name, undefined, act.type, String(activity!.id), metadata);
                          
-                         // Sync obligations for updated activity
-                         if (mode === 'accomplishment') {
-                             const obligationIds = getChangedActivityActualIds(initialActivity.expenses, formData.expenses, 'obligation');
-                             const disbursementIds = getChangedActivityActualIds(initialActivity.expenses, formData.expenses, 'disbursement');
-                             await syncActivityObligations(activity!.id, data.expenses.filter(row => obligationIds.has(String(row.id))));
-                             await syncActivityDisbursements(activity!.id, data.expenses.filter(row => disbursementIds.has(String(row.id))));
-                         }
                          if (mode === 'expenses') await persistExpenseAdjustmentHistory(data);
                     }
                     
@@ -777,45 +756,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         }
     };
 
-    const syncActivityObligations = async (parentId: number, expenses: ActivityExpense[]) => {
-        if (!supabase) return;
-        const entityType = 'activity_expense';
-
-        for (const exp of expenses) {
-            if (exp.obligations && exp.obligations.length > 0) {
-                // Also update legacy fields for fallback reporting
-                const latestOb = [...exp.obligations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-                exp.actualObligationAmount = exp.obligations.reduce((sum, o) => sum + (o.amount || 0), 0);
-                exp.actualObligationDate = latestOb.date;
-
-            } else {
-                exp.actualObligationAmount = 0;
-                exp.actualObligationDate = null;
-            }
-            await replaceFinancialObligationRecords({
-                entityType,
-                parentId,
-                itemId: exp.id ?? null,
-                records: exp.obligations || [],
-            });
-        }
-    };
-
-    const syncActivityDisbursements = async (parentId: number, expenses: ActivityExpense[]) => {
-        if (!supabase) return;
-        for (const exp of expenses) {
-            const { error: deleteError } = await supabase.from('financial_disbursements').delete()
-                .eq('entity_type', 'activity_expense').eq('parent_id', parentId).eq('item_id', String(exp.id));
-            if (deleteError) throw deleteError;
-            const records = exp.disbursements || [];
-            if (!records.length) continue;
-            const { error } = await supabase.from('financial_disbursements').insert(records.map(row => ({
-                entity_type: 'activity_expense', parent_id: parentId, item_id: String(exp.id),
-                disbursement_date: row.date, amount: row.amount || 0, remarks: row.remarks || '',
-            })));
-            if (error) throw error;
-        }
-    };
     const persistExpenseAdjustmentHistory = async (saved: Activity) => {
         for (const row of saved.expenses) {
             const before = budgetBaseline.current.expenses.find(item => item.id === row.id);
@@ -1111,6 +1051,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                             <p className="budget-editor-panel__title">Obligations</p>
                                             <ObligationsEditor
                                                 obligations={exp.obligations || []}
+                                                onRemove={id => { const key = `${exp.id}:obligation`; actualRemovals.current[key] = [...(actualRemovals.current[key] || []), String(id)]; }}
                                                 onChange={(newObs, total) => {
                                                     handleExpenseAccomplishmentChange(exp.id, 'obligations', newObs);
                                                     handleExpenseAccomplishmentChange(exp.id, 'actualObligationAmount', total);
@@ -1125,6 +1066,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                             <p className="budget-editor-panel__title">Disbursement</p>
                                             <DisbursementsEditor
                                                 disbursements={exp.disbursements || []}
+                                                onRemove={id => { const key = `${exp.id}:disbursement`; actualRemovals.current[key] = [...(actualRemovals.current[key] || []), String(id)]; }}
                                                 onChange={(newDisb, total) => {
                                                     handleExpenseAccomplishmentChange(exp.id, 'disbursements', newDisb);
                                                     handleExpenseAccomplishmentChange(exp.id, 'actualDisbursementAmount', total);

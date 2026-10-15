@@ -1,4 +1,6 @@
 import { isActivityExpenseActualEligible } from '../../lib/activitySupplementalBudget';
+import { hydrateActivityAccomplishment, readActivityAccomplishments, saveActivityAccomplishment, type ActivityAccomplishmentSnapshot, type ActivityAccomplishmentRequest } from '../../lib/activityAccomplishmentPersistence';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Author: 4K
 import { getActivityDisplayTitle } from '../../lib/activityTitles';
@@ -30,6 +32,7 @@ interface Props {
  setSubprojects: React.Dispatch<React.SetStateAction<Subproject[]>>;
  activities: Activity[];
  setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
+ onActivitySaved?: (activity: Activity) => void;
  officeReqs: OfficeRequirement[];
  setOfficeReqs: React.Dispatch<React.SetStateAction<OfficeRequirement[]>>;
  staffingReqs: StaffingRequirement[];
@@ -224,7 +227,7 @@ const readLegacyFinancialScope = (): Partial<DcfScopeFilterValue> => {
 
 const FinancialAccomplishment: React.FC<Props> = ({
  subprojects, setSubprojects,
- activities, setActivities,
+ activities, onActivitySaved,
  officeReqs, setOfficeReqs,
  staffingReqs, setStaffingReqs,
  otherProgramExpenses, setOtherProgramExpenses,
@@ -235,7 +238,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
  onDataScopeChange,
 }) => {
  const { canEdit } = useUserAccess('Accomplishment - Financial');
- const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
+ const { currentUser } = useAuth();
+ const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
  const defaultYear = new Date().getFullYear();
  const legacyScope = useMemo(readLegacyFinancialScope, []);
  const dcfFilters = useDcfScopeFilters({
@@ -252,6 +256,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
  const [originalItems, setOriginalItems] = useState<FinancialItem[]>([]);
  const [items, setItems] = useState<FinancialItem[]>([]);
  const [changedItems, setChangedItems] = useState<Map<string, FinancialItem>>(new Map());
+ const changedItemsRef = useRef(changedItems);
+ const originalItemsRef = useRef(originalItems);
+ changedItemsRef.current = changedItems;
+ originalItemsRef.current = originalItems;
  const [isSavingAll, setIsSavingAll] = useState(false);
  const [localSavingIds, setLocalSavingIds] = useState<Set<string>>(new Set());
  const [isSaveConfirmOpen, setIsSaveConfirmOpen] = useState(false);
@@ -261,6 +269,12 @@ const FinancialAccomplishment: React.FC<Props> = ({
  const [actualsDialogSaving, setActualsDialogSaving] = useState(false);
  const [actualsDialogError, setActualsDialogError] = useState('');
  const skipNextFinancialReloadRef = useRef(false);
+ const activityBaselines = useRef(new Map<string, ActivityAccomplishmentSnapshot>());
+ const activityRequests = useRef(new Map<string, ActivityAccomplishmentRequest>());
+ const actualsSavingRef = useRef(false);
+ const saveAllInFlight = useRef(false);
+ const savingItemIds = useRef(new Set<string>());
+ const [loadError, setLoadError] = useState('');
  type SortKey = 'targetObligationAmount' | 'targetObligationMonth' | 'actualObligationAmount' | 'unobligatedAmount' | 'targetDisbursementAmount' | 'targetDisbursementMonth' | 'actualDisbursementAmount';
  const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' } | null>(null);
 
@@ -377,6 +391,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
  return;
  }
  setIsLoading(true);
+ setLoadError('');
+ let cancelled = false;
 
  const fetchData = async () => {
  try {
@@ -401,7 +417,6 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
  const financialGroups = [
  { entityType: 'subproject_detail', ids: uniqueIds(filteredSubprojects.map(item => item.id)) },
- { entityType: 'activity_expense', ids: uniqueIds(filteredActivities.map(item => item.id)) },
  { entityType: 'office_requirement', ids: uniqueIds(filteredOfficeReqs.map(item => item.id)) },
  { entityType: 'staffing_expense', ids: uniqueIds(filteredStaffingReqs.map(item => item.id)) },
  { entityType: 'other_program_expense', ids: uniqueIds(filteredOtherProgramExpenses.map(item => item.id)) },
@@ -434,10 +449,12 @@ const FinancialAccomplishment: React.FC<Props> = ({
  return responses.flatMap(response => response.data || []);
  };
 
- const [obliRes, disbRes] = await Promise.all([
+ const [obliRes, disbRes, activitySnapshots] = await Promise.all([
  fetchFinancialRows('financial_obligations', financialGroups),
- fetchFinancialRows('financial_disbursements', financialGroups)
+ fetchFinancialRows('financial_disbursements', financialGroups),
+ readActivityAccomplishments(uniqueIds(filteredActivities.map(item => item.id)), currentUser, 'financial'),
  ]);
+ if (cancelled) return;
 
  const centralizedObligations = obliRes || [];
  const centralizedDisbursements = disbRes || [];
@@ -542,10 +559,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
  });
 
  // Activities
- filteredActivities.forEach(act => {
+ activitySnapshots.map(hydrateActivityAccomplishment).forEach(act => {
  (act.expenses || []).filter(isActivityExpenseActualEligible).forEach(e => {
- const obs = getObligations('Activity', act.id, e.id);
- const dibs = getDisbursements('Activity', act.id, e.id);
+ const obs = e.obligations || [];
+ const dibs = e.disbursements || [];
 
  loadedItems.push({
  uniqueId: `act-${act.id}-${e.id}`,
@@ -565,8 +582,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
  actualObligationAmount: obs.length > 0 ? sumAmounts(obs) : toFiniteNumber(e.actualObligationAmount),
  actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (e.actualDisbursementDate || ''),
  actualDisbursementAmount: dibs.length > 0 ? sumAmounts(dibs) : toFiniteNumber(e.actualDisbursementAmount),
- obligations: obs.length > 0 ? obs : getInitialObligations(e.obligations, e.actualObligationDate || '', toFiniteNumber(e.actualObligationAmount)),
- disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(e.disbursements, e.actualDisbursementDate || '', toFiniteNumber(e.actualDisbursementAmount)),
+ obligations: obs,
+ disbursements: dibs,
  status: act.status,
  isRealignment: act.isRealignment || e.isRealignment,
  isSavings: act.isSavings || e.isSavings,
@@ -740,17 +757,26 @@ const FinancialAccomplishment: React.FC<Props> = ({
  }));
  }
 
- setItems(loadedItems);
- setOriginalItems(loadedItems);
+ if (cancelled) return;
+ const snapshotsById = new Map(activitySnapshots.map(snapshot => [snapshot.activity.id, snapshot]));
+ const oldBaselines = activityBaselines.current;
+ const pending = changedItemsRef.current;
+ activityBaselines.current = new Map(loadedItems.filter(item => item.sourceType === 'Activity').map(item => [item.uniqueId,
+   pending.has(item.uniqueId) && oldBaselines.has(item.uniqueId) ? oldBaselines.get(item.uniqueId)! : snapshotsById.get(item.sourceId)!]));
+ const oldOriginals = new Map(originalItemsRef.current.map(item => [item.uniqueId, item]));
+ setItems(loadedItems.map(item => item.sourceType === 'Activity' && pending.has(item.uniqueId) ? pending.get(item.uniqueId)! : item));
+ setOriginalItems(loadedItems.map(item => item.sourceType === 'Activity' && pending.has(item.uniqueId) ? oldOriginals.get(item.uniqueId) || item : item));
  } catch (error) {
  console.error("Error loading data:", error);
+ if (!cancelled) setLoadError('Financial data could not be loaded completely. Reload before editing.');
  } finally {
- setIsLoading(false);
+ if (!cancelled) setIsLoading(false);
  }
  };
 
  fetchData();
- }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, activities, officeReqs, staffingReqs, otherProgramExpenses]);
+ return () => { cancelled = true; };
+ }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, activities, officeReqs, staffingReqs, otherProgramExpenses, currentUser?.id]);
 
 
  const categoryItems = useMemo(() => items.filter(item => {
@@ -1181,10 +1207,56 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
  const saveItemToDB = async (
  item: FinancialItem,
- options: { includeTargets?: boolean; sync?: 'both' | 'obligation' | 'disbursement' } = {}
+ options: { includeTargets?: boolean; sync?: 'both' | 'obligation' | 'disbursement'; removedIds?: string[] } = {}
  ) => {
+ if (loadError) throw new Error(loadError);
  const includeTargets = options.includeTargets ?? true;
  const sync = options.sync ?? 'both';
+ if (item.sourceType === 'Activity') {
+   const base = activityBaselines.current.get(item.uniqueId);
+   if (!base || !onActivitySaved) throw new Error('The Activity save connection is unavailable. Your draft has not been saved.');
+   const draft = hydrateActivityAccomplishment(base);
+   const expense = draft.expenses.find(row => String(row.id) === String(item.detailId));
+   if (!expense) throw new Error('The Activity expense is no longer available.');
+   expense.obligations = item.obligations;
+   expense.disbursements = item.disbursements;
+   const original = originalItems.find(row => row.uniqueId === item.uniqueId);
+   const targetValues: Record<string, unknown> = {};
+   if (includeTargets && item.status === 'Proposed' && original) {
+     if (item.targetObligationAmount !== original.targetObligationAmount) targetValues.amount = item.targetObligationAmount;
+     if (item.targetObligationMonth !== original.targetObligationMonth) targetValues.obligationMonth = item.targetObligationMonth;
+     if (item.targetDisbursementMonth !== original.targetDisbursementMonth) targetValues.disbursementMonth = item.targetDisbursementMonth;
+   }
+   const request = activityRequests.current.get(item.uniqueId) || {};
+   activityRequests.current.set(item.uniqueId, request);
+   const confirmed = await saveActivityAccomplishment({
+     base, draft, actor: currentUser, surface: 'financial', request,
+     onlyItem: String(item.detailId), onlyStage: sync === 'both' ? undefined : sync,
+     removals: sync === 'both' ? {} : { [`${item.detailId}:${sync}`]: options.removedIds || [] },
+     targets: Object.keys(targetValues).length ? [{ itemId: String(item.detailId), values: targetValues }] : [],
+     reason: getLastOverrideReason?.() || '',
+   });
+   // Advance only what this save confirmed; another open stage keeps its baseline.
+   activityBaselines.current.set(item.uniqueId, {
+     activity: { ...base.activity, expenses: base.activity.expenses.map(row => String(row.id) === String(item.detailId) ? { ...row, ...targetValues } : row) },
+     stages: { ...base.stages, [String(item.detailId)]: {
+       ...base.stages[String(item.detailId)],
+       ...(sync === 'both' || sync === 'obligation' ? { obligation: confirmed.stages[String(item.detailId)].obligation } : {}),
+       ...(sync === 'both' || sync === 'disbursement' ? { disbursement: confirmed.stages[String(item.detailId)].disbursement } : {}),
+     } },
+   });
+   const saved = hydrateActivityAccomplishment(confirmed);
+   const savedExpense = saved.expenses.find(row => String(row.id) === String(item.detailId))!;
+   let savedItem = item;
+   if (sync === 'both' || sync === 'obligation') savedItem = mergeActualRecords(savedItem, 'obligation', savedExpense.obligations || []);
+   if (sync === 'both' || sync === 'disbursement') savedItem = mergeActualRecords(savedItem, 'disbursement', savedExpense.disbursements || []);
+   const confirmedItem = savedItem;
+   setItems(previous => previous.map(row => row.uniqueId === item.uniqueId ? confirmedItem : row));
+   setOriginalItems(previous => previous.map(row => row.uniqueId !== item.uniqueId ? row : sync === 'both' ? confirmedItem : mergeActualRecords(row, sync, sync === 'obligation' ? confirmedItem.obligations : confirmedItem.disbursements)));
+   skipNextFinancialReloadRef.current = true;
+   onActivitySaved(saved);
+   return confirmedItem;
+ }
  const submittedAt = new Date().toISOString();
  let commitSourceState = () => {};
  if (item.sourceType === 'Subproject') {
@@ -1219,40 +1291,6 @@ const FinancialAccomplishment: React.FC<Props> = ({
  if (updateError) throw updateError;
  }
  commitSourceState = () => setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, details: updatedDetails } : s));
-
- } else if (item.sourceType === 'Activity') {
- const act = activities.find(a => a.id === item.sourceId);
- if (!act) throw new Error("Activity not found");
-
- const updatedExpenses = act.expenses.map(e => {
- if (e.id === item.detailId) {
- const updated = {
- ...e,
- actualObligationDate: item.actualObligationMonth,
- actualObligationAmount: item.actualObligationAmount,
- actualDisbursementDate: item.actualDisbursementMonth,
- actualDisbursementAmount: item.actualDisbursementAmount,
- obligations: item.obligations,
- disbursements: item.disbursements,
- };
- // Update targets if Proposed
- if (includeTargets && item.status === 'Proposed') {
- updated.obligationMonth = item.targetObligationMonth;
- updated.disbursementMonth = item.targetDisbursementMonth;
- updated.amount = item.targetObligationAmount;
- }
- return updated;
- }
- return e;
- });
-
- if (supabase) {
- // Don't include obligations/disbursements in the direct update of activities table
- // as they are stored in the centralized tables and causing schema cache errors
- const { error: updateError } = await supabase.from('activities').update({ expenses: updatedExpenses }).eq('id', act.id);
- if (updateError) throw updateError;
- }
- commitSourceState = () => setActivities(prev => prev.map(a => a.id === act.id ? { ...a, expenses: updatedExpenses } : a));
 
  } else if (item.sourceType === 'Staffing') {
  const s = staffingReqs.find(req => req.id === item.sourceId);
@@ -1446,6 +1484,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
  };
 
  const confirmSaveAll = async () => {
+ if (saveAllInFlight.current) return;
+ saveAllInFlight.current = true;
  setIsSaveConfirmOpen(false);
  setIsSavingAll(true);
  try {
@@ -1456,7 +1496,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
  return;
  }
  }
- await Promise.all(itemsToSave.map((item: FinancialItem) => saveItemToDB(item)));
+ for (const item of itemsToSave) {
+   await saveItemToDB(item);
+   setChangedItems(previous => { const next = new Map(previous); next.delete(item.uniqueId); return next; });
+ }
 
  // Mark as saved and clear changes (but don't lock)
  setItems(prev => prev.map(item => {
@@ -1473,11 +1516,14 @@ const FinancialAccomplishment: React.FC<Props> = ({
  alert("Failed to save some changes." + error.message);
  } finally {
  setIsSavingAll(false);
+ saveAllInFlight.current = false;
  }
  };
 
  const handleConfirmItem = async (item: FinancialItem) => {
- if (!canEdit) return;
+ if (!canEdit || savingItemIds.current.has(item.uniqueId)) return;
+ savingItemIds.current.add(item.uniqueId);
+ try {
  if (!(await validateFinancialItemForSave(item))) return;
 
  setLocalSavingIds(prev => new Set(prev).add(item.uniqueId));
@@ -1501,6 +1547,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  return newSet;
  });
  }
+ } finally { savingItemIds.current.delete(item.uniqueId); }
  };
 
  const mergeActualRecords = (
@@ -1558,8 +1605,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
  document.getElementById(`financial-category-${nextIndex}`)?.focus();
  };
 
- const saveActualRecords = async (draftRecords: ObligationRecord[] | DisbursementRecord[]) => {
- if (!actualsDialog) return;
+ const saveActualRecords = async (draftRecords: ObligationRecord[] | DisbursementRecord[], removedIds: string[] = []) => {
+ if (!actualsDialog || actualsSavingRef.current) return;
+ actualsSavingRef.current = true;
+ try {
  const item = items.find(candidate => candidate.uniqueId === actualsDialog.itemId);
  if (!item) {
  setActualsDialogError('This financial line is no longer available. Close the dialog and try again.');
@@ -1568,7 +1617,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
  const normalizedRecords = draftRecords.map((record, index) => ({
  ...record,
- id: Number(record.id) < 0 ? Date.now() + index : record.id,
+ id: item.sourceType !== 'Activity' && Number(record.id) < 0 ? Date.now() + index : record.id,
  amount: toFiniteNumber(record.amount),
  date: normalizeFinancialMonthValue(record.date, item.fundYear),
  }));
@@ -1601,16 +1650,17 @@ const FinancialAccomplishment: React.FC<Props> = ({
  skipNextFinancialReloadRef.current = true;
  try {
  const savedItem = mergeActualRecords(item, actualsDialog.kind, normalizedRecords);
- await saveItemToDB(savedItem, { includeTargets: false, sync: actualsDialog.kind });
+ const confirmed = await saveItemToDB(savedItem, { includeTargets: false, sync: actualsDialog.kind, removedIds });
+ const confirmedRecords = confirmed ? actualsDialog.kind === 'obligation' ? confirmed.obligations : confirmed.disbursements : normalizedRecords;
  const mergeSavedActuals = (candidate: FinancialItem) => candidate.uniqueId === savedItem.uniqueId
- ? mergeActualRecords(candidate, actualsDialog.kind, normalizedRecords)
+ ? mergeActualRecords(candidate, actualsDialog.kind, confirmedRecords)
  : candidate;
  setItems(previous => previous.map(mergeSavedActuals));
  setOriginalItems(previous => previous.map(mergeSavedActuals));
  setChangedItems(previous => {
  const next = new Map<string, FinancialItem>(previous);
  const changed = next.get(savedItem.uniqueId);
- if (changed) next.set(savedItem.uniqueId, mergeActualRecords(changed, actualsDialog.kind, normalizedRecords));
+ if (changed) next.set(savedItem.uniqueId, mergeActualRecords(changed, actualsDialog.kind, confirmedRecords));
  return next;
  });
  setSaveSuccessMessage(`Actual ${actualsDialog.kind === 'obligation' ? 'obligations' : 'disbursements'} saved successfully.`);
@@ -1623,14 +1673,20 @@ const FinancialAccomplishment: React.FC<Props> = ({
  } finally {
  setActualsDialogSaving(false);
  }
+ } finally { actualsSavingRef.current = false; }
  };
 
  const activeActualsItem = actualsDialog
  ? items.find(candidate => candidate.uniqueId === actualsDialog.itemId) || null
  : null;
  const activeActualsCanEdit = activeActualsItem
- ? canEdit && getFinancialStatusDecision(activeActualsItem).allowed
+ ? canEdit && !loadError && getFinancialStatusDecision(activeActualsItem).allowed
  : false;
+ const confirmScopeChange = () => {
+   if (changedItems.size && !window.confirm('Discard unsaved financial changes before changing the filter scope?')) return false;
+   setChangedItems(new Map());
+   return true;
+ };
 
  // --- Render ---
 
@@ -1642,8 +1698,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
  <p className="data-list-subtitle">Track obligation and disbursement accomplishments across the applied funding scope.</p>
  </div>
  </div>
- <DcfScopeFilterPanel idPrefix="financial-accomplishment" filters={dcfFilters} />
+ <DcfScopeFilterPanel idPrefix="financial-accomplishment" filters={dcfFilters} onBeforeApply={confirmScopeChange} onBeforeReset={confirmScopeChange} />
 
+ {loadError && <div role="alert" className="alert alert-danger">{loadError}</div>}
  {isLoading ? (
  <LoadingState label="Loading financial data..." />
  ) : (
@@ -1898,7 +1955,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  const isTagged = isTaggedExclusion(item);
   const taggedLabel = item.isCancelled ? 'Cancelled' : item.isSuperseded ? 'Replaced' : item.isSavings ? 'Savings' : item.isRealignment ? 'Realignment' : item.isTransferTargetExcluded ? 'Transferred' : '';
  const itemFinancialDecision = getFinancialStatusDecision(item);
- const canEditFinancialItem = canEdit && itemFinancialDecision.allowed;
+ const canEditFinancialItem = canEdit && !loadError && itemFinancialDecision.allowed;
 
  return (
  <React.Fragment key={item.uniqueId}>

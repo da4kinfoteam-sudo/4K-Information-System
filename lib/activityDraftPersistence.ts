@@ -1,10 +1,10 @@
 import type { Activity, ActivityExpense } from '../constants';
 import { supabase } from '../supabaseClient';
+import { sameActivityActualValue } from './activityAccomplishmentPersistence';
 
-const equal = (left: unknown, right: unknown) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+const equal = sameActivityActualValue;
 const conflict = () => new Error('This activity changed while you were editing. Your draft has not been saved. Reopen the current record before applying these changes.');
 const ACTUAL_FIELDS = ['obligations', 'disbursements', 'actualObligationAmount', 'actualObligationDate', 'actualDisbursementAmount', 'actualDisbursementDate', 'actualAmount'];
-const PHYSICAL_FIELDS = ['actualDate', 'actualEndDate', 'actualParticipantsMale', 'actualParticipantsFemale', 'actualPWD', 'actualMuslim', 'actualLGBTQ', 'actualSoloParent', 'actualSenior', 'actualYouth', 'status', 'physical_accomplishment_submitted_at'];
 
 function mergeFields<T extends object>(base: T, draft: T, latest: T, ignored: string[] = []): T {
     const result = { ...latest };
@@ -46,7 +46,8 @@ export function getChangedActivityActualIds(base: ActivityExpense[], draft: Acti
     }).map(row => String(row.id)));
 }
 
-export async function persistActivityDraft(base: Activity, draft: Activity, mode: 'expenses' | 'accomplishment'): Promise<Activity> {
+export async function persistActivityDraft(base: Activity, draft: Activity, mode: 'expenses'): Promise<Activity> {
+    if (mode !== 'expenses') throw new Error('Accomplishments must use the transactional financial save operation.');
     if (!supabase) return draft;
     const { data, error: readError } = await supabase.from('activities').select('*').eq('id', base.id).maybeSingle();
     if (readError) throw readError;
@@ -55,14 +56,10 @@ export async function persistActivityDraft(base: Activity, draft: Activity, mode
     if (latest.status !== base.status || !equal(latest.workflow_status, base.workflow_status) || !equal(latest.budgetItemTransferId, base.budgetItemTransferId)
         || !equal(latest.operatingUnit, base.operatingUnit) || latest.type !== base.type) throw conflict();
     const payload: Record<string, unknown> = {
-        expenses: mergeActivityExpenses(base.expenses || [], draft.expenses || [], latest.expenses || [], mode === 'expenses'),
+        expenses: mergeActivityExpenses(base.expenses || [], draft.expenses || [], latest.expenses || [], true),
         history: [...(latest.history || []), ...(draft.history || []).slice((base.history || []).length)],
         updated_at: new Date().toISOString(),
     };
-    if (mode === 'accomplishment') {
-        const merged = mergeFields(base, draft, latest, Object.keys(base).filter(key => !PHYSICAL_FIELDS.includes(key)));
-        for (const field of PHYSICAL_FIELDS) payload[field] = merged[field] === '' ? null : merged[field];
-    }
     let query = supabase.from('activities').update(payload).eq('id', base.id).eq('status', latest.status);
     query = latest.updated_at ? query.eq('updated_at', latest.updated_at) : query.is('updated_at', null);
     const { data: confirmed, error } = await query.select('*').maybeSingle();

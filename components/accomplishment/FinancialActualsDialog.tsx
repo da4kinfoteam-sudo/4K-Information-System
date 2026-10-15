@@ -24,7 +24,7 @@ interface FinancialActualsDialogProps<T extends FinancialRecord> {
   saving?: boolean;
   error?: string;
   onClose: () => void;
-  onSave: (records: T[]) => Promise<void>;
+  onSave: (records: T[], removedIds?: string[]) => Promise<void>;
 }
 
 const normalizeRecords = <T extends FinancialRecord>(records: T[], fallbackYear?: string | number): T[] => records.map(record => ({
@@ -57,6 +57,7 @@ export function FinancialActualsDialog<T extends FinancialRecord>({
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
   const [draftRecords, setDraftRecords] = useState<T[]>([]);
+  const removedIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -72,7 +73,10 @@ export function FinancialActualsDialog<T extends FinancialRecord>({
   }, [open]);
 
   useEffect(() => {
-    if (open) setDraftRecords(normalizeRecords(records, fallbackYear));
+    if (open) {
+      setDraftRecords(normalizeRecords(records, fallbackYear));
+      removedIds.current = new Set();
+    }
   }, [fallbackYear, open, records]);
 
   useEffect(() => {
@@ -221,7 +225,7 @@ export function FinancialActualsDialog<T extends FinancialRecord>({
                         )}
                         {!readOnly && (
                           <td className="financial-actuals-dialog__action-cell">
-                            <button type="button" className="table-action table-action--danger table-action--icon" onClick={() => setDraftRecords(current => current.filter(item => item.id !== record.id))} aria-label={`Delete ${kind} ${index + 1}`} title={`Delete ${kind}`}>
+                            <button type="button" className="table-action table-action--danger table-action--icon" onClick={() => { removedIds.current.add(String(record.id)); setDraftRecords(current => current.filter(item => item.id !== record.id)); }} aria-label={`Delete ${kind} ${index + 1}`} title={`Delete ${kind}`}>
                               <Trash2 aria-hidden="true" />
                             </button>
                           </td>
@@ -248,7 +252,7 @@ export function FinancialActualsDialog<T extends FinancialRecord>({
 
         <div className="modal-card__footer column-filter-dialog__actions">
           <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>{readOnly ? 'Close' : 'Cancel'}</button>
-          {!readOnly && <button type="button" className="btn btn-primary" disabled={!hasChanges || saving} onClick={() => onSave(draftRecords)}>{saving ? 'Saving…' : 'Save Changes'}</button>}
+          {!readOnly && <button type="button" className="btn btn-primary" disabled={!hasChanges || saving} onClick={() => onSave(draftRecords, [...removedIds.current])}>{saving ? 'Saving…' : 'Save Changes'}</button>}
         </div>
       </div>
     </div>

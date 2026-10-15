@@ -69,7 +69,9 @@ try {
     const render=activity=>renderToStaticMarkup(React.createElement(BEDSReport,{selectedYear:'2026',selectedReportingYear:'2026',selectedOu:'NPMO',selectedTier:'Tier 1',selectedFundType:'Current',data:{subprojects:[],trainings:[],otherActivities:[activity],officeReqs:[],staffingReqs:[],otherProgramExpenses:[]}}));
     assert.equal(render(base),render(grouped)); assert.match(render(grouped),/45,000/);
     const form=await readFile('components/ActivityEdit.tsx','utf8');
-    assert.match(form,/mode === 'accomplishment'\) \{\s+const obligationIds/); assert.match(form,/eq\('item_id', String\(exp.id\)\)/);
+    assert.match(form,/mode === 'accomplishment'\) \{\s+if \(!accomplishmentBaseline/);
+    assert.match(form,/await saveActivityAccomplishment\(/);
+    assert.doesNotMatch(form,/syncActivityDisbursements|replaceFinancialObligationRecords/);
     assert.doesNotMatch(form,/actualObligationDate = `\$\{numValue\}/);
     let exported;
     globalThis.window={XLSX:{...XLSX,writeFile:workbook=>{exported=workbook;}}}; globalThis.XLSX=globalThis.window.XLSX; globalThis.alert=()=>{};
