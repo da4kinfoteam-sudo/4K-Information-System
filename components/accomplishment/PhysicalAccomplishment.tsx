@@ -1,6 +1,7 @@
 // Author: 4K 
 import { getActivityDisplayTitle } from '../../lib/activityTitles';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { hydrateSubprojectAccomplishment, readSubprojectAccomplishments, saveSubprojectAccomplishment, type SubprojectAccomplishmentSnapshot, type SubprojectAccomplishmentRequest } from '../../lib/subprojectAccomplishmentPersistence';
 import { ChevronDown, ChevronRight, Search, Undo2, X } from 'lucide-react';
 import { Subproject, Activity, OfficeRequirement, StaffingRequirement } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,7 +11,6 @@ import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { getDcfModuleKeyForSourceType, normalizePolicyMonth, useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
 import { getBudgetLineTag, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
-import { resolveSubprojectCompletionRollup } from '../../lib/subprojectCompletion';
 import { isMonthTargetOverdue } from '../../lib/dateStatus';
 import { isTransferAccomplishmentActive } from '../../lib/budgetItemTransferRules';
 import type { DataScope } from '../../lib/scopedDataFetch';
@@ -20,6 +20,7 @@ import { DcfScopeFilterPanel, type DcfScopeFilterValue, useDcfScopeFilters } fro
 interface Props {
     subprojects: Subproject[];
     setSubprojects: React.Dispatch<React.SetStateAction<Subproject[]>>;
+    onSubprojectSaved?: (subproject: Subproject, snapshot?: SubprojectAccomplishmentSnapshot) => void;
     activities: Activity[];
     setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
     officeReqs: OfficeRequirement[];
@@ -125,7 +126,7 @@ const isPhysicalRecordExcludedFromTargets = (record?: { status?: string; isReali
     !!getPhysicalRecordTag(record);
 
 const PhysicalAccomplishment: React.FC<Props> = ({
-    subprojects, setSubprojects,
+    subprojects, onSubprojectSaved,
     activities, setActivities,
     officeReqs, setOfficeReqs,
     staffingReqs, setStaffingReqs,
@@ -135,7 +136,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Accomplishment - Physical');
-    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
     const defaultYear = new Date().getFullYear().toString();
     const legacyScope = useMemo<Partial<DcfScopeFilterValue>>(() => {
         const read = (key: string) => {
@@ -170,6 +171,13 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     const [items, setItems] = useState<PhysicalItem[]>([]);
     const [originalItems, setOriginalItems] = useState<PhysicalItem[]>([]);
     const [changedItems, setChangedItems] = useState<Map<string, Partial<PhysicalItem>>>(new Map());
+    const physicalDraftRef = useRef({ items, originalItems, changedItems });
+    physicalDraftRef.current = { items, originalItems, changedItems };
+    const subprojectBaselines = useRef(new Map<number, SubprojectAccomplishmentSnapshot>());
+    const subprojectRequests = useRef(new Map<number, SubprojectAccomplishmentRequest>());
+    const skipNextPhysicalReload = useRef(false);
+    const saveAllInFlight = useRef(false);
+    const [loadError, setLoadError] = useState('');
     
     // Save State
     const [isSavingAll, setIsSavingAll] = useState(false);
@@ -305,13 +313,22 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     // --- 1. Load Data ---
     useEffect(() => {
         if (!selectedYear) return;
+        if (skipNextPhysicalReload.current) { skipNextPhysicalReload.current = false; return; }
         setIsLoading(true);
+        setLoadError('');
+        let cancelled = false;
 
-        const timer = setTimeout(() => {
+        const load = async () => { try {
+            const snapshots = await readSubprojectAccomplishments((subprojects || []).filter(matchesSelectedFilters).map(row => row.id), currentUser, 'physical');
+            if (cancelled) return;
+            const previous = physicalDraftRef.current;
+            const pendingParents = new Map(previous.items.filter(row => row.sourceType === 'Subproject' && (previous.changedItems.has(row.uniqueId) || row.children?.some(child => previous.changedItems.has(child.uniqueId)))).map(row => [row.sourceId, row]));
+            const oldBaselines = subprojectBaselines.current;
+            subprojectBaselines.current = new Map(snapshots.map(snapshot => [snapshot.subproject.id, pendingParents.has(snapshot.subproject.id) ? oldBaselines.get(snapshot.subproject.id) || snapshot : snapshot]));
             const loadedItems: PhysicalItem[] = [];
 
             // A. Subprojects (Parent + Children)
-            (subprojects || []).filter(matchesSelectedFilters).forEach(sp => {
+            snapshots.map(snapshot => snapshot.subproject).forEach(sp => {
                 const parentId = `sp-${sp.id}`;
                 const parentRecordTag = getPhysicalRecordTag(sp);
                 const parentTargetExcluded = isPhysicalRecordExcludedFromTargets(sp) || !!sp.isTransferTargetExcluded;
@@ -476,13 +493,14 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 });
             });
 
-            setItems(loadedItems);
-            setOriginalItems(JSON.parse(JSON.stringify(loadedItems)));
-            setChangedItems(new Map());
-            setIsLoading(false);
-        }, 500);
+            setItems(loadedItems.map(row => row.sourceType === 'Subproject' && pendingParents.has(row.sourceId) ? pendingParents.get(row.sourceId)! : row));
+            setOriginalItems(structuredClone(loadedItems.map(row => row.sourceType === 'Subproject' && pendingParents.has(row.sourceId) ? previous.originalItems.find(old => old.uniqueId === row.uniqueId) || row : row)));
+            setChangedItems(new Map([...previous.changedItems].filter(([key]) => loadedItems.some(row => row.sourceType === 'Subproject' && pendingParents.has(row.sourceId) && (row.uniqueId === key || row.children?.some(child => child.uniqueId === key))))));
+        } catch (error) { if (!cancelled) setLoadError(error.message || 'Physical data could not be loaded completely. Reload before editing.'); }
+          finally { if (!cancelled) setIsLoading(false); } };
+        void load();
 
-        return () => clearTimeout(timer);
+        return () => { cancelled = true; };
     }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, activities, staffingReqs, officeReqs]);
 
     // --- 2. Grouping for Display ---
@@ -539,6 +557,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     };
 
     const confirmScopeApply = () => {
+        if (saveAllInFlight.current) return false;
         if (changedItems.size > 0) {
             const shouldDiscard = window.confirm('You have unsaved changes. Discard them and change the applied scope?');
             if (!shouldDiscard) return false;
@@ -587,17 +606,6 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         return undefined;
     };
 
-    const hasSubprojectDetailActualChange = (before: Subproject['details'], after: Subproject['details']) => {
-        if (before.length !== after.length) return true;
-        return after.some(detail => {
-            const original = before.find(item => item.id === detail.id);
-            if (!original) return true;
-            return valuesDiffer(original.actualDeliveryDate, detail.actualDeliveryDate)
-                || valuesDiffer(original.actualNumberOfUnits, detail.actualNumberOfUnits)
-                || valuesDiffer(original.isCompleted, detail.isCompleted);
-        });
-    };
-
     // Update Local State
     const updateLocalItem = (uniqueId: string, updates: Partial<PhysicalItem>) => {
         setItems(prev => {
@@ -637,102 +645,37 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             const submittedAt = new Date().toISOString();
 
             if (item.sourceType === 'Subproject') {
-                if (item.isParent) {
-                    // Save parent status/date AND children cascading
-                    const sp = subprojects.find(s => s.id === item.sourceId);
-                    if (!sp) throw new Error("Subproject not found");
-
-                    // Update all details if children modified in local state (they are nested in item.children)
-                    const updatedDetails = sp.details.map(d => {
-                        const childState = item.children?.find(c => c.detailId === d.id);
-                        if (childState) {
-                            const hasActualDeliveryDate = !!childState.actualDateStart;
-                            return {
-                                ...d,
-                                actualDeliveryDate: childState.actualDateStart,
-                                actualNumberOfUnits: childState.actualQty,
-                                isCompleted: hasActualDeliveryDate,
-                                deliveryDate: childState.targetDateStart,
-                                numberOfUnits: childState.targetQty
-                            };
-                        }
-                        return d;
-                    });
-                    const completionRollup = resolveSubprojectCompletionRollup(updatedDetails, sp.status);
-                    const normalizedUpdatedDetails = completionRollup.details;
-                    const newStatus = sp.status === 'Cancelled' ? 'Cancelled' : completionRollup.status;
-                    const newActualCompletionDate = newStatus === 'Completed' ? completionRollup.actualCompletionDate : null;
-                    const originalItem = findOriginalItem(item.uniqueId);
-                    const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
-                        hasPhysicalAccomplishment: !!newActualCompletionDate,
-                        hasChanged: valuesDiffer(originalItem?.actualDateStart, newActualCompletionDate)
-                            || valuesDiffer(originalItem?.catchUpPlanRemarks, item.catchUpPlanRemarks)
-                            || valuesDiffer(sp.status, newStatus)
-                            || hasSubprojectDetailActualChange(sp.details, normalizedUpdatedDetails),
-                        previousSubmittedAt: sp.physical_accomplishment_submitted_at,
-                        submittedAt
-                    });
-
-                    if (supabase) {
-                        await supabase.from('subprojects').update({
-                            actualCompletionDate: newActualCompletionDate,
-                            estimatedCompletionDate: item.targetDateStart || null,
-                            catchUpPlanRemarks: item.catchUpPlanRemarks || null,
-                            status: newStatus,
-                            details: normalizedUpdatedDetails,
-                            physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
-                            updated_at: submittedAt
-                        }).eq('id', sp.id);
+                const base = subprojectBaselines.current.get(item.sourceId);
+                if (!base || !onSubprojectSaved || loadError) throw new Error('Existing Subproject actuals are unavailable. Your draft was not saved.');
+                const draft = hydrateSubprojectAccomplishment(base);
+                const targets: Array<{ itemId: string; values: Record<string, unknown> }> = [];
+                const originalParent = findOriginalItem(item.uniqueId);
+                const children = item.isParent ? item.children || [] : [item];
+                for (const child of children) {
+                    const original = findOriginalItem(child.uniqueId);
+                    const detail = draft.details.find(row => String(row.id) === String(child.detailId));
+                    if (!original || !detail) throw new Error('A physical item is no longer available. Reopen before saving.');
+                    if (valuesDiffer(original.actualDateStart, child.actualDateStart)) {
+                        detail.actualDeliveryDate = child.actualDateStart || null;
+                        detail.isCompleted = !!child.actualDateStart;
                     }
-
-                    // Update Context
-                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, actualCompletionDate: newActualCompletionDate || undefined, estimatedCompletionDate: item.targetDateStart, catchUpPlanRemarks: item.catchUpPlanRemarks || '', status: newStatus, details: normalizedUpdatedDetails, physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt, updated_at: submittedAt } : s));
-
-                } else {
-                    // Save Individual Child Row
-                    const parentItem = items.find(p => p.uniqueId === item.parentId);
-                    if (!parentItem) throw new Error("Parent not found");
-                    const sp = subprojects.find(s => s.id === parentItem.sourceId);
-                    if (!sp) throw new Error("Subproject not found");
-
-                    const updatedDetails = sp.details.map(d => {
-                        if (d.id === item.detailId) {
-                            const hasActualDeliveryDate = !!item.actualDateStart;
-                            return { 
-                                ...d, 
-                                actualDeliveryDate: item.actualDateStart, 
-                                actualNumberOfUnits: item.actualQty,
-                                isCompleted: hasActualDeliveryDate,
-                                deliveryDate: item.targetDateStart,
-                                numberOfUnits: item.targetQty
-                            };
-                        }
-                        return d;
-                    });
-                    const completionRollup = resolveSubprojectCompletionRollup(updatedDetails, sp.status);
-                    const normalizedUpdatedDetails = completionRollup.details;
-                    const newStatus = sp.status === 'Cancelled' ? 'Cancelled' : completionRollup.status;
-                    const newActualCompletionDate = newStatus === 'Completed' ? completionRollup.actualCompletionDate : null;
-                    const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
-                        hasPhysicalAccomplishment: !!newActualCompletionDate,
-                        hasChanged: hasSubprojectDetailActualChange(sp.details, normalizedUpdatedDetails)
-                            || valuesDiffer(sp.actualCompletionDate, newActualCompletionDate)
-                            || valuesDiffer(sp.status, newStatus),
-                        previousSubmittedAt: sp.physical_accomplishment_submitted_at,
-                        submittedAt
-                    });
-
-                    if (supabase) {
-                        await supabase.from('subprojects').update({
-                            details: normalizedUpdatedDetails,
-                            status: newStatus,
-                            actualCompletionDate: newActualCompletionDate,
-                            physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
-                            updated_at: submittedAt
-                        }).eq('id', sp.id);
-                    }
-                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, details: normalizedUpdatedDetails, status: newStatus, actualCompletionDate: newActualCompletionDate || undefined, physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt, updated_at: submittedAt } : s));
+                    if (valuesDiffer(original.actualQty, child.actualQty)) detail.actualNumberOfUnits = child.actualQty;
+                    const values: Record<string, unknown> = {};
+                    if (valuesDiffer(original.targetDateStart, child.targetDateStart)) values.deliveryDate = child.targetDateStart || null;
+                    if (valuesDiffer(original.targetQty, child.targetQty)) values.numberOfUnits = child.targetQty;
+                    if (Object.keys(values).length) targets.push({ itemId: String(detail.id), values });
                 }
+                if (item.isParent && originalParent) {
+                    if (valuesDiffer(originalParent.catchUpPlanRemarks, item.catchUpPlanRemarks)) draft.catchUpPlanRemarks = item.catchUpPlanRemarks || null;
+                    if (valuesDiffer(originalParent.targetDateStart, item.targetDateStart)) targets.push({ itemId: '$parent', values: { estimatedCompletionDate: item.targetDateStart || null } });
+                }
+                const request = subprojectRequests.current.get(item.sourceId) || {};
+                subprojectRequests.current.set(item.sourceId, request);
+                const confirmed = await saveSubprojectAccomplishment({ base, draft, actor: currentUser, surface: 'physical', targets, request, reason: getLastOverrideReason() });
+                subprojectBaselines.current.set(item.sourceId, confirmed);
+                skipNextPhysicalReload.current = true;
+                onSubprojectSaved(confirmed.subproject, confirmed);
+                return confirmed.subproject;
 
             } else if (item.sourceType === 'Activity') {
                 const act = activities.find(a => a.id === item.sourceId);
@@ -824,6 +767,9 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     };
 
     const confirmSaveAll = async () => {
+        if (saveAllInFlight.current) return;
+        if (loadError || isLoading) { alert(loadError || 'Wait for existing accomplishments to load.'); return; }
+        saveAllInFlight.current = true;
         setIsSaveConfirmOpen(false);
         setIsSavingAll(true);
         try {
@@ -858,10 +804,18 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     return;
                 }
             }
-            await Promise.all(itemsToSave.map(item => saveItemToDB(item)));
+            const results = await Promise.all(itemsToSave.map(item => saveItemToDB(item)));
+            const confirmedSubprojects = new Map(results.filter((row): row is Subproject => !!row).map(row => [row.id, row]));
+            const confirmedItems = items.map(row => {
+                const saved = row.sourceType === 'Subproject' ? confirmedSubprojects.get(row.sourceId) : undefined;
+                if (!saved) return row;
+                return { ...row, status: saved.status, actualDateStart: saved.actualCompletionDate || '', catchUpPlanRemarks: saved.catchUpPlanRemarks || '',
+                    children: row.children?.map(child => { const detail = saved.details.find(d => String(d.id) === String(child.detailId)); return detail ? { ...child, status: saved.status, actualDateStart: detail.actualDeliveryDate || '', actualQty: detail.actualNumberOfUnits || 0, isCompleted: !!detail.isCompleted } : child; }) };
+            });
+            setItems(confirmedItems);
             
             setChangedItems(new Map());
-            setOriginalItems(JSON.parse(JSON.stringify(items)));
+            setOriginalItems(structuredClone(confirmedItems));
             
             setSaveSuccessMessage('All changes saved successfully!');
             setTimeout(() => setSaveSuccessMessage(''), 3000);
@@ -870,6 +824,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             alert("Failed to save some items: " + error.message);
         } finally {
             setIsSavingAll(false);
+            saveAllInFlight.current = false;
         }
     };
 
@@ -1076,7 +1031,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         const completionRate = getCompletionRate(item);
         const itemPhysicalDecision = getPhysicalStatusDecision(item);
         const canEditPhysicalItem = canEdit && itemPhysicalDecision.allowed;
-        const isLocked = !canEditPhysicalItem || !!item.isSuperseded;
+        const isLocked = !canEditPhysicalItem || !!item.isSuperseded || (item.sourceType === 'Subproject' && isSavingAll);
         const isDerivedSubprojectParentActual = item.sourceType === 'Subproject' && item.isParent;
         const isTargetEditable = canEditTarget(item);
         const canEditVisibleTarget = isTargetEditable && !item.targetExcluded;
@@ -1195,7 +1150,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 onBeforeReset={confirmScopeApply}
             />
 
-            {isLoading ? (
+            {loadError ? <div className="notice notice--warning" role="alert">{loadError}</div> : isLoading ? (
                 <LoadingState label="Loading physical data..." />
             ) : (
                 <>

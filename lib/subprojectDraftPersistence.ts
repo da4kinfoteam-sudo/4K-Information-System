@@ -1,8 +1,9 @@
 import type { Subproject, SubprojectDetail } from '../constants';
 import { supabase } from '../supabaseClient';
 import { resolveSubprojectCompletionRollup } from './subprojectCompletion';
+import { sameSubprojectActualValue } from './subprojectAccomplishmentPersistence';
 
-const equal = (left: unknown, right: unknown) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+const equal = sameSubprojectActualValue;
 const conflict = () => new Error('This record changed while you were editing. Your draft has not been saved. Reopen the current record before applying these changes.');
 
 function mergeFields<T extends object>(base: T, draft: T, latest: T, ignored: string[] = []): T {
