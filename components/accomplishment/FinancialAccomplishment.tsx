@@ -1,5 +1,6 @@
 import { isActivityExpenseActualEligible } from '../../lib/activitySupplementalBudget';
 import { hydrateActivityAccomplishment, readActivityAccomplishments, saveActivityAccomplishment, type ActivityAccomplishmentSnapshot, type ActivityAccomplishmentRequest } from '../../lib/activityAccomplishmentPersistence';
+import { hydrateSubprojectAccomplishment, readSubprojectAccomplishments, saveSubprojectAccomplishment, type SubprojectAccomplishmentSnapshot, type SubprojectAccomplishmentRequest } from '../../lib/subprojectAccomplishmentPersistence';
 import { useAuth } from '../../contexts/AuthContext';
 
 // Author: 4K
@@ -30,6 +31,7 @@ import {
 interface Props {
  subprojects: Subproject[];
  setSubprojects: React.Dispatch<React.SetStateAction<Subproject[]>>;
+ onSubprojectSaved?: (subproject: Subproject, snapshot?: SubprojectAccomplishmentSnapshot) => void;
  activities: Activity[];
  setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
  onActivitySaved?: (activity: Activity) => void;
@@ -226,7 +228,7 @@ const readLegacyFinancialScope = (): Partial<DcfScopeFilterValue> => {
 };
 
 const FinancialAccomplishment: React.FC<Props> = ({
- subprojects, setSubprojects,
+ subprojects, onSubprojectSaved,
  activities, onActivitySaved,
  officeReqs, setOfficeReqs,
  staffingReqs, setStaffingReqs,
@@ -268,9 +270,15 @@ const FinancialAccomplishment: React.FC<Props> = ({
  const [actualsDialog, setActualsDialog] = useState<{ itemId: string; kind: 'obligation' | 'disbursement' } | null>(null);
  const [actualsDialogSaving, setActualsDialogSaving] = useState(false);
  const [actualsDialogError, setActualsDialogError] = useState('');
+ const actualsDialogRef = useRef(actualsDialog);
+ const itemsRef = useRef(items);
+ actualsDialogRef.current = actualsDialog;
+ itemsRef.current = items;
  const skipNextFinancialReloadRef = useRef(false);
  const activityBaselines = useRef(new Map<string, ActivityAccomplishmentSnapshot>());
  const activityRequests = useRef(new Map<string, ActivityAccomplishmentRequest>());
+ const subprojectBaselines = useRef(new Map<string, SubprojectAccomplishmentSnapshot>());
+ const subprojectRequests = useRef(new Map<string, SubprojectAccomplishmentRequest>());
  const actualsSavingRef = useRef(false);
  const saveAllInFlight = useRef(false);
  const savingItemIds = useRef(new Set<string>());
@@ -416,7 +424,6 @@ const FinancialAccomplishment: React.FC<Props> = ({
  Array.from(new Set(values.map(Number).filter(Number.isFinite)));
 
  const financialGroups = [
- { entityType: 'subproject_detail', ids: uniqueIds(filteredSubprojects.map(item => item.id)) },
  { entityType: 'office_requirement', ids: uniqueIds(filteredOfficeReqs.map(item => item.id)) },
  { entityType: 'staffing_expense', ids: uniqueIds(filteredStaffingReqs.map(item => item.id)) },
  { entityType: 'other_program_expense', ids: uniqueIds(filteredOtherProgramExpenses.map(item => item.id)) },
@@ -449,10 +456,11 @@ const FinancialAccomplishment: React.FC<Props> = ({
  return responses.flatMap(response => response.data || []);
  };
 
- const [obliRes, disbRes, activitySnapshots] = await Promise.all([
+ const [obliRes, disbRes, activitySnapshots, subprojectSnapshots] = await Promise.all([
  fetchFinancialRows('financial_obligations', financialGroups),
  fetchFinancialRows('financial_disbursements', financialGroups),
  readActivityAccomplishments(uniqueIds(filteredActivities.map(item => item.id)), currentUser, 'financial'),
+ readSubprojectAccomplishments(uniqueIds(filteredSubprojects.map(item => item.id)), currentUser, 'financial'),
  ]);
  if (cancelled) return;
 
@@ -520,10 +528,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
  };
 
  // Subprojects
- filteredSubprojects.forEach(sp => {
+ subprojectSnapshots.map(hydrateSubprojectAccomplishment).forEach(sp => {
  (sp.details || []).forEach(d => {
- const obs = getObligations('Subproject', sp.id, d.id);
- const dibs = getDisbursements('Subproject', sp.id, d.id);
+ const obs = d.obligations || [];
+ const dibs = d.disbursements || [];
 
  loadedItems.push({
  uniqueId: `sp-${sp.id}-${d.id}`,
@@ -759,13 +767,17 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
  if (cancelled) return;
  const snapshotsById = new Map(activitySnapshots.map(snapshot => [snapshot.activity.id, snapshot]));
+ const subprojectSnapshotsById = new Map(subprojectSnapshots.map(snapshot => [snapshot.subproject.id, snapshot]));
+ const oldSubprojectBaselines = subprojectBaselines.current;
  const oldBaselines = activityBaselines.current;
  const pending = changedItemsRef.current;
+ subprojectBaselines.current = new Map(loadedItems.filter(item => item.sourceType === 'Subproject').map(item => [item.uniqueId,
+   (pending.has(item.uniqueId) || actualsDialogRef.current?.itemId === item.uniqueId) && oldSubprojectBaselines.has(item.uniqueId) ? oldSubprojectBaselines.get(item.uniqueId)! : subprojectSnapshotsById.get(item.sourceId)!]));
  activityBaselines.current = new Map(loadedItems.filter(item => item.sourceType === 'Activity').map(item => [item.uniqueId,
    pending.has(item.uniqueId) && oldBaselines.has(item.uniqueId) ? oldBaselines.get(item.uniqueId)! : snapshotsById.get(item.sourceId)!]));
  const oldOriginals = new Map(originalItemsRef.current.map(item => [item.uniqueId, item]));
- setItems(loadedItems.map(item => item.sourceType === 'Activity' && pending.has(item.uniqueId) ? pending.get(item.uniqueId)! : item));
- setOriginalItems(loadedItems.map(item => item.sourceType === 'Activity' && pending.has(item.uniqueId) ? oldOriginals.get(item.uniqueId) || item : item));
+ setItems(loadedItems.map(item => item.sourceType === 'Subproject' && actualsDialogRef.current?.itemId === item.uniqueId ? itemsRef.current.find(old => old.uniqueId === item.uniqueId) || item : ['Activity', 'Subproject'].includes(item.sourceType) && pending.has(item.uniqueId) ? pending.get(item.uniqueId)! : item));
+ setOriginalItems(loadedItems.map(item => (['Activity', 'Subproject'].includes(item.sourceType) && pending.has(item.uniqueId)) || (item.sourceType === 'Subproject' && actualsDialogRef.current?.itemId === item.uniqueId) ? oldOriginals.get(item.uniqueId) || item : item));
  } catch (error) {
  console.error("Error loading data:", error);
  if (!cancelled) setLoadError('Financial data could not be loaded completely. Reload before editing.');
@@ -1257,42 +1269,57 @@ const FinancialAccomplishment: React.FC<Props> = ({
    onActivitySaved(saved);
    return confirmedItem;
  }
+ if (item.sourceType === 'Subproject') {
+   const base = subprojectBaselines.current.get(item.uniqueId);
+   if (!base || !onSubprojectSaved) throw new Error('The Subproject save connection is unavailable. Your draft has not been saved.');
+   const draft = hydrateSubprojectAccomplishment(base);
+   const detail = draft.details.find(row => String(row.id) === String(item.detailId));
+   if (!detail) throw new Error('The Subproject detail is no longer available.');
+   detail.obligations = item.obligations;
+   detail.disbursements = item.disbursements;
+   const original = originalItems.find(row => row.uniqueId === item.uniqueId);
+   const targetValues: Record<string, unknown> = {};
+   if (includeTargets && item.status === 'Proposed' && original) {
+     if (item.targetObligationAmount !== original.targetObligationAmount) {
+       targetValues.pricePerUnit = item.targetObligationAmount / (Number(detail.numberOfUnits) || 1);
+       if (!Number(detail.numberOfUnits)) targetValues.numberOfUnits = 1;
+     }
+     if (item.targetObligationMonth !== original.targetObligationMonth) targetValues.obligationMonth = item.targetObligationMonth;
+     if (item.targetDisbursementMonth !== original.targetDisbursementMonth) targetValues.disbursementMonth = item.targetDisbursementMonth;
+   }
+   const request = subprojectRequests.current.get(item.uniqueId) || {};
+   subprojectRequests.current.set(item.uniqueId, request);
+   const confirmed = await saveSubprojectAccomplishment({
+     base, draft, actor: currentUser, surface: 'financial', request,
+     onlyItem: String(item.detailId), onlyStage: sync === 'both' ? undefined : sync,
+     removals: sync === 'both' ? {} : { [`${item.detailId}:${sync}`]: options.removedIds || [] },
+     targets: Object.keys(targetValues).length ? [{ itemId: String(item.detailId), values: targetValues }] : [],
+     reason: getLastOverrideReason?.() || '',
+   });
+   // Advance only what this save confirmed; another open stage keeps its baseline.
+   subprojectBaselines.current.set(item.uniqueId, {
+     subproject: { ...base.subproject, details: base.subproject.details.map(row => String(row.id) === String(item.detailId) ? { ...row, ...targetValues } : row) },
+     stages: { ...base.stages, [String(item.detailId)]: {
+       ...base.stages[String(item.detailId)],
+       ...(sync === 'both' || sync === 'obligation' ? { obligation: confirmed.stages[String(item.detailId)].obligation } : {}),
+       ...(sync === 'both' || sync === 'disbursement' ? { disbursement: confirmed.stages[String(item.detailId)].disbursement } : {}),
+     } },
+   });
+   const saved = hydrateSubprojectAccomplishment(confirmed);
+   const savedExpense = saved.details.find(row => String(row.id) === String(item.detailId))!;
+   let savedItem = item;
+   if (sync === 'both' || sync === 'obligation') savedItem = mergeActualRecords(savedItem, 'obligation', savedExpense.obligations || []);
+   if (sync === 'both' || sync === 'disbursement') savedItem = mergeActualRecords(savedItem, 'disbursement', savedExpense.disbursements || []);
+   const confirmedItem = savedItem;
+   setItems(previous => previous.map(row => row.uniqueId === item.uniqueId ? confirmedItem : row));
+   setOriginalItems(previous => previous.map(row => row.uniqueId !== item.uniqueId ? row : sync === 'both' ? confirmedItem : mergeActualRecords(row, sync, sync === 'obligation' ? confirmedItem.obligations : confirmedItem.disbursements)));
+   skipNextFinancialReloadRef.current = true;
+   onSubprojectSaved(saved, confirmed);
+   return confirmedItem;
+ }
  const submittedAt = new Date().toISOString();
  let commitSourceState = () => {};
- if (item.sourceType === 'Subproject') {
- const sp = subprojects.find(s => s.id === item.sourceId);
- if (!sp) throw new Error("Subproject not found");
-
- const updatedDetails = sp.details.map(d => {
- if (d.id === item.detailId) {
- const updated = {
- ...d,
- actualObligationDate: item.actualObligationMonth,
- actualObligationAmount: item.actualObligationAmount,
- actualDisbursementDate: item.actualDisbursementMonth,
- actualDisbursementAmount: item.actualDisbursementAmount,
- obligations: item.obligations,
- disbursements: item.disbursements
- };
- // Update targets if Proposed
- if (includeTargets && item.status === 'Proposed') {
- updated.obligationMonth = item.targetObligationMonth;
- updated.disbursementMonth = item.targetDisbursementMonth;
- updated.pricePerUnit = item.targetObligationAmount;
- updated.numberOfUnits = 1;
- }
- return updated;
- }
- return d;
- });
-
- if (supabase) {
- const { error: updateError } = await supabase.from('subprojects').update({ details: updatedDetails }).eq('id', sp.id);
- if (updateError) throw updateError;
- }
- commitSourceState = () => setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, details: updatedDetails } : s));
-
- } else if (item.sourceType === 'Staffing') {
+ if (item.sourceType === 'Staffing') {
  const s = staffingReqs.find(req => req.id === item.sourceId);
  if (!s) throw new Error("Staffing Requirement not found");
 
@@ -1617,7 +1644,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
  const normalizedRecords = draftRecords.map((record, index) => ({
  ...record,
- id: item.sourceType !== 'Activity' && Number(record.id) < 0 ? Date.now() + index : record.id,
+ id: !['Activity', 'Subproject'].includes(item.sourceType) && Number(record.id) < 0 ? Date.now() + index : record.id,
  amount: toFiniteNumber(record.amount),
  date: normalizeFinancialMonthValue(record.date, item.fundYear),
  }));

@@ -1,6 +1,8 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { DataScope, getDataScopeKey, ScopedAppData } from './scopedDataFetch';
 import type { Activity, Subproject } from '../constants';
+import type { SubprojectConfirmedFinancial } from './subprojectAccomplishmentPersistence';
+import { reconcileSubprojectFinancialRows } from './subprojectAccomplishmentPersistence';
 
 const DB_NAME = '4kis-local-cache';
 const DB_VERSION = 1;
@@ -226,16 +228,34 @@ export const updateCachedActivity = async (userId: string | number, activity: Ac
   await tx.done;
 };
 
-export const updateCachedSubproject = async (userId: string | number, subproject: Subproject): Promise<void> => {
+export const updateCachedSubproject = async (userId: string | number, subproject: Subproject, confirmations: SubprojectConfirmedFinancial[] = []): Promise<void> => {
   const db = await getDb();
   if (!db) return;
   const tx = db.transaction(['scope_meta', 'records'], 'readwrite');
   const rows = await tx.objectStore('records').index('tableName').getAll('subprojects');
   const scopeFields: (keyof Subproject)[] = ['operatingUnit', 'fundingYear', 'fundType', 'tier', 'workflow_status'];
+  const affectedScopes = new Set<string>();
   for (const row of rows) {
     if (row.userId !== String(userId) || Number(row.value.id) !== Number(subproject.id)) continue;
     if (scopeFields.some(field => row.value[field] !== subproject[field])) await tx.objectStore('scope_meta').delete(row.scopeKey);
-    else await tx.objectStore('records').put({ ...row, value: subproject });
+    else { await tx.objectStore('records').put({ ...row, value: subproject }); affectedScopes.add(row.scopeKey); }
+  }
+  for (const scopeKey of affectedScopes) {
+    if (!confirmations.length) continue;
+    const records = await tx.objectStore('records').index('scopeKey').getAll(scopeKey);
+    const meta = await tx.objectStore('scope_meta').get(scopeKey);
+    for (const [stage, tableName] of [['obligation', 'financialObligations'], ['disbursement', 'financialDisbursements']] as const) {
+      if (!confirmations.some(change => change.stage === stage)) continue;
+      const old = records.filter(row => row.tableName === tableName);
+      const next = reconcileSubprojectFinancialRows(old.map(row => row.value), subproject.id, confirmations, stage);
+      for (const row of old) await tx.objectStore('records').delete(row.key);
+      for (const value of next) {
+        const recordId = String(value.id);
+        await tx.objectStore('records').put({ key: makeRecordKey(scopeKey, tableName, recordId), scopeKey, userId: String(userId), tableName, recordId, value });
+      }
+      if (meta) meta.rowCounts[tableName] = next.length;
+    }
+    if (meta) await tx.objectStore('scope_meta').put(meta);
   }
   await tx.done;
 };

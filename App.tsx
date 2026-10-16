@@ -12,6 +12,7 @@ import IPOs from './components/IPO';
 import References, { ReferenceUacs, ReferenceParticular } from './components/References';
 import Reports, { ReportTab, ReportsPageState } from './components/Reports';
 import SubprojectDetail from './components/SubprojectDetail';
+import { reconcileSubprojectFinancialRows, type SubprojectAccomplishmentSnapshot } from './lib/subprojectAccomplishmentPersistence';
 import SubprojectEdit from './components/SubprojectEdit';
 import IPODetail from './components/IPODetail';
 import { ActivityDetail } from './components/ActivityDetail';
@@ -737,6 +738,29 @@ const AppContent: React.FC = () => {
     const [activityLinkRevision, setActivityLinkRevision] = useState(0);
     const [activityEditMode, setActivityEditMode] = useState<'create' | 'details' | 'expenses' | 'accomplishment'>('create');
     const [subprojectDetailMode, setSubprojectDetailMode] = useState<'none' | 'details' | 'commodity' | 'budget' | 'accomplishment'>('none');
+
+    const financialRowsRef = useRef({ obligations: allFinancialObligations, disbursements: allFinancialDisbursements });
+    financialRowsRef.current = { obligations: allFinancialObligations, disbursements: allFinancialDisbursements };
+    const handleSubprojectSaved = (updated: Subproject, snapshot?: SubprojectAccomplishmentSnapshot) => {
+        const previous = subprojects.find(item => Number(item.id) === Number(updated.id));
+        const affectedIpoIds = new Set([previous?.ipo_id, updated.ipo_id, ...ipos.filter(ipo => [previous?.indigenousPeopleOrganization, updated.indigenousPeopleOrganization].includes(ipo.name)).map(ipo => ipo.id)].filter(Boolean).map(Number));
+        subprojectsSync.upsertLocalData([updated]);
+        if (snapshot?.confirmedFinancial?.length) {
+            const obligations = reconcileSubprojectFinancialRows(financialRowsRef.current.obligations, updated.id, snapshot.confirmedFinancial, 'obligation');
+            const disbursements = reconcileSubprojectFinancialRows(financialRowsRef.current.disbursements, updated.id, snapshot.confirmedFinancial, 'disbursement');
+            financialRowsRef.current = { obligations, disbursements };
+            financialObligationsSync.replaceLocalData(obligations);
+            financialDisbursementsSync.replaceLocalData(disbursements);
+        }
+        if (selectedSubproject?.id === updated.id) setSelectedSubproject(updated);
+        for (const key of ipoLinkedDcfCacheRef.current.keys()) {
+            if (affectedIpoIds.has(Number(key.split('|').at(-1)))) ipoLinkedDcfCacheRef.current.delete(key);
+        }
+        if (selectedIpo && affectedIpoIds.has(Number(selectedIpo.id))) setIpoLinkedDcfState(null);
+        if (currentUser) void updateCachedSubproject(currentUser.id, updated, snapshot?.confirmedFinancial).catch(error => {
+            console.error('Subproject saved, but its local cache could not be updated:', error);
+        });
+    };
 
     const handleActivitySaved = (updated: Activity) => {
         const previous = activities.find(item => Number(item.id) === Number(updated.id))
@@ -1950,6 +1974,7 @@ const AppContent: React.FC = () => {
             case '/accomplishment/financial':
                 return <FinancialAccomplishment 
                             subprojects={visibleSubprojects}
+                            onSubprojectSaved={handleSubprojectSaved}
                             setSubprojects={setSubprojects}
                             activities={visibleActivities}
                             setActivities={setActivities}
@@ -1973,6 +1998,7 @@ const AppContent: React.FC = () => {
             case '/accomplishment/physical':
                 return <PhysicalAccomplishment 
                             subprojects={visibleSubprojects}
+                            onSubprojectSaved={handleSubprojectSaved}
                             setSubprojects={setSubprojects}
                             activities={visibleActivities}
                             setActivities={setActivities}
@@ -2129,6 +2155,7 @@ const AppContent: React.FC = () => {
                 }
                 return <SubprojectDetail 
                             subproject={latestSp} 
+                            onAccomplishmentSaved={handleSubprojectSaved}
                             ipos={subprojectWorkflowIpos}
                             fundSources={fundSources}
                             onEditModeChange={setSubprojectDetailMode}

@@ -11,7 +11,8 @@ import { MonthYearPicker } from './ui/MonthYearPicker';
 import { SubprojectBudgetEditor } from './ui/SubprojectBudgetEditor';
 import { ReferenceCombobox } from './ui/ReferenceCombobox';
 import { budgetTargetsChanged, getUacsOptions, groupBudgetSchedules, latestBudgetDeliveryDate, validateBudgetSchedule } from '../lib/subprojectBudgetSchedules';
-import { getChangedSubprojectActualIds, persistSubprojectDraft, rescheduleBudgetTargets } from '../lib/subprojectDraftPersistence';
+import { persistSubprojectDraft, rescheduleBudgetTargets } from '../lib/subprojectDraftPersistence';
+import { buildSubprojectActualEdits, getSubprojectPhysicalChanges, hydrateSubprojectAccomplishment, readSubprojectAccomplishments, saveSubprojectAccomplishment, type SubprojectAccomplishmentSnapshot, type SubprojectAccomplishmentRequest, type SubprojectActualRemovals } from '../lib/subprojectAccomplishmentPersistence';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
 import { supabase } from '../supabaseClient';
@@ -22,7 +23,7 @@ import { getFundSourceByUid, getFundSourceLabel, resolveFundSourceUidFromLegacyL
 import { ConfirmDialog } from './ui/enterprise';
 import { getActualDisbursementSummary, getActualObligationSummary, hasFinancialActuals } from '../lib/financialActualSummary';
 import { getActualObligationValidationError, hasActualObligationRecords } from '../lib/financialObligationUtils';
-import { fetchFinancialObligationsForParent, replaceFinancialObligationRecords } from '../lib/financialObligationSync';
+import { fetchFinancialObligationsForParent } from '../lib/financialObligationSync';
 import {
     canEditSubprojectBudgetItem,
     getSubprojectBudgetItemObligations,
@@ -114,6 +115,7 @@ interface SubprojectDetailProps {
     ipos: IPO[];
     onEditModeChange?: (mode: 'none' | 'details' | 'commodity' | 'budget' | 'accomplishment') => void;
     onUpdateSubproject: (updatedSubproject: Subproject, options?: { persisted?: boolean }) => void;
+    onAccomplishmentSaved?: (subproject: Subproject, snapshot?: SubprojectAccomplishmentSnapshot) => void;
     onBudgetTransferComplete?: (source: Subproject, destination: Subproject, status: BudgetItemTransferResult['status'], selectedItemIds: string[]) => void;
     particularTypes: { [key: string]: string[] };
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
@@ -231,13 +233,13 @@ const budgetItemFieldLabels: Record<string, string> = {
     numberOfUnits: 'Number of Units'
 };
 
-const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onEditModeChange, onUpdateSubproject, onBudgetTransferComplete, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock, fundSources }) => {
+const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onEditModeChange, onUpdateSubproject, onAccomplishmentSaved, onBudgetTransferComplete, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock, fundSources }) => {
     const { currentUser, rolesConfigs, hasAccess, getVisibilityScope } = useAuth();
     const { canEdit } = useUserAccess('Subprojects');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
     const { canEdit: canEditPhysical } = useUserAccess('Accomplishment - Physical');
     const { addIpoHistory } = useIpoHistory();
-    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
     const isAdmin = currentUser?.role === 'Administrator';
     const canChooseOperatingUnit = currentUser?.role === 'Super Admin'
         || (hasAccess('Subprojects', 'edit') && getVisibilityScope('Subprojects') === 'All');
@@ -254,6 +256,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const [editedSubproject, setEditedSubproject] = useState(subproject);
     const draftBaseRef = useRef(subproject);
+    const actualsBaseline = useRef<SubprojectAccomplishmentSnapshot | null>(null);
+    const actualsRequest = useRef<SubprojectAccomplishmentRequest>({});
+    const actualRemovals = useRef<SubprojectActualRemovals>({});
+    const adjustmentRemovals = useRef<{ obligation: string[]; disbursement: string[] }>({ obligation: [], disbursement: [] });
+    const [actualsLoading, setActualsLoading] = useState(false);
+    const [actualsLoadError, setActualsLoadError] = useState('');
+    const [actualsReload, setActualsReload] = useState(0);
     const selectedFundSourceUid = editedSubproject.fundSourceUid
         || resolveFundSourceUidFromLegacyLabel(editedSubproject.fundSource, fundSources)
         || '';
@@ -517,9 +526,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     useEffect(() => {
         const sameDraftContext = draftContextRef.current?.subprojectId === subproject.id
             && draftContextRef.current?.editMode === editMode;
-        if (sameDraftContext && editMode !== 'none') return;
+        if (sameDraftContext && editMode !== 'none' && !actualsLoadError) return;
         draftContextRef.current = { subprojectId: subproject.id, editMode, status: subproject.status };
         draftBaseRef.current = structuredClone(subproject);
+        actualsBaseline.current = null; actualsRequest.current = {}; actualRemovals.current = {};
+        setActualsLoadError('');
 
         let cancelled = false;
         setEditedSubproject(subproject);
@@ -542,7 +553,20 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         };
 
         setDetailItems((subproject.details || []).map(d => ensureOriginalBudgetSnapshot(d)));
-        if (supabase && subproject.id > 0 && (editMode === 'none' || editMode === 'accomplishment')) {
+        if (supabase && subproject.id > 0 && editMode === 'accomplishment') {
+            setActualsLoading(true);
+            void readSubprojectAccomplishments([subproject.id], currentUser).then(([snapshot]) => {
+                if (cancelled) return;
+                actualsBaseline.current = snapshot;
+                draftBaseRef.current = structuredClone(snapshot.subproject);
+                const hydrated = hydrateSubprojectAccomplishment(snapshot);
+                setEditedSubproject(hydrated);
+                setAccomplishmentRemarks(hydrated.accomplishmentRemarks || '');
+                setDetailItems(hydrated.details.map(ensureOriginalBudgetSnapshot));
+            }).catch(error => { if (!cancelled) setActualsLoadError(error.message || 'Existing actuals could not be loaded.'); })
+                .finally(() => { if (!cancelled) setActualsLoading(false); });
+        } else if (supabase && subproject.id > 0 && editMode === 'none') {
+            setActualsLoading(false);
             void fetchFinancialObligationsForParent({ entityType: 'subproject_detail', parentId: subproject.id })
                 .then(rows => applyObligationRows(rows))
                 .catch(error => {
@@ -550,7 +574,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     applyObligationRows(null);
                 });
         } else {
-            applyObligationRows(null);
+            setActualsLoading(false);
+            if (editMode === 'none') applyObligationRows(null);
         }
 
         if (editMode === 'details') setActiveTab('details');
@@ -561,7 +586,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setEditingDetailIndex(null);
         resetCurrentDetail();
         return () => { cancelled = true; };
-    }, [subproject, editMode]);
+    }, [editMode === 'none' ? subproject : subproject.id, editMode, actualsReload]);
 
     useEffect(() => {
         let isMounted = true;
@@ -1223,6 +1248,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const handleEditAccomplishmentItem = (index: number) => {
         const item = detailItems[index];
         if (!item || !isSubprojectAdjustmentItem(item as SubprojectDetailType) || item.isSuperseded) return;
+        adjustmentRemovals.current = { obligation: [], disbursement: [] };
         setAccomplishmentItemEditingIndex(index);
         setAccomplishmentItemFormMessage(null);
         setAccomplishmentItemNotice(null);
@@ -1404,6 +1430,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             };
         });
         setDetailItems(nextDetails);
+        if (existingAdjustmentItem) for (const stage of ['obligation', 'disbursement'] as const) {
+            const key = `${existingAdjustmentItem.id}:${stage}`;
+            actualRemovals.current[key] = [...(actualRemovals.current[key] || []), ...adjustmentRemovals.current[stage]];
+        }
         const adjustmentHistoryEntries: Array<{
             action: BudgetItemAdjustmentHistory['action'];
             beforeSnapshot: any;
@@ -1610,6 +1640,28 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const saveForm = async (e: FormEvent) => {
         e.preventDefault();
 
+        if (editMode === 'accomplishment' && supabase) {
+            const base = actualsBaseline.current;
+            if (actualsLoading || actualsLoadError || !base) throw new Error('Existing actuals are unavailable. Your draft has not been saved.');
+            const draft = { ...editedSubproject, details: detailItems as SubprojectDetailType[], accomplishmentRemarks: accomplishmentRemarks.trim() || null };
+            const physical = getSubprojectPhysicalChanges(base.subproject, draft);
+            const financial = buildSubprojectActualEdits(base, draft, actualRemovals.current);
+            const actions: Array<'editPhysicalAccomplishment' | 'editFinancialAccomplishment'> = [];
+            if (Object.keys(physical).length) actions.push('editPhysicalAccomplishment');
+            if (financial.length) actions.push('editFinancialAccomplishment');
+            for (const action of actions) {
+                const decision = getStatusDecision({ moduleKey: 'subprojects', item: base.subproject, action, hasModuleAccess: hasAccess(action === 'editPhysicalAccomplishment' ? 'Accomplishment - Physical' : 'Accomplishment - Financial', 'edit') });
+                if (!(await ensureDecisionAllowed(decision, { moduleKey: 'subprojects', item: base.subproject, itemId: subproject.id, itemName: subproject.name, status: base.subproject.status, action, entityType: 'subproject' }))) return;
+            }
+            const saved = await saveSubprojectAccomplishment({ base, draft, actor: currentUser, removals: actualRemovals.current, request: actualsRequest.current, reason: getLastOverrideReason() });
+            actualsBaseline.current = saved;
+            if (onAccomplishmentSaved) onAccomplishmentSaved(saved.subproject, saved);
+            else onUpdateSubproject(saved.subproject, { persisted: true });
+            setPendingAdjustmentHistory([]);
+            setEditMode('none');
+            return;
+        }
+
         if (editMode === 'accomplishment') {
             const obligationError = detailItems
                 .map(detail => getActualObligationValidationError(detail.obligations || []))
@@ -1787,56 +1839,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         const confirmedSubproject = await persistSubprojectDraft(draftBaseRef.current, updatedSubprojectWithDetails, editMode, guardedBudgetStatus);
         onUpdateSubproject(confirmedSubproject, { persisted: !!supabase });
 
-        // Logic to track accomplishment history in new table
-        if (editMode === 'accomplishment' && supabase) {
-            // Find changed items that are newly delivered or quantity changed
-            const changes = confirmedSubproject.details.filter(item => {
-                const original = subproject.details.find(row => String(row.id) === String(item.id));
-                if (!original) return true; // New item (shouldn't happen in accomplishment mode usually)
-
-                // Track if actual delivery happened or quantity updated
-                const deliveredNow = !!item.actualDeliveryDate;
-                const deliveredBefore = !!original.actualDeliveryDate;
-
-                // If just marked delivered, or quantity updated
-                if ((deliveredNow && !deliveredBefore) || (deliveredNow && item.actualNumberOfUnits !== original.actualNumberOfUnits)) {
-                    return true;
-                }
-                return false;
-            });
-
-            if (changes.length > 0) {
-                const historyRecords = changes.map(item => ({
-                    subproject_id: subproject.id,
-                    detail_id: item.id || 0, // Fallback 0 if id missing (should not happen for saved items)
-                    delivery_date: item.actualDeliveryDate,
-                    quantity: item.actualNumberOfUnits,
-                    remarks: `Delivered: ${item.particulars}`,
-                    created_by: currentUser?.fullName || 'System',
-                    created_at: new Date().toISOString()
-                }));
-
-                // Insert into tracking table
-                const { error: histError } = await supabase.from('subproject_accomplishments').insert(historyRecords);
-                if (histError) console.error("Error logging accomplishment history:", histError);
-            }
-        }
 
 
         if (resolvedIpoId) addIpoHistory(resolvedIpoId, `${eventType}: ${confirmedSubproject.name}`);
 
-        // Sync obligations to central table if supabase is available
-        if (supabase && editMode === 'accomplishment') {
-             try {
-                 const obligationIds = getChangedSubprojectActualIds(draftBaseRef.current.details, normalizedCleanDetails, 'obligation');
-                 const disbursementIds = getChangedSubprojectActualIds(draftBaseRef.current.details, normalizedCleanDetails, 'disbursement');
-                 await syncSubprojectObligations(subproject.id, confirmedSubproject.details.filter(row => obligationIds.has(String(row.id))));
-                 await syncSubprojectDisbursements(subproject.id, confirmedSubproject.details.filter(row => disbursementIds.has(String(row.id))));
-             } catch (error) {
-                 console.error('The Subproject saved, but central financial synchronization failed:', error);
-                 alert('The Subproject was saved, but financial synchronization failed. Do not submit the same accomplishment again; contact an administrator.');
-             }
-        }
 
         if ((editMode === 'accomplishment' || editMode === 'budget') && pendingAdjustmentHistory.length > 0) {
             for (const entry of pendingAdjustmentHistory) {
@@ -1862,53 +1868,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setEditMode('none');
     };
 
-    const syncSubprojectObligations = async (parentId: number, details: SubprojectDetailType[]) => {
-        if (!supabase) return;
-        const entityType = 'subproject_detail';
-
-        for (const item of details) {
-            if (item.obligations && item.obligations.length > 0) {
-                // Update legacy fields for fallback reporting
-                const latestOb = [...item.obligations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-                item.actualObligationAmount = item.obligations.reduce((sum, o) => sum + (o.amount || 0), 0);
-                item.actualObligationDate = latestOb.date;
-
-            }
-            await replaceFinancialObligationRecords({
-                entityType,
-                parentId,
-                itemId: item.id ?? null,
-                records: item.obligations || [],
-            });
-        }
-    };
-
-    const syncSubprojectDisbursements = async (parentId: number, details: SubprojectDetailType[]) => {
-        if (!supabase) return;
-        const entityType = 'subproject_detail';
-
-        for (const item of details) {
-            const syncPayload: any[] = [];
-            if (item.disbursements?.length) {
-                item.disbursements.forEach(record => syncPayload.push({
-                    entity_type: entityType, parent_id: parentId, item_id: String(item.id),
-                    disbursement_date: record.date, amount: record.amount || 0, remarks: record.remarks || '',
-                }));
-            } else if (item.disbursements === undefined && Number(item.actualDisbursementAmount) > 0) {
-                syncPayload.push({
-                    entity_type: entityType, parent_id: parentId, item_id: String(item.id),
-                    disbursement_date: item.actualDisbursementDate || new Date().toISOString().split('T')[0],
-                    amount: item.actualDisbursementAmount, remarks: 'Migrated missing',
-                });
-            }
-            const { error: deleteError } = await supabase.from('financial_disbursements').delete().eq('entity_type', entityType).eq('parent_id', parentId).eq('item_id', String(item.id));
-            if (deleteError) throw deleteError;
-            if (syncPayload.length) {
-                const { error } = await supabase.from('financial_disbursements').insert(syncPayload);
-                if (error) throw error;
-            }
-        }
-    };
 
     const applyBudgetSchedules = async (rows: SubprojectDetailType[]) => {
         const { decision, action } = getEditModeDecision('budget');
@@ -1946,6 +1905,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const commonInputClasses = "form-control";
 
     if (editMode !== 'none') {
+        if (editMode === 'accomplishment' && (actualsLoading || actualsLoadError)) return (
+            <div className="form-page subproject-edit-page">
+                <div className="notice notice--warning" role="status">{actualsLoadError || 'Loading existing accomplishments...'}</div>
+                {actualsLoadError && <button className="btn btn-secondary" onClick={() => setActualsReload(value => value + 1)}>Retry</button>}
+                <button className="btn btn-secondary" onClick={cancelEditing}>Cancel Editing</button>
+            </div>
+        );
         return (
             <div className="form-page subproject-edit-page animate-fadeIn">
                 <div className="detail-header">
@@ -2486,6 +2452,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                 <td>
                                                                     <ObligationsEditor
                                                                         obligations={detail.obligations || []}
+                                                                        onRemove={id => { const key = `${detail.id}:obligation`; actualRemovals.current[key] = [...(actualRemovals.current[key] || []), String(id)]; }}
                                                                         onChange={(newObs, total) => {
                                                                             handleDetailAccomplishmentChange(idx, 'obligations', newObs);
                                                                             handleDetailAccomplishmentChange(idx, 'actualObligationAmount', total);
@@ -2497,6 +2464,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                 <td>
                                                                     <DisbursementsEditor
                                                                         disbursements={detail.disbursements || []}
+                                                                        onRemove={id => { const key = `${detail.id}:disbursement`; actualRemovals.current[key] = [...(actualRemovals.current[key] || []), String(id)]; }}
                                                                         onChange={(newDb, total) => {
                                                                             handleDetailAccomplishmentChange(idx, 'disbursements', newDb);
                                                                             handleDetailAccomplishmentChange(idx, 'actualDisbursementAmount', total);
@@ -2839,6 +2807,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         <h4>Actual Obligations</h4>
                                         <ObligationsEditor
                                             obligations={accomplishmentItemDraft.obligations}
+                                            onRemove={id => { adjustmentRemovals.current.obligation.push(String(id)); }}
                                             onChange={(records) => setAccomplishmentItemDraft(previous => ({ ...previous, obligations: records }))}
                                             defaultYear={String(editedSubproject.fundingYear || '')}
                                             validateMonthChange={validateSubprojectActualMonth}
@@ -2848,6 +2817,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         <h4>Actual Disbursements</h4>
                                         <DisbursementsEditor
                                             disbursements={accomplishmentItemDraft.disbursements}
+                                            onRemove={id => { adjustmentRemovals.current.disbursement.push(String(id)); }}
                                             onChange={(records) => setAccomplishmentItemDraft(previous => ({ ...previous, disbursements: records }))}
                                             defaultYear={String(editedSubproject.fundingYear || '')}
                                             validateMonthChange={validateSubprojectActualMonth}
