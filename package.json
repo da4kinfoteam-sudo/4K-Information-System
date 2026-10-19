@@ -8,6 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
+    "test:system-information": "node --experimental-strip-types scripts/run-system-information-check.mjs",
+    "test:system-information-ui": "node --experimental-strip-types scripts/run-system-information-ui-check.mjs",
     "test:lod-scoring": "node --experimental-strip-types scripts/run-lod-scoring-check.mjs",
     "test:lod-overrides": "node --experimental-strip-types scripts/run-lod-override-check.mjs",
     "test:gad-pimme": "node --experimental-strip-types scripts/run-gad-pimme-check.mjs",

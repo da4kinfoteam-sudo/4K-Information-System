@@ -1,0 +1,19 @@
+name: Release metadata
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  release-catalog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate release entry and PR
+        run: node --experimental-strip-types scripts/validate-release-catalog.mjs --base origin/main
