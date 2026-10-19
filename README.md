@@ -18,3 +18,7 @@ View your app in AI Studio: https://ai.studio/apps/a9afcd0a-495b-455c-bbeb-3bf0d
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Release And Promotion
+
+Follow [the release workflow](docs/release-workflow.md) alongside the established promote skill. User-facing version numbers and patch notes are maintained in `releases/catalog.json`; production builds require the current release's PR number and approved release date. Local implementation does not authorize promotion.

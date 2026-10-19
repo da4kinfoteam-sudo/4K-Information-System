@@ -2324,6 +2324,8 @@ const AppContent: React.FC = () => {
             }
             case '/settings':
                 return <Settings 
+                            onNavigate={navigateTo}
+                            currentRoute={currentPage}
                             isDarkMode={isDarkMode} 
                             themePreference={themePreference}
                             onThemePreferenceChange={updateThemePreference}

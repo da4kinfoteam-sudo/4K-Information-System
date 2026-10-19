@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "product": "4kis",
+  "currentReleaseId": "system-information",
+  "releases": [
+    {
+      "id": "system-information",
+      "version": "1.1.0",
+      "kind": "feature",
+      "title": "System Information and patch history",
+      "releaseDate": null,
+      "pr": null,
+      "sections": {
+        "Added": [
+          "System Information in User Settings for every signed-in role.",
+          "Build identification, update checks, and expandable patch notes."
+        ],
+        "Improved": [
+          "Settings tabs retain their selection through refresh and browser navigation."
+        ],
+        "Affected Pages": ["User Settings"]
+      }
+    },
+    {
+      "id": "release-tracking-baseline",
+      "version": "1.0.0",
+      "kind": "baseline",
+      "title": "Release tracking baseline",
+      "releaseDate": "2026-10-16",
+      "pr": 92,
+      "commit": "23d44b1258feb86eae52587f54460e9bdd17940e",
+      "sections": {
+        "Fixed": [
+          "Corrected Subproject accomplishment saving across Details, Financial Accomplishment, and Physical Accomplishment.",
+          "Preserved existing financial entries when saving unrelated physical changes."
+        ],
+        "Affected Pages": ["Subproject Details", "Financial Accomplishment", "Physical Accomplishment"]
+      }
+    }
+  ]
+}

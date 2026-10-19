@@ -18,8 +18,11 @@ import { ThemePreference } from '../lib/theme';
 import UserControlCenterTab from './settings/UserControlCenterTab';
 import GoogleDriveStorageTab from './settings/GoogleDriveStorageTab';
 import { PageHeader } from './ui/enterprise';
+import SystemInformationTab from './settings/SystemInformationTab';
 
 interface SettingsProps {
+    onNavigate: (path: string) => void;
+    currentRoute?: string;
     isDarkMode: boolean;
     themePreference: ThemePreference;
     onThemePreferenceChange: (preference: ThemePreference) => void;
@@ -45,18 +48,20 @@ interface SettingsProps {
     onSelectIpo: (ipo: IPO) => void;
 }
 
-type TabName = 'profile' | 'management' | 'control_center' | 'drive' | 'system' | 'logs' | 'dcf' | 'lod' | 'archive';
+type TabName = 'profile' | 'system_information' | 'management' | 'control_center' | 'drive' | 'system' | 'logs' | 'dcf' | 'lod' | 'archive';
 
 const getInitialSettingsTab = (): TabName => {
     const hashPath = window.location.hash.replace(/^#/, '');
     const [, query = ''] = hashPath.split('?');
     const requestedTab = new URLSearchParams(query).get('tab') as TabName | null;
-    const validTabs: TabName[] = ['profile', 'management', 'control_center', 'drive', 'system', 'logs', 'dcf', 'lod', 'archive'];
+    const validTabs: TabName[] = ['profile', 'system_information', 'management', 'control_center', 'drive', 'system', 'logs', 'dcf', 'lod', 'archive'];
     if (requestedTab && validTabs.includes(requestedTab)) return requestedTab;
     return hashPath.includes('drive=') ? 'drive' : 'profile';
 };
 
 const Settings: React.FC<SettingsProps> = ({ 
+    onNavigate,
+    currentRoute,
     isDarkMode, themePreference, onThemePreferenceChange,
     deadlines, setDeadlines,
     subprojects, setSubprojects,
@@ -72,6 +77,13 @@ const Settings: React.FC<SettingsProps> = ({
 }) => {
     const { currentUser, hasAccess } = useAuth();
     const [activeTab, setActiveTab] = useState<TabName>(getInitialSettingsTab);
+    useEffect(() => { setActiveTab(getInitialSettingsTab()); }, [currentRoute]);
+    useEffect(() => {
+        const syncTab = () => setActiveTab(getInitialSettingsTab());
+        window.addEventListener('popstate', syncTab);
+        window.addEventListener('hashchange', syncTab);
+        return () => { window.removeEventListener('popstate', syncTab); window.removeEventListener('hashchange', syncTab); };
+    }, []);
 
     // We keep these legacy admin checks as absolute fallbacks for settings only
     const isAdmin = currentUser?.role === 'Administrator' || currentUser?.role === 'Super Admin';
@@ -88,7 +100,7 @@ const Settings: React.FC<SettingsProps> = ({
     const canAccessSystem = !isGuest && (hasAccess('System Management', 'view') || isAdmin);
 
     const isTabAllowed = (name: TabName): boolean => {
-        if (name === 'profile') return true;
+        if (name === 'profile' || name === 'system_information') return true;
         if (isGuest) return false;
 
         switch (name) {
@@ -116,15 +128,22 @@ const Settings: React.FC<SettingsProps> = ({
 
     if (!currentUser) return null;
 
-    const TabButton: React.FC<{ name: TabName; label: string }> = ({ name, label }) => {
+    const tabButton = (name: TabName, label: string) => {
         const isActive = activeTab === name;
         return (
             <button
                 type="button"
-                onClick={() => isTabAllowed(name) && setActiveTab(name)}
+                onClick={() => {
+                    if (!isTabAllowed(name)) return;
+                    onNavigate(`/settings?tab=${name}`);
+                    if (getInitialSettingsTab() === name) setActiveTab(name);
+                }}
                 className={`settings-tabs__button ${isActive ? 'is-active' : ''}`}
                 aria-selected={isActive}
+                tabIndex={isActive ? 0 : -1}
                 role="tab"
+                id={`settings-tab-${name}`}
+                aria-controls="settings-active-panel"
             >
                 {label}
             </button>
@@ -135,24 +154,33 @@ const Settings: React.FC<SettingsProps> = ({
         <div className="settings-page animate-fadeIn">
              <PageHeader title="Settings" metadata="Manage your profile, access controls, integrations, and system preferences." />
 
-             {!isGuest && <SystemHealthCard />}
+             {!isGuest && activeTab !== 'system_information' && <SystemHealthCard />}
 
              <section className="settings-panel">
                 <div className="settings-tabs">
-                    <nav className="settings-tabs__list" aria-label="Settings sections" role="tablist">
-                        <TabButton name="profile" label="User Profile" />
-                        {isAdmin && <TabButton name="management" label="Users Management" />}
-                        {isSuperAdmin && <TabButton name="control_center" label="User Control Center" />}
-                        {isSuperAdmin && <TabButton name="drive" label="Google Drive Storage" />}
-                        {isAdmin && <TabButton name="dcf" label="DCF Management" />}
-                        {isAdmin && <TabButton name="lod" label="LOD Management" />}
-                        {canAccessSystem && <TabButton name="system" label="System Management" />}
-                        {isAdmin && <TabButton name="logs" label="User Logs" />}
-                        {isAdmin && <TabButton name="archive" label="Archive Management" />}
+                    <nav className="settings-tabs__list" aria-label="Settings sections" role="tablist" onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
+                        const buttons = Array.from(event.currentTarget.querySelectorAll('[role="tab"]')) as HTMLButtonElement[];
+                        const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+                        if (index < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                        event.preventDefault();
+                        const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+                        buttons[next].click(); buttons[next].focus();
+                    }}>
+                        {tabButton('profile', 'User Profile')}
+                        {tabButton('system_information', 'System Information')}
+                        {isAdmin && tabButton('management', 'Users Management')}
+                        {isSuperAdmin && tabButton('control_center', 'User Control Center')}
+                        {isSuperAdmin && tabButton('drive', 'Google Drive Storage')}
+                        {isAdmin && tabButton('dcf', 'DCF Management')}
+                        {isAdmin && tabButton('lod', 'LOD Management')}
+                        {canAccessSystem && tabButton('system', 'System Management')}
+                        {isAdmin && tabButton('logs', 'User Logs')}
+                        {isAdmin && tabButton('archive', 'Archive Management')}
                     </nav>
                 </div>
 
-                <div className="settings-panel__content" role="tabpanel">
+                <div className="settings-panel__content" role="tabpanel" id="settings-active-panel" aria-labelledby={`settings-tab-${activeTab}`}>
+                    {activeTab === 'system_information' && <SystemInformationTab />}
                     {activeTab === 'profile' && (
                         <UserProfileTab
                             isDarkMode={isDarkMode}
