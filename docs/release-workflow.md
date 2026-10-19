@@ -4,7 +4,7 @@
 
 `releases/catalog.json` owns user-facing versions and notes. `package.json` is the internal package version, not the displayed application version. Build metadata is generated once per Vite process from that catalog and the actual commit, environment and a fresh build identity. The identical manifest is embedded into JavaScript and emitted as `/release-manifest.json`; it is not copied into the ignored `public` folder.
 
-The initial tracking baseline is v1.0.0 at verified PR #92/main `23d44b1` (2026-10-16). This names the start of tracking, not a retrospective numbering of prior releases. The System Information feature is prepared as v1.1.0 with no PR/date assigned until promotion is authorized. Patch history uses a compact expandable table; missing dates/PRs display a dash, without promotion/baseline status labels. The build-information block retains the actual environment and release-date state.
+The initial tracking baseline is v1.0.0 at verified PR #92/main `23d44b1` (2026-10-16). This names the start of tracking, not a retrospective numbering of prior releases. The System Information feature is v1.1.0 in PR #93 with approved release date 2026-10-19; deployment verification is recorded separately. Patch history uses a compact expandable table; missing dates/PRs display a dash, without promotion/baseline status labels. The build-information block retains the actual environment and release-date state.
 
 ## Version Rules
 

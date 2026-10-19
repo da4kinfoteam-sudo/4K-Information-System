@@ -8,15 +8,16 @@
       "version": "1.1.0",
       "kind": "feature",
       "title": "System Information and patch history",
-      "releaseDate": null,
-      "pr": null,
+      "releaseDate": "2026-10-19",
+      "pr": 93,
       "sections": {
         "Added": [
           "System Information in User Settings for every signed-in role.",
           "Build identification, update checks, and expandable patch notes."
         ],
         "Improved": [
-          "Settings tabs retain their selection through refresh and browser navigation."
+          "Settings tabs retain their selection through refresh and browser navigation.",
+          "Patch history uses a compact expandable table with internal scrolling for longer histories."
         ],
         "Affected Pages": ["User Settings"]
       }
