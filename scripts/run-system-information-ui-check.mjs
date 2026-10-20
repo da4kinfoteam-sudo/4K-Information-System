@@ -13,11 +13,12 @@ const { chromium } = require(path.join(process.env.PLAYWRIGHT_NODE_MODULES || 'C
 const screenshots = await mkdtemp(path.join(tmpdir(), '4kis-system-information-ui-'));
 const serve = process.argv.includes('--serve');
 const release = createReleaseBuild({ root: process.cwd(), env: {} });
+const currentVersion = release.manifest.version;
 const harness = `import React,{useState}from'react';import{createRoot}from'react-dom/client';import Settings from'/components/Settings.tsx';import{bundledReleases}from'/lib/buildInformation.ts';import'/index.css';import'/styles/main.css';
 window.fixture={role:'Guest',restricted:[],syncCalls:0};
 const empty=[],noop=()=>{},originalReleases=structuredClone(bundledReleases.releases);
 function Harness(){const[version,setVersion]=useState(0);window.changeRole=(role)=>{window.fixture.role=role;setVersion(v=>v+1)};
-window.setPatchHistorySize=size=>{bundledReleases.releases=size?Array.from({length:size},(_,index)=>({...structuredClone(originalReleases[index===0?0:1]),id:index===0?bundledReleases.currentReleaseId:'fixture-patch-'+index,version:index===0?'1.1.0':'1.0.'+(size-index-1),title:index===0?'A deliberately long synthetic patch title to verify compact single-line ellipsis without changing the application release catalog':'Synthetic patch '+index,pr:200+index})):structuredClone(originalReleases);setVersion(v=>v+1)};
+window.setPatchHistorySize=size=>{bundledReleases.releases=size?Array.from({length:size},(_,index)=>({...structuredClone(originalReleases[index===0?0:1]),id:index===0?bundledReleases.currentReleaseId:'fixture-patch-'+index,version:index===0?originalReleases[0].version:'1.0.'+(size-index-1),title:index===0?'A deliberately long synthetic patch title to verify compact single-line ellipsis without changing the application release catalog':'Synthetic patch '+index,pr:200+index})):structuredClone(originalReleases);setVersion(v=>v+1)};
 return <main className="app-main" style={{padding:16}}><Settings key={version} onNavigate={page=>history.pushState({...history.state,page},'',location.pathname+'#'+page)}
 isDarkMode={false} themePreference="light" onThemePreferenceChange={noop} deadlines={empty} setDeadlines={noop} subprojects={empty} setSubprojects={noop} activities={empty} setActivities={noop} ipos={empty} setIpos={noop} officeReqs={empty} setOfficeReqs={noop} staffingReqs={empty} setStaffingReqs={noop} otherProgramExpenses={empty} setOtherProgramExpenses={noop} fundSources={empty} onSelectSubproject={noop} onSelectActivity={noop} onSelectIpo={noop}/></main>};createRoot(document.getElementById('root')).render(<Harness/>);`;
 const server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(screenshots, '.vite'), appType: 'custom',
@@ -78,12 +79,12 @@ try {
     await page.reload();
     await page.waitForFunction(() => document.querySelector('#settings-tab-profile')?.getAttribute('aria-selected') === 'true');
     await page.getByRole('tab', { name: 'System Information', exact: true }).click(); await status.filter({ hasText: 'Up to date' }).waitFor();
-    const notes = page.getByRole('textbox', { name: 'Patch notes for version 1.1.0', exact: true });
+    const notes = page.getByRole('textbox', { name: `Patch notes for version ${currentVersion}`, exact: true });
     assert.equal(await notes.getAttribute('readonly'), '');
-    assert.match(await notes.inputValue(), /Added/); assert(!/Action Required/.test(await notes.inputValue()));
+    assert.match(await notes.inputValue(), /Added|Improved|Fixed/); assert(!/Action Required/.test(await notes.inputValue()));
     const patchTable = page.getByRole('table', { name: 'Patch history', exact: true });
     assert.deepEqual(await patchTable.getByRole('columnheader').allTextContents(), ['Details', 'Version', 'Patch', 'Release Date', 'PR']);
-    assert.equal(await page.getByRole('button', { name: 'Collapse patch 1.1.0', exact: true }).getAttribute('aria-expanded'), 'true');
+    assert.equal(await page.getByRole('button', { name: `Collapse patch ${currentVersion}`, exact: true }).getAttribute('aria-expanded'), 'true');
     assert.equal(await page.getByText('Not promoted', { exact: true }).count(), 0);
     assert.equal(await page.getByText('Tracking baseline', { exact: true }).count(), 0);
     await page.getByRole('button', { name: 'Expand patch 1.0.0', exact: true }).focus(); await page.keyboard.press('Enter');
@@ -102,7 +103,7 @@ try {
     await page.waitForTimeout(150); assert.equal(checks, initialChecks, 'Focus checks are throttled');
     latest = { ...release.manifest, version: '1.0.0', buildId: 'rollback-build' };
     await page.getByRole('button', { name: 'Check for Updates', exact: true }).click(); await status.filter({ hasText: 'Refresh required' }).waitFor();
-    assert.equal(await page.locator('.system-information__fields > div').first().locator('dd').innerText(), 'v1.1.0');
+    assert.equal(await page.locator('.system-information__fields > div').first().locator('dd').innerText(), `v${currentVersion}`);
     const stored = await page.evaluate(() => { localStorage.setItem('system-information-draft-proof', 'preserved'); return localStorage.length; });
     page.once('dialog', dialog => { assert.match(dialog.message(), /Unsaved changes/); dialog.dismiss(); });
     await page.getByRole('button', { name: 'Refresh to Update', exact: true }).click();
@@ -123,7 +124,7 @@ try {
         await page.screenshot({ path: path.join(screenshots, `system-information-${width}.png`), fullPage: true });
     }
     await page.evaluate(() => window.setPatchHistorySize(50));
-    await page.getByRole('button', { name: 'Collapse patch 1.1.0', exact: true }).waitFor();
+    await page.getByRole('button', { name: `Collapse patch ${currentVersion}`, exact: true }).waitFor();
     const viewport = page.getByRole('region', { name: 'Patch history', exact: true });
     for (const width of [1440, 814, 390]) {
         await page.setViewportSize({ width, height: 900 });

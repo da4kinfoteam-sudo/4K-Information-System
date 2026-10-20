@@ -28,18 +28,27 @@ import { DataTablePagination, LoadingState } from '../ui/enterprise';
 import { aggregateGadIpoMembership, reportedMembershipCount } from '../../lib/gadIpoMembership';
 import GadIpoMembershipSection from './GadIpoMembershipSection';
 import { useFixedPageTableViewport } from '../../hooks/useFixedPageTableViewport';
+import GadDashboardErrorBoundary from './GadDashboardErrorBoundary';
 
 type GadFilter = 'All' | GadPimmeClassification | 'Incomplete' | 'For Assessment';
 type AssessmentState = 'Completed' | 'Incomplete' | 'For Assessment';
 
 interface GadAssessmentSummary {
-    id: number;
     operating_unit: string;
     year: number;
-    total_score: number;
-    answered_count: number;
-    status: 'Incomplete' | 'Completed';
+    total_score: number | null;
+    answered_count: number | null;
+    status: string;
 }
+
+interface AssessmentLoad {
+    scopeKey: string;
+    rows: GadAssessmentSummary[];
+    loading: boolean;
+    error: string;
+}
+
+const EMPTY_ASSESSMENTS: GadAssessmentSummary[] = [];
 
 interface GADDashboardProps {
     subprojects: Subproject[];
@@ -101,23 +110,46 @@ const formatCurrency = (value: number) => new Intl.NumberFormat('en-PH', {
 }).format(value);
 const percent = (numerator: number, denominator: number) => denominator ? (numerator / denominator) * 100 : null;
 
+const assessmentNumber = (value: unknown): number | null => {
+    if (typeof value !== 'number' && typeof value !== 'string') return null;
+    if (typeof value === 'string' && !value.trim()) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeAssessments = (data: unknown): GadAssessmentSummary[] => {
+    if (!Array.isArray(data)) throw new Error('Invalid PIMME assessment summary response.');
+    return data.map(item => {
+        const year = assessmentNumber(item?.year);
+        if (!item || typeof item.operating_unit !== 'string' || year === null || !Number.isInteger(year)) {
+            throw new Error('Invalid PIMME assessment summary response.');
+        }
+        return {
+            operating_unit: item.operating_unit,
+            year,
+            total_score: assessmentNumber(item.total_score),
+            answered_count: assessmentNumber(item.answered_count),
+            status: typeof item.status === 'string' ? item.status : '',
+        };
+    });
+};
+
 const getAssessmentState = (assessment?: GadAssessmentSummary): AssessmentState => {
     if (!assessment) return 'For Assessment';
     return assessment.status === 'Completed' && assessment.answered_count === 22
+        && assessment.total_score !== null
         && assessment.total_score >= 0 && assessment.total_score <= 20
         ? 'Completed'
         : 'Incomplete';
 };
 
-const GADDashboard: React.FC<GADDashboardProps> = ({
+const GADDashboardContent: React.FC<GADDashboardProps> = ({
     subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses,
     ipos, selectedYear, selectedOu, selectedTier, selectedFundType, navigateTo, onSelectAssessment,
     onSelectIpo, programDataLoading, programDataError,
 }) => {
     const { currentUser, hasAccess, getVisibilityScope } = useAuth();
-    const [assessments, setAssessments] = useState<GadAssessmentSummary[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
+    const [assessmentLoad, setAssessmentLoad] = useState<AssessmentLoad | null>(null);
     const [classificationFilter, setClassificationFilter] = useState<GadFilter>('All');
     const [isExporting, setIsExporting] = useState(false);
     const [exportError, setExportError] = useState('');
@@ -130,8 +162,6 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
     const requestIdRef = useRef(0);
     const year = Number(selectedYear);
     const canView = hasAccess('Dashboards', 'view') && hasAccess('Gender and Development', 'view');
-    const attributionViewport = useFixedPageTableViewport(!loading && canView && Number.isFinite(year));
-    const summaryViewport = useFixedPageTableViewport(!loading && canView && Number.isFinite(year));
 
     const visibleOus = useMemo(() => {
         if (!currentUser) return [];
@@ -142,6 +172,16 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         return selectedOu === 'All' ? scoped : scoped.filter(ou => ou === selectedOu);
     }, [currentUser, getVisibilityScope, selectedOu]);
 
+    // A new scope must never render or export the previous scope's assessments.
+    const assessmentScopeKey = JSON.stringify([currentUser?.id, canView, year, visibleOus]);
+    const currentLoad = assessmentLoad?.scopeKey === assessmentScopeKey ? assessmentLoad : null;
+    const canLoadAssessments = canView && !!supabase && Number.isFinite(year) && visibleOus.length > 0;
+    const assessments = currentLoad?.rows ?? EMPTY_ASSESSMENTS;
+    const loading = canLoadAssessments && (!currentLoad || currentLoad.loading);
+    const error = currentLoad?.error ?? '';
+    const attributionViewport = useFixedPageTableViewport(!loading && canView && Number.isFinite(year));
+    const summaryViewport = useFixedPageTableViewport(!loading && canView && Number.isFinite(year));
+
     const membership = useMemo(() => aggregateGadIpoMembership({
         ipos, subprojects, activities: [...trainings, ...otherActivities],
     }, { year: selectedYear, operatingUnits: visibleOus, tier: selectedTier, fundType: selectedFundType }),
@@ -151,22 +191,31 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         let active = true;
         const load = async () => {
             const requestId = ++requestIdRef.current;
-            if (!canView || !supabase || !Number.isFinite(year) || !visibleOus.length) {
-                setAssessments([]);
-                setLoading(false);
+            const isCurrent = () => active && requestId === requestIdRef.current;
+            if (!canLoadAssessments) {
+                setAssessmentLoad({ scopeKey: assessmentScopeKey, rows: [], loading: false, error: '' });
                 return;
             }
-            setLoading(true);
-            setError('');
-            const result = await supabase.from('gad_pimme_assessments')
-                .select('id,operating_unit,year,total_score,answered_count,status')
-                .in('operating_unit', visibleOus)
-                .gte('year', year - 4)
-                .lte('year', year);
-            if (!active || requestId !== requestIdRef.current) return;
-            if (result.error) setError(result.error.message || 'Unable to load PIMME assessment summaries.');
-            else setAssessments((result.data || []) as GadAssessmentSummary[]);
-            setLoading(false);
+            setAssessmentLoad({ scopeKey: assessmentScopeKey, rows: [], loading: true, error: '' });
+            try {
+                const result = await supabase.from('gad_pimme_assessments')
+                    .select('id,operating_unit,year,total_score,answered_count,status')
+                    .in('operating_unit', visibleOus)
+                    .gte('year', year - 4)
+                    .lte('year', year);
+                if (!isCurrent()) return;
+                if (result.error) throw result.error;
+                const rows = normalizeAssessments(result.data);
+                setAssessmentLoad({ scopeKey: assessmentScopeKey, rows, loading: true, error: '' });
+            } catch (loadError) {
+                if (!isCurrent()) return;
+                const message = loadError && typeof loadError === 'object' && 'message' in loadError ? loadError.message : null;
+                setAssessmentLoad({ scopeKey: assessmentScopeKey, rows: [], loading: true,
+                    error: typeof message === 'string' && message ? message : 'Unable to load PIMME assessment summaries.' });
+            } finally {
+                if (isCurrent()) setAssessmentLoad(previous => previous?.scopeKey === assessmentScopeKey
+                    ? { ...previous, loading: false } : previous);
+            }
         };
         void load();
         const refresh = () => void load();
@@ -177,7 +226,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
             window.removeEventListener('gad-pimme-data-changed', refresh);
             window.removeEventListener('app-data-refreshed', refresh);
         };
-    }, [canView, visibleOus.join('|'), year]);
+    }, [assessmentScopeKey, canLoadAssessments]);
 
     const assessmentByOuYear = useMemo(() => new Map(
         assessments.map(item => [`${item.operating_unit}:${item.year}`, item]),
@@ -207,12 +256,13 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         const lines = allFinancialLines.filter(line => line.operatingUnit === ou);
         const allocation = lines.reduce((sum, line) => sum + line.alloc, 0);
         const obligation = lines.reduce((sum, line) => sum + line.obli, 0);
-        const score = completed ? toNumber(completed.total_score) : null;
+        const score = completed?.total_score ?? null;
+        const previousScore = previous?.total_score ?? null;
         const attribution = calculateGadAttribution({ allocation, obligation, pimmeScore: score });
         return {
             ou, state, score,
-            previousScore: previous ? toNumber(previous.total_score) : null,
-            change: score !== null && previous ? score - toNumber(previous.total_score) : null,
+            previousScore,
+            change: score !== null && previousScore !== null ? score - previousScore : null,
             classification: score === null ? null : getGadPimmeClassification(score),
             allocation, obligation, ...attribution,
             womenTargeted: 0,
@@ -256,7 +306,8 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
     const trendData = useMemo(() => Array.from({ length: 5 }, (_, index) => year - 4 + index).map(trendYear => {
         const values = rows.map(row => assessmentByOuYear.get(`${row.ou}:${trendYear}`))
             .filter((item): item is GadAssessmentSummary => !!item && getAssessmentState(item) === 'Completed')
-            .map(item => item.total_score);
+            .map(item => item.total_score)
+            .filter((score): score is number => score !== null);
         return { year: trendYear, average: values.length ? values.reduce((a, b) => a + b, 0) / values.length : null, assessed: values.length };
     }), [assessmentByOuYear, rows, year]);
 
@@ -559,7 +610,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
                     <section className="dashboard-panel gad-dashboard-table-card data-table-card--seamless"><h3>Attribution by OU</h3><div ref={attributionViewport.scrollRef} style={attributionViewport.viewportStyle} className="data-table-scroll data-table-scroll--fixed-page custom-scrollbar" tabIndex={0} role="region" aria-label="Attribution by OU table"><table className="data-table gad-dashboard-table"><thead><tr>{[
                         ['ou', 'OU'], ['score', 'PIMME'], ['classification', 'Classification'], ['attributionRate', 'HGDG Attribution'], ['allocation', 'Allocation'], ['attributableAllocation', 'Attributed Allocation'], ['obligation', 'Actual Obligation'], ['attributableObligation', 'Attributed Obligation'], ['utilization', 'Utilization'], ['change', 'Previous / Change'],
                     ].map(([key, label]) => <th key={key}><button type="button" onClick={() => toggleSort(key as keyof OuDashboardRow)}>{label}</button></th>)}</tr></thead><tbody>
-                        {attributionRows.map(row => <tr key={row.ou}><td><button className="table-action-link" type="button" onClick={() => openAssessment(row.ou)}>{row.ou}</button></td><td>{row.score === null ? row.state : `${row.score.toFixed(2)} / 20`}</td><td>{row.classification || row.state}</td><td>{`${formatNumber(row.attributionRate * 100, 2)}%`}</td><td>{formatCurrency(row.allocation)}</td><td>{formatCurrency(row.attributableAllocation)}</td><td>{formatCurrency(row.obligation)}</td><td>{row.attributableObligation === null ? 'No Data' : formatCurrency(row.attributableObligation)}</td><td>{row.utilization === null ? 'No Data' : `${formatNumber(row.utilization, 1)}%`}</td><td>{row.previousScore === null ? 'No baseline' : `${row.previousScore.toFixed(2)} (${row.change! >= 0 ? '+' : ''}${row.change!.toFixed(2)})`}</td></tr>)}
+                        {attributionRows.map(row => <tr key={row.ou}><td><button className="table-action-link" type="button" onClick={() => openAssessment(row.ou)}>{row.ou}</button></td><td>{row.score === null ? row.state : `${row.score.toFixed(2)} / 20`}</td><td>{row.classification || row.state}</td><td>{`${formatNumber(row.attributionRate * 100, 2)}%`}</td><td>{formatCurrency(row.allocation)}</td><td>{formatCurrency(row.attributableAllocation)}</td><td>{formatCurrency(row.obligation)}</td><td>{row.attributableObligation === null ? 'No Data' : formatCurrency(row.attributableObligation)}</td><td>{row.utilization === null ? 'No Data' : `${formatNumber(row.utilization, 1)}%`}</td><td>{row.previousScore === null ? 'No baseline' : `${row.previousScore.toFixed(2)} (${row.change === null ? '\u2014' : `${row.change >= 0 ? '+' : ''}${row.change.toFixed(2)}`})`}</td></tr>)}
                         {!attributionRows.length && <tr><td colSpan={10} className="data-table__empty-cell">No OUs match the current classification filter.</td></tr>}
                     </tbody></table></div><DataTablePagination currentPage={attributionCurrentPage} totalPages={attributionPages} totalItems={sortedRows.length} itemsPerPage={attributionPageSize} onPageChange={setAttributionPage} onItemsPerPageChange={size => { setAttributionPageSize(size); setAttributionPage(1); }} />
                     </section>
@@ -581,5 +632,9 @@ const GADDashboard: React.FC<GADDashboardProps> = ({
         </div>
     );
 };
+
+const GADDashboard: React.FC<GADDashboardProps> = props => (
+    <GadDashboardErrorBoundary><GADDashboardContent {...props} /></GadDashboardErrorBoundary>
+);
 
 export default GADDashboard;

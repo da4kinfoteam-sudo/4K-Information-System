@@ -9,7 +9,7 @@ const catalog = JSON.parse(await readFile('releases/catalog.json', 'utf8'));
 validateReleaseCatalog(catalog);
 const build = createReleaseBuild({ root: process.cwd(), env: {}, nonce: 'fixture', now: new Date('2026-10-16T06:00:00Z') });
 const loaded = build.manifest;
-assert.equal(loaded.version, '1.1.0');
+assert.equal(loaded.version, catalog.releases[0].version);
 assert.equal(loaded.environment, 'development');
 assert.equal(catalog.releases.at(-1).version, '1.0.0');
 assert.equal(compareBuilds(loaded, { ...loaded }), 'current');
@@ -20,13 +20,15 @@ for (const edit of [value => value.releases.push(value.releases[0]), value => va
     const value = structuredClone(catalog); edit(value); assert.throws(() => validateReleaseCatalog(value));
 }
 for (const [kind, version] of [['fix', '1.0.1'], ['feature', '1.1.0'], ['major', '2.0.0']]) {
-    const value = structuredClone(catalog); Object.assign(value.releases[0], { kind, version }); validateReleaseCatalog(value);
+    const value = structuredClone(catalog);
+    value.releases = [{ ...value.releases[0], kind, version }, value.releases.at(-1)];
+    validateReleaseCatalog(value);
 }
 assert(!formatReleaseNotes(catalog.releases[0]).includes('Action Required'));
 const pendingCatalog = structuredClone(catalog); Object.assign(pendingCatalog.releases[0], { releaseDate: null, pr: null });
 assert.throws(() => createReleaseBuild({ root: process.cwd(), env: { VERCEL: '1', VERCEL_ENV: 'production', VERCEL_PROJECT_ID: 'prj_Bf1RGjcI06RWOaSlAlacJU6aG7o3', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40) }, catalog: pendingCatalog }), /incomplete/);
 assert.throws(() => createReleaseBuild({ root: process.cwd(), env: { VERCEL: '1', VERCEL_ENV: 'preview', VERCEL_PROJECT_ID: 'unrecognized' } }), /explicitly/);
-const readyCatalog = structuredClone(catalog); Object.assign(readyCatalog.releases[0], { releaseDate: '2026-10-16', pr: 999 });
+const readyCatalog = structuredClone(catalog); Object.assign(readyCatalog.releases[0], { releaseDate: catalog.releases[0].releaseDate || '2026-10-20', pr: 999 });
 const production = createReleaseBuild({ root: process.cwd(), env: { VERCEL: '1', VERCEL_ENV: 'production', VERCEL_PROJECT_ID: 'prj_Bf1RGjcI06RWOaSlAlacJU6aG7o3', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40) }, catalog: readyCatalog });
 assert.equal(production.manifest.environment, 'production');
 assert.equal(production.manifest.pr, 999);
@@ -35,7 +37,8 @@ assert.throws(() => validateReleaseChange(readyCatalog, null, 998));
 assert.throws(() => validateReleaseChange(pendingCatalog, null, 999));
 const next = structuredClone(readyCatalog);
 next.currentReleaseId = 'next-fix';
-next.releases.unshift({ ...structuredClone(readyCatalog.releases[0]), id: 'next-fix', version: '1.1.1', kind: 'fix', pr: 1000 });
+const [major, minor, patch] = readyCatalog.releases[0].version.split('.').map(Number);
+next.releases.unshift({ ...structuredClone(readyCatalog.releases[0]), id: 'next-fix', version: `${major}.${minor}.${patch + 1}`, kind: 'fix', pr: 1000 });
 validateReleaseChange(next, readyCatalog, 1000);
 assert.throws(() => validateReleaseChange(readyCatalog, readyCatalog, 999));
 const rewrittenHistory = structuredClone(next); rewrittenHistory.releases[1].title = 'Changed history';
