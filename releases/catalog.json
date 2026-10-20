@@ -1,8 +1,26 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "system-information",
+  "currentReleaseId": "gad-dashboard-white-screen",
   "releases": [
+    {
+      "id": "gad-dashboard-white-screen",
+      "version": "1.1.1",
+      "kind": "fix",
+      "title": "GAD Dashboard assessment loading fix",
+      "releaseDate": "2026-10-20",
+      "pr": null,
+      "sections": {
+        "Fixed": [
+          "Prevented a blank GAD Dashboard when current assessments are missing or incomplete alongside completed historical assessments."
+        ],
+        "Improved": [
+          "Historical score comparisons keep missing scores separate from valid zero scores.",
+          "Dashboard loading and recovery handle unexpected failures without losing the application view."
+        ],
+        "Affected Pages": ["GAD Dashboard"]
+      }
+    },
     {
       "id": "system-information",
       "version": "1.1.0",
