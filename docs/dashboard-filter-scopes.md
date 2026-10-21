@@ -1,8 +1,9 @@
 # Homepage And Dashboard Filter Scopes
 
-Local implementation, 2026-10-21, branch `feat/homepage-dashboard-multiselect`,
+Implementation prepared 2026-10-21 on `feat/homepage-dashboard-multiselect`,
 baseline main `7742e5ce883e4027e5a5aa2275740e17441a722e` (v1.1.1).
-Not promoted. No migration, production queries, backfill or business-record writes.
+Release 1.2.0 is tracked by PR #95; verified deployment is recorded separately
+in the project release notes. No migration, backfill or business-record writes.
 
 ## Ownership And Loading
 

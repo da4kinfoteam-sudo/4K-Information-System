@@ -9,7 +9,7 @@
       "kind": "feature",
       "title": "Homepage and dashboard multi-select filters",
       "releaseDate": "2026-10-21",
-      "pr": null,
+      "pr": 95,
       "sections": {
         "Added": [
           "Searchable multi-select filters for Operating Unit, Fund Type, Tier, Fund Year and Fund Source on the Homepage and dashboards.",
