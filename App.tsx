@@ -49,6 +49,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DcfPolicyProvider } from './contexts/DcfPolicyContext';
 import { useDcfPolicyGuard } from './hooks/useDcfPolicyGuard';
 import { DataScope, fetchMarketingDatabasePartners, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
+import { buildAuthorizedDataScope, getDataScopeModule } from './lib/appDataScope';
 import { clearUserCache, getScopeCacheMeta, readScopedCache, updateCachedActivity, updateCachedSubproject, writeScopedCache } from './lib/localScopedCache';
 import { activityIncludesIpo, getActivityIpoIds, reconcileActivityIpoLinks } from './lib/activityIpoLinks';
 import { normalizeStaffingExpenses } from './lib/staffingExpenseIdentity';
@@ -431,6 +432,7 @@ const AppContent: React.FC = () => {
     const activeDataScopeKeyRef = useRef<string | null>(null);
     const activeDataScopeRef = useRef<DataScope | null>(null);
     const scopeRequestSeqRef = useRef(0);
+    const pendingDataScopeKeyRef = useRef<string | null>(null);
     const replaceSubprojects = subprojectsSync.replaceLocalData;
     const replaceIpos = iposSync.replaceLocalData;
     const replaceActivities = activitiesSync.replaceLocalData;
@@ -504,18 +506,8 @@ const AppContent: React.FC = () => {
     }), [deadlines]);
 
     const buildDefaultDataScope = useCallback((overrides: Partial<DataScope> = {}): DataScope => {
-        const canViewAllOus = currentUser ? getVisibilityScope('Dashboards') !== 'Own OU' : true;
-        return {
-            year: overrides.year ?? new Date().getFullYear().toString(),
-            operatingUnit: canViewAllOus
-                ? (overrides.operatingUnit ?? 'All')
-                : (currentUser?.operatingUnit || overrides.operatingUnit || 'All'),
-            tier: overrides.tier ?? 'Tier 1',
-            fundType: overrides.fundType ?? 'Current',
-            skipMarketingPartners: overrides.skipMarketingPartners ?? isMarketingRoute,
-            canViewAllOus,
-            requestedBy: currentUser?.id ?? null
-        };
+        const canViewAllOus = !!currentUser && getVisibilityScope(getDataScopeModule(overrides.scopeOwner)) === 'All';
+        return buildAuthorizedDataScope(overrides, currentUser?.id ?? null, currentUser?.operatingUnit, canViewAllOus, isMarketingRoute);
     }, [currentUser, getVisibilityScope, isMarketingRoute]);
 
     const applyScopedData = useCallback((data: Awaited<ReturnType<typeof loadScopedAppData>>) => {
@@ -571,11 +563,17 @@ const AppContent: React.FC = () => {
         const nextScopeKey = getDataScopeKey(nextScope);
 
         if (!force && activeDataScopeKeyRef.current === nextScopeKey) {
-            return;
+            if (pendingDataScopeKeyRef.current && pendingDataScopeKeyRef.current !== nextScopeKey) {
+                scopeRequestSeqRef.current += 1;
+                pendingDataScopeKeyRef.current = null;
+                setIsGlobalRefreshing(false);
+            }
+            return { ok: true, scopeKey: nextScopeKey };
         }
 
         const requestSeq = scopeRequestSeqRef.current + 1;
         scopeRequestSeqRef.current = requestSeq;
+        pendingDataScopeKeyRef.current = nextScopeKey;
         setIsGlobalRefreshing(true);
         setGlobalRefreshError(null);
         setGlobalCacheStatus(null);
@@ -593,6 +591,7 @@ const AppContent: React.FC = () => {
                 activeDataScopeKeyRef.current = nextScopeKey;
                 activeDataScopeRef.current = nextScope;
                 const cachedAt = await getScopeCacheMeta(nextScope);
+                if (requestSeq !== scopeRequestSeqRef.current) return;
                 const savedAt = cachedAt?.savedAt || new Date().toISOString();
                 setGlobalLastRefreshedAt(savedAt);
                 setGlobalCacheStatus(`Cached data from ${new Date(savedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`);
@@ -603,11 +602,13 @@ const AppContent: React.FC = () => {
                 return;
             }
             applyScopedData(data);
-            await writeScopedCache(nextScope, data);
             activeDataScopeKeyRef.current = nextScopeKey;
             activeDataScopeRef.current = nextScope;
+            await writeScopedCache(nextScope, data);
+            if (requestSeq !== scopeRequestSeqRef.current) return;
             setGlobalLastRefreshedAt(new Date().toISOString());
             setGlobalCacheStatus(null);
+            return { ok: true, scopeKey: nextScopeKey };
         } catch (error: any) {
             if (requestSeq !== scopeRequestSeqRef.current) {
                 return;
@@ -618,8 +619,10 @@ const AppContent: React.FC = () => {
                 setGlobalCacheStatus('Showing cached data');
             }
             console.error('Scoped data refresh failed:', error);
+            return { ok: hadCachedData, scopeKey: nextScopeKey, error: hadCachedData ? null : message };
         } finally {
             if (requestSeq === scopeRequestSeqRef.current) {
+                pendingDataScopeKeyRef.current = null;
                 setIsGlobalRefreshing(false);
             }
         }
@@ -701,8 +704,10 @@ const AppContent: React.FC = () => {
 
     useEffect(() => {
         if (!isAuthReady) return;
+        if (routePath === '/' || isDashboardPagePath(routePath) || isProgramManagementPagePath(routePath)
+            || ['/subprojects', '/activities', '/trainings', '/other-activities', '/accomplishment/physical', '/accomplishment/financial'].includes(routePath)) return;
         ensureDataScope();
-    }, [ensureDataScope, isAuthReady]);
+    }, [ensureDataScope, isAuthReady, routePath]);
 
     useEffect(() => {
         if (!isAuthReady || !currentUser || !isMarketingRoute) return;
@@ -1679,6 +1684,7 @@ const AppContent: React.FC = () => {
         if (isDashboardPagePath(routePath)) {
             const dashboardPage = resolveDashboardPage(routePath, currentUser?.role);
             return <DashboardsPage
+                fundSources={fundSources}
                 activePage={dashboardPage.page}
                 programDataLoading={isRouteDataLoading}
                 programDataError={globalRefreshError}
@@ -1755,6 +1761,7 @@ const AppContent: React.FC = () => {
         switch (routePath) {
             case '/':
                 return <Dashboard 
+                            fundSources={fundSources}
                             subprojects={visibleSubprojects} 
                             ipos={ipos}
                             activities={visibleActivities}

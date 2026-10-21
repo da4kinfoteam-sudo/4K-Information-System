@@ -1,6 +1,7 @@
 // Author: 4K
 import { getActivityDisplayTitle } from '../../lib/activityTitles';
 import React, { useEffect, useMemo, useState } from 'react';
+import type { DashboardScopeLabels } from '../../lib/dashboardScope';
 import * as XLSX from 'xlsx';
 import {
     AlertTriangle,
@@ -36,6 +37,9 @@ interface PhysicalDashboardProps {
     };
     setModalData: (data: { title: string; items: ModalItem[] } | null) => void;
     selectedYear: string;
+    selectedYears?: string[];
+    selectedOus?: string[];
+    scopeLabels?: DashboardScopeLabels;
     selectedOu?: string;
     isAllOuView?: boolean;
     onSelectIpo?: (ipo: IPO) => void;
@@ -249,7 +253,8 @@ const isDueByCutoff = (dateString: string | undefined, cutoff: ReturnType<typeof
     return !!parsed && parsed.getTime() <= cutoff.cutoffDate.getTime();
 };
 
-const matchesSelectedYear = (dateString: string | undefined, selectedYear: string) => {
+const matchesSelectedYear = (dateString: string | undefined, selectedYear: string, selectedYears?: string[]) => {
+    if (selectedYears) return selectedYears.includes(getDateYear(dateString));
     if (selectedYear === 'All') return true;
     return getDateYear(dateString) === selectedYear;
 };
@@ -440,6 +445,9 @@ const DashboardPagination: React.FC<{
 const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
     data,
     selectedYear,
+    selectedYears,
+    selectedOus,
+    scopeLabels,
     selectedOu = 'All',
     isAllOuView,
     onSelectIpo,
@@ -448,6 +456,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
     setExternalFilters,
     navigateTo,
 }) => {
+    const displayYear = scopeLabels?.years || selectedYear;
     const currentMonth = new Date().getMonth();
     const [viewMode, setViewMode] = useState<ViewMode>('Annual');
     const [asOfMonth, setAsOfMonth] = useState(currentMonth);
@@ -494,10 +503,10 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         const targetSubprojects = (data.subprojects || []).filter(isTargetRecord);
         const targetTrainings = (data.trainings || []).filter(isTargetRecord);
         const actualSubprojects = (data.subprojects || []).filter(sp =>
-            isCompletedSubproject(sp) && matchesSelectedYear(sp.actualCompletionDate, selectedYear)
+            isCompletedSubproject(sp) && matchesSelectedYear(sp.actualCompletionDate, selectedYear, selectedYears)
         );
         const actualTrainings = (data.trainings || []).filter(training =>
-            isCompletedTraining(training) && matchesSelectedYear(training.actualDate, selectedYear)
+            isCompletedTraining(training) && matchesSelectedYear(training.actualDate, selectedYear, selectedYears)
         );
         const cumulativeCutoff = getSelectedAsOfCutoff(selectedYear, asOfMonth);
         const quarterBounds = getQuarterBounds(asOfMonth);
@@ -998,7 +1007,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             }
             return ouMap.get(normalizedOu)!;
         };
-        operatingUnits.forEach(ou => ensureOu(ou));
+        (selectedOus || (selectedOu === 'All' ? operatingUnits : [selectedOu])).forEach(ou => ensureOu(ou));
 
         const ensureProvince = (ou: string, province: string) => {
             const key = `${ou || 'Unknown OU'}|${province || 'Unspecified Province'}`;
@@ -1187,7 +1196,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             alerts,
             submissions,
         };
-    }, [asOfMonth, data.ipos, data.officeReqs, data.otherActivities, data.staffingReqs, data.subprojects, data.trainings, regionToOuMap, selectedYear]);
+    }, [asOfMonth, data.ipos, data.officeReqs, data.otherActivities, data.staffingReqs, data.subprojects, data.trainings, regionToOuMap, selectedYear, selectedOu, JSON.stringify(selectedYears), JSON.stringify(selectedOus)]);
 
     const activeScope = (metric: Metric) => viewMode === 'Annual' ? metric.annual : metric.monthly;
     const statusScope = (metric: Metric) => viewMode === 'Annual' ? metric.cumulative : metric.monthly;
@@ -1418,7 +1427,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         if (!detailView) return;
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filteredDetailRows), sanitizeSheetName(detailView));
-        XLSX.writeFile(wb, `Physical_Dashboard_${detailView}_${selectedYear}.xlsx`);
+        XLSX.writeFile(wb, `Physical_Dashboard_${detailView}_${displayYear}.xlsx`);
     };
 
     const handleExportPowerPoint = async () => {
@@ -1463,7 +1472,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             const borderColor = 'CBD5E1';
             const slideW = 13.333;
             const slideH = 7.5;
-            const scopeLabel = selectedOu === 'All' ? 'All OUs' : selectedOu;
+            const scopeLabel = scopeLabels?.operatingUnits || (selectedOu === 'All' ? 'All OUs' : selectedOu);
             const quarter = getQuarterBounds(asOfMonth);
             const quarterLabel = `${quarter.label} (${monthNames[quarter.start]}-${monthNames[quarter.end]})`;
             const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -1653,7 +1662,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             addLabel(titleSlide, 'Physical Accomplishment Dashboard', 2.05, 1.45, 9.8, 0.48, { fontSize: 28, bold: true, color: darkText });
             addLabel(titleSlide, '4K Program Implementation Briefing', 2.05, 1.95, 8.5, 0.28, { fontSize: 15, color: green, bold: true });
             addSimpleTable(titleSlide, [
-                ['Fund Year', selectedYear],
+                ['Fund Year', scopeLabels?.years || selectedYear],
                 ['Scope', scopeLabel],
                 ['View Mode', viewMode],
                 ['As of Month', monthNames[asOfMonth]],
@@ -1666,7 +1675,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             addFooter(titleSlide);
 
             const executiveSlide = pptx.addSlide();
-            addHeader(executiveSlide, 'Executive Summary', `${scopeLabel} | Fund Year ${selectedYear} | As of ${monthNames[asOfMonth]}`);
+            addHeader(executiveSlide, 'Executive Summary', `${scopeLabel} | Fund Year ${displayYear} | As of ${monthNames[asOfMonth]}`);
             const executiveRows = [
                 ['Indicator', 'Annual', monthNames[asOfMonth], quarter.label, `Cumulative ${monthNames[asOfMonth]}`],
                 ...exportMetrics.map(({ metric }) => [
@@ -1681,7 +1690,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             addFooter(executiveSlide);
 
             const nationalSlide = pptx.addSlide();
-            addHeader(nationalSlide, 'National Target vs Accomplishment', `${viewMode} view | ${scopeLabel} | Fund Year ${selectedYear}`);
+            addHeader(nationalSlide, 'National Target vs Accomplishment', `${viewMode} view | ${scopeLabel} | Fund Year ${displayYear}`);
             addLabel(nationalSlide, 'Target', 8.45, 1.03, 0.7, 0.2, { fontSize: 9, color: mutedText, bold: true });
             nationalSlide.addShape(pptx.ShapeType.roundRect, { x: 9.1, y: 1.08, w: 0.35, h: 0.08, rectRadius: 0.02, fill: { color: '94A3B8' }, line: { color: '94A3B8', transparency: 100 } });
             addLabel(nationalSlide, 'Accomplishment', 9.65, 1.03, 1.35, 0.2, { fontSize: 9, color: mutedText, bold: true });
@@ -1711,7 +1720,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             addFooter(nationalSlide);
 
             const trendSlide = pptx.addSlide();
-            addHeader(trendSlide, 'Cumulative Trend', `${activeTrendLabel} | Jan-Dec ${selectedYear}`);
+            addHeader(trendSlide, 'Cumulative Trend', `${activeTrendLabel} | Jan-Dec ${displayYear}`);
             const trendMaxValue = trendIndicator === 'physicalPercentage'
                 ? 100
                 : Math.max(1, ...exportTrendRows.flatMap(row => [row.target, row.actual]));
@@ -1763,7 +1772,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             addFooter(trendSlide);
 
             const summarySlide = pptx.addSlide();
-            addHeader(summarySlide, allOuMode ? 'OU Performance Summary' : 'Province Performance Summary', `${scopeLabel} | Fund Year ${selectedYear}`);
+            addHeader(summarySlide, allOuMode ? 'OU Performance Summary' : 'Province Performance Summary', `${scopeLabel} | Fund Year ${displayYear}`);
             const tableRows: Array<Array<string | number>> = [
                 [allOuMode ? 'OU' : 'Province', 'IPOs', 'Subprojects', 'Trainings', 'Total', 'Rate', 'Status'],
                 ...exportSummaryRows.map(row => {
@@ -1794,7 +1803,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             }
             addFooter(summarySlide);
 
-            const fileName = `4K_Physical_Accomplishment_Dashboard_${sanitizeFileSegment(selectedYear)}_${sanitizeFileSegment(scopeLabel)}_${new Date().toISOString().split('T')[0]}.pptx`;
+            const fileName = `4K_Physical_Accomplishment_Dashboard_${sanitizeFileSegment(displayYear)}_${sanitizeFileSegment(scopeLabel)}_${new Date().toISOString().split('T')[0]}.pptx`;
             const rawPowerPointBlob = await pptx.write({ outputType: 'blob' });
             const sanitizedPowerPointBlob = await sanitizePowerPointBlob(rawPowerPointBlob);
             downloadBlob(sanitizedPowerPointBlob, fileName);
@@ -2092,7 +2101,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     <div className="physical-dashboard-section-header physical-dashboard-trend-header">
                         <div>
                             <h3>Cumulative Accomplishment Trend</h3>
-                            <span>{activeTrendLabel} | Jan-Dec {selectedYear}</span>
+                            <span>{activeTrendLabel} | Jan-Dec {displayYear}</span>
                         </div>
                         <label className="physical-dashboard-trend-selector">
                             <span>Indicator</span>
@@ -2109,7 +2118,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     </div>
                     <div className="physical-dashboard-line-chart">
                         <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label={`Cumulative ${activeTrendLabel} target and accomplishment trend`}>
-                            <title>{`Cumulative ${activeTrendLabel} trend for ${selectedYear}`}</title>
+                            <title>{`Cumulative ${activeTrendLabel} trend for ${displayYear}`}</title>
                             {activeTrendRows.map((row, index) => {
                                 const targetBar = trendBar(row.target);
                                 const actualBar = trendBar(row.actual);
@@ -2218,7 +2227,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                         <div className="dashboard-modal__header">
                             <div className="physical-dashboard-modal-title">
                                 <h3>{localModal.title}</h3>
-                                <p className="dashboard-modal__metric-subtext">{viewMode} | Year: {selectedYear}</p>
+                                <p className="dashboard-modal__metric-subtext">{viewMode} | Year: {displayYear}</p>
                             </div>
                             <div className="dashboard-modal__actions">
                                 <button type="button" onClick={handleDownloadModalExcel} className="btn btn-primary btn-responsive">

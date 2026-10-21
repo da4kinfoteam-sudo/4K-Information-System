@@ -37,8 +37,10 @@ interface AwardsRankingsDashboardProps {
         staffingReqs: StaffingRequirement[];
         otherProgramExpenses: OtherProgramExpense[];
         ipos: IPO[];
+        operatingUnitScope?: string[];
     };
     selectedYear: string;
+    selectedOus?: string[];
     selectedTier: string;
     selectedFundType: string;
 }
@@ -76,7 +78,7 @@ const formatPoint = (value: number) => `${value.toFixed(0)} pts`;
 const formatCountPoints = (count: number, points: number) => `${count} (${formatPoint(points)})`;
 const formatRank = (rank: number | undefined) => rank ? String(rank) : '-';
 
-const ensureManualRows = (rows: AwardManualScore[], year: number): AwardManualScore[] => {
+const ensureManualRows = (rows: AwardManualScore[], year: number, ous: readonly string[] = operatingUnits): AwardManualScore[] => {
     const map = new Map<string, AwardManualScore>();
     rows.forEach(row => {
         map.set(`${row.period}::${row.operating_unit}`, {
@@ -89,7 +91,7 @@ const ensureManualRows = (rows: AwardManualScore[], year: number): AwardManualSc
         });
     });
 
-    return AWARD_PERIODS.flatMap(period => operatingUnits.map(ou => (
+    return AWARD_PERIODS.flatMap(period => ous.map(ou => (
         map.get(`${period}::${ou}`) || {
             fund_year: year,
             period,
@@ -216,10 +218,11 @@ const SpecialAwardsTable: React.FC<{
     </article>
 );
 
-const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data, selectedYear, selectedTier, selectedFundType }) => {
+const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data, selectedYear, selectedOus, selectedTier, selectedFundType }) => {
     const { currentUser } = useAuth();
     const isAdmin = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
     const effectiveYear = Number.isFinite(Number(selectedYear)) ? Number(selectedYear) : new Date().getFullYear();
+    const scopedOus = operatingUnits.filter(ou => !selectedOus || selectedOus.includes(ou));
     const [controllerOpen, setControllerOpen] = useState(false);
     const [quarterDetailMode, setQuarterDetailMode] = useState<QuarterDetailMode>('financial');
     const [quarterDetailPeriod, setQuarterDetailPeriod] = useState<QuarterDetailPeriod>('All');
@@ -248,7 +251,7 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
             try {
                 const [settingsResult, scoresResult] = await Promise.all([
                     supabase.from('award_ranking_settings').select('settings').eq('settings_key', SETTINGS_KEY).maybeSingle(),
-                    supabase.from('award_manual_scores').select('*').eq('fund_year', effectiveYear).order('period').order('operating_unit'),
+                    supabase.from('award_manual_scores').select('*').eq('fund_year', effectiveYear).in('operating_unit', scopedOus).order('period').order('operating_unit'),
                 ]);
 
                 if (cancelled) return;
@@ -262,7 +265,7 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
                 }
 
                 const normalizedSettings = normalizeAwardSettings(settingsResult.data?.settings);
-                const normalizedRows = ensureManualRows((scoresResult.data || []) as AwardManualScore[], effectiveYear);
+                const normalizedRows = ensureManualRows((scoresResult.data || []) as AwardManualScore[], effectiveYear, scopedOus);
                 setSettings(normalizedSettings);
                 setDraftSettings(normalizedSettings);
                 setManualScores(normalizedRows);
@@ -276,7 +279,7 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
         return () => {
             cancelled = true;
         };
-    }, [effectiveYear, isAdmin]);
+    }, [effectiveYear, isAdmin, JSON.stringify(scopedOus)]);
 
     const awardsData = useMemo(
         () => calculateAwardsDashboardData(data, selectedYear, settings, manualScores),
@@ -309,7 +312,7 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
     const quarterDetailTitle = `${quarterDetailMode === 'financial' ? 'Quarter Financial Details' : 'Quarter Physical Details'}${quarterDetailPeriod === 'All' ? '' : ` - ${quarterDetailPeriod}`}`;
 
     const updateManual = (period: AwardManualScore['period'], ou: string, field: ManualField, value: string) => {
-        setDraftManualScores(current => ensureManualRows(current, effectiveYear).map(row => {
+        setDraftManualScores(current => ensureManualRows(current, effectiveYear, scopedOus).map(row => {
             if (row.period !== period || row.operating_unit !== ou) return row;
             if (field === 'remarks') return { ...row, remarks: value };
             return { ...row, [field]: Math.max(0, Math.floor(Number(value) || 0)) };
@@ -364,7 +367,7 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
         setMessage('');
         try {
             const normalizedSettings = normalizeAwardSettings(draftSettings);
-            const rowsToSave = ensureManualRows(draftManualScores, effectiveYear).map(row => ({
+            const rowsToSave = ensureManualRows(draftManualScores, effectiveYear, scopedOus).map(row => ({
                 fund_year: effectiveYear,
                 period: row.period,
                 operating_unit: row.operating_unit,
@@ -395,7 +398,7 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
 
             setSettings(normalizedSettings);
             setDraftSettings(normalizedSettings);
-            const normalizedManual = ensureManualRows(rowsToSave as AwardManualScore[], effectiveYear);
+            const normalizedManual = ensureManualRows(rowsToSave as AwardManualScore[], effectiveYear, scopedOus);
             setManualScores(normalizedManual);
             setDraftManualScores(normalizedManual);
             setMessage('Awards controller saved.');
@@ -665,7 +668,7 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {ensureManualRows(draftManualScores, effectiveYear)
+                                    {ensureManualRows(draftManualScores, effectiveYear, scopedOus)
                                         .filter(row => row.period === activeManualPeriod)
                                         .map(row => (
                                             <tr key={`${row.period}-${row.operating_unit}`}>

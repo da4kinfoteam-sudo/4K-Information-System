@@ -60,6 +60,8 @@ interface GADDashboardProps {
     ipos: IPO[];
     selectedYear: string;
     selectedOu: string;
+    selectedOus?: string[];
+    selectedOuLabel?: string;
     selectedTier: string;
     selectedFundType: string;
     navigateTo?: (path: string) => void;
@@ -145,7 +147,7 @@ const getAssessmentState = (assessment?: GadAssessmentSummary): AssessmentState 
 
 const GADDashboardContent: React.FC<GADDashboardProps> = ({
     subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses,
-    ipos, selectedYear, selectedOu, selectedTier, selectedFundType, navigateTo, onSelectAssessment,
+    ipos, selectedYear, selectedOu, selectedOus, selectedOuLabel, selectedTier, selectedFundType, navigateTo, onSelectAssessment,
     onSelectIpo, programDataLoading, programDataError,
 }) => {
     const { currentUser, hasAccess, getVisibilityScope } = useAuth();
@@ -169,8 +171,8 @@ const GADDashboardContent: React.FC<GADDashboardProps> = ({
         const gadScope = getVisibilityScope('Gender and Development');
         const ownOuOnly = dashboardScope === 'Own OU' || gadScope === 'Own OU';
         const scoped = ownOuOnly ? operatingUnits.filter(ou => ou === currentUser.operatingUnit) : [...operatingUnits];
-        return selectedOu === 'All' ? scoped : scoped.filter(ou => ou === selectedOu);
-    }, [currentUser, getVisibilityScope, selectedOu]);
+        return scoped.filter(ou => (selectedOu === 'All' || ou === selectedOu) && (!selectedOus || selectedOus.includes(ou)));
+    }, [currentUser, getVisibilityScope, selectedOu, JSON.stringify(selectedOus)]);
 
     // A new scope must never render or export the previous scope's assessments.
     const assessmentScopeKey = JSON.stringify([currentUser?.id, canView, year, visibleOus]);
@@ -505,7 +507,7 @@ const GADDashboardContent: React.FC<GADDashboardProps> = ({
         try {
             await downloadGadAttributionWorkbook({
                 year,
-                ouScope: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                ouScope: selectedOuLabel || (selectedOu === 'All' ? 'All OUs' : selectedOu),
                 rows: sortedRows.map(row => ({
                     ou: row.ou,
                     state: row.state,

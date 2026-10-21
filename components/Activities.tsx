@@ -602,10 +602,10 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
 
             <div className="data-list-header">
                 <h2 className="data-list-title">{activityPageTitle}</h2>
-                {canEdit && <button onClick={onCreateActivity} className="btn btn-primary"><Plus aria-hidden="true" /> Add New Activity</button>}
+                {canEdit && <button onClick={onCreateActivity} disabled={!dcfFilters.isDataReady} className="btn btn-primary"><Plus aria-hidden="true" /> Add New Activity</button>}
             </div>
             <DcfScopeFilterPanel idPrefix="activities-dcf" filters={dcfFilters} />
-            <div className="data-table-card major-table-card">
+            <div className="data-table-card major-table-card" style={!dcfFilters.isDataReady ? { display: 'none' } : undefined}>
                 <MajorTableToolbar
                     searchTerm={searchTerm}
                     onSearchChange={(value) => { setSearchTerm(value); setSavedSearchTerm(value); }}

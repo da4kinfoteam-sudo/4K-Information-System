@@ -1,6 +1,6 @@
 // Author: 4K 
 import React, { useState, useMemo } from 'react';
-import { Subproject, IPO, Training, OtherActivity, ouToRegionMap, OfficeRequirement, StaffingRequirement, OtherProgramExpense, MarketingPartner } from '../constants';
+import { Subproject, IPO, Training, OtherActivity, ouToRegionMap, OfficeRequirement, StaffingRequirement, OtherProgramExpense, MarketingPartner, RefFundSource } from '../constants';
 import PhysicalDashboard from './dashboards/PhysicalDashboard';
 import FinancialDashboard from './dashboards/FinancialDashboard';
 import GADDashboard from './dashboards/GADDashboard';
@@ -14,7 +14,9 @@ import AwardsRankingsDashboard from './dashboards/AwardsRankingsDashboard';
 import { ModalItem } from './dashboards/DashboardComponents';
 import type { DataScope } from '../lib/scopedDataFetch';
 import type { DashboardPageKey } from '../lib/appNavigation';
-import { DcfScopeFilterPanel, useDcfScopeFilters } from './ui/DcfScopeFilters';
+import { DashboardScopeFilterPanel, useDashboardScopeFilters } from './ui/DashboardScopeFilters';
+import { annualScope, dashboardScopeLabels, matchesDashboardScope, selectionScalar, selectionValues } from '../lib/dashboardScope';
+import { LoadingState } from './ui/enterprise';
 
 export interface DashboardsPageProps {
     activePage: DashboardPageKey;
@@ -26,6 +28,7 @@ export interface DashboardsPageProps {
     staffingReqs: StaffingRequirement[];
     otherProgramExpenses: OtherProgramExpense[];
     marketingPartners: MarketingPartner[];
+    fundSources?: RefFundSource[];
     onSelectIpo?: (ipo: IPO) => void;
     onSelectLodIpo?: (ipo: IPO, year?: number) => void;
     onSelectSubproject?: (project: Subproject) => void;
@@ -43,17 +46,25 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const { onDataScopeChange } = props;
     const activeTab = props.activePage;
     const [modalData, setModalData] = useState<{ title: string; items: ModalItem[] } | null>(null);
-    const dcfFilters = useDcfScopeFilters({
+    const references = props.fundSources || [];
+    const sourceRecords = useMemo(() => [...props.subprojects, ...props.trainings, ...props.otherActivities, ...props.officeReqs, ...props.staffingReqs, ...props.otherProgramExpenses], [props.subprojects, props.trainings, props.otherActivities, props.officeReqs, props.staffingReqs, props.otherProgramExpenses]);
+    const dcfFilters = useDashboardScopeFilters({
         storageKey: 'dashboards_dcf_scope',
-        moduleName: 'Dashboards',
-        onDataScopeChange: activeTab === 'IPO Level of Development' ? undefined : onDataScopeChange
+        references, records: sourceRecords,
+        registryOnly: activeTab === 'SCAD',
+        visibilityModule: activeTab === 'GAD' ? 'Gender and Development' : undefined,
+        enabled: activeTab !== 'IPO Level of Development' && activeTab !== 'Nutrition',
+        onDataScopeChange,
     });
-    const {
-        selectedYear,
-        selectedOu,
-        selectedTier,
-        selectedFundType
-    } = dcfFilters.value;
+    const [requestedAnnualYear, setAnnualYear] = useState(String(new Date().getFullYear()));
+    const annualYears = selectionValues(dcfFilters.applied.years) || dcfFilters.availableYears;
+    const viewYear = annualYears.includes(requestedAnnualYear) ? requestedAnnualYear : annualYears.slice().sort().at(-1) || '';
+    const isAnnual = activeTab === 'GAD' || activeTab === 'Awards and Rankings';
+    const scope = isAnnual ? annualScope(dcfFilters.applied, viewYear) : dcfFilters.applied;
+    const selectedYear = selectionScalar(scope.years), selectedOu = selectionScalar(scope.operatingUnits);
+    const selectedTier = selectionScalar(scope.tiers), selectedFundType = selectionScalar(scope.fundTypes);
+    const selectedYears = selectionValues(scope.years), selectedOus = selectionValues(scope.operatingUnits);
+    const scopeLabels = dashboardScopeLabels(scope, references, sourceRecords);
     const filteredData = useMemo(() => {
         // Deep sanitization helper: ensures array exists and filters out null/undefined items inside it
         const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
@@ -69,48 +80,16 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             otherProgramExpenses: props.otherProgramExpenses.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED')
         };
 
-        // Filter by Year
-        if (selectedYear !== 'All') {
-            data.subprojects = data.subprojects.filter(p => p.fundingYear?.toString() === selectedYear);
-            // Note: We DO NOT filter IPOs by registration date here anymore. 
-            // Dashboards like GAD and Physical need the full IPO registry to check for engagement status in the selected year.
-            data.trainings = data.trainings.filter(t => t.fundingYear?.toString() === selectedYear);
-            data.otherActivities = data.otherActivities.filter(a => a.fundingYear?.toString() === selectedYear);
-            data.officeReqs = data.officeReqs.filter(i => i.fundYear?.toString() === selectedYear);
-            data.staffingReqs = data.staffingReqs.filter(i => i.fundYear?.toString() === selectedYear);
-            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.fundYear?.toString() === selectedYear);
-        }
-
-        // Filter by Tier
-        if (selectedTier !== 'All') {
-            data.subprojects = data.subprojects.filter(p => p.tier === selectedTier);
-            data.trainings = data.trainings.filter(t => t.tier === selectedTier);
-            data.otherActivities = data.otherActivities.filter(a => a.tier === selectedTier);
-            data.officeReqs = data.officeReqs.filter(i => i.tier === selectedTier);
-            data.staffingReqs = data.staffingReqs.filter(i => i.tier === selectedTier);
-            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.tier === selectedTier);
-        }
-
-        // Filter by Fund Type
-        if (selectedFundType !== 'All') {
-            data.subprojects = data.subprojects.filter(p => p.fundType === selectedFundType);
-            data.trainings = data.trainings.filter(t => t.fundType === selectedFundType);
-            data.otherActivities = data.otherActivities.filter(a => a.fundType === selectedFundType);
-            data.officeReqs = data.officeReqs.filter(i => i.fundType === selectedFundType);
-            data.staffingReqs = data.staffingReqs.filter(i => i.fundType === selectedFundType);
-            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.fundType === selectedFundType);
-        }
-
-        // Filter by OU
-        if (selectedOu !== 'All') {
-            const targetRegion = ouToRegionMap[selectedOu];
-            data.subprojects = data.subprojects.filter(p => p.operatingUnit === selectedOu);
-            data.trainings = data.trainings.filter(t => t.operatingUnit === selectedOu);
-            data.otherActivities = data.otherActivities.filter(a => a.operatingUnit === selectedOu);
-            data.ipos = data.ipos.filter(i => i.region === targetRegion);
-            data.officeReqs = data.officeReqs.filter(i => i.operatingUnit === selectedOu);
-            data.staffingReqs = data.staffingReqs.filter(i => i.operatingUnit === selectedOu);
-            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.operatingUnit === selectedOu);
+        const matches = (record: any) => matchesDashboardScope(record, scope, references);
+        data.subprojects = data.subprojects.filter(matches);
+        data.trainings = data.trainings.filter(matches);
+        data.otherActivities = data.otherActivities.filter(matches);
+        data.officeReqs = data.officeReqs.filter(matches);
+        data.staffingReqs = data.staffingReqs.filter(matches);
+        data.otherProgramExpenses = data.otherProgramExpenses.filter(matches);
+        if (selectedOus) {
+            const regions = new Set(selectedOus.map(ou => ouToRegionMap[ou]).filter(Boolean));
+            data.ipos = data.ipos.filter(ipo => regions.has(ipo.region));
         }
 
         return {
@@ -120,22 +99,22 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             otherActivities: data.otherActivities.map(a => ({ ...a, expenses: sanitizeExpenses(a.expenses) })),
             staffingReqs: data.staffingReqs.map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
         };
-    }, [selectedYear, selectedOu, selectedTier, selectedFundType, props]);
+    }, [dcfFilters.key, viewYear, activeTab, props]);
 
     const financialSourceData = useMemo(() => {
         const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
         const sanitizeExpenses = (items: any[] | undefined) => (items || []).filter(i => i);
 
         return {
-            subprojects: props.subprojects.map(p => ({ ...p, details: sanitizeDetails(p.details) })),
+            subprojects: props.subprojects.filter(p => matchesDashboardScope(p, scope, references)).map(p => ({ ...p, details: sanitizeDetails(p.details) })),
             ipos: props.ipos.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
-            trainings: props.trainings.map(t => ({ ...t, expenses: sanitizeExpenses(t.expenses) })),
-            otherActivities: props.otherActivities.map(a => ({ ...a, expenses: sanitizeExpenses(a.expenses) })),
-            officeReqs: props.officeReqs,
-            staffingReqs: props.staffingReqs.map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
-            otherProgramExpenses: props.otherProgramExpenses,
+            trainings: props.trainings.filter(p => matchesDashboardScope(p, scope, references)).map(t => ({ ...t, expenses: sanitizeExpenses(t.expenses) })),
+            otherActivities: props.otherActivities.filter(p => matchesDashboardScope(p, scope, references)).map(a => ({ ...a, expenses: sanitizeExpenses(a.expenses) })),
+            officeReqs: props.officeReqs.filter(p => matchesDashboardScope(p, scope, references)),
+            staffingReqs: props.staffingReqs.filter(p => matchesDashboardScope(p, scope, references)).map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
+            otherProgramExpenses: props.otherProgramExpenses.filter(p => matchesDashboardScope(p, scope, references)),
         };
-    }, [props.subprojects, props.ipos, props.trainings, props.otherActivities, props.officeReqs, props.staffingReqs, props.otherProgramExpenses]);
+    }, [props, dcfFilters.key, viewYear, activeTab]);
 
     const awardsData = useMemo(() => {
         const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
@@ -178,30 +157,46 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.fundType === selectedFundType);
         }
 
+        const matches = (record: any) => matchesDashboardScope(record, scope, references);
+        data.subprojects = data.subprojects.filter(matches);
+        data.trainings = data.trainings.filter(matches);
+        data.otherActivities = data.otherActivities.filter(matches);
+        data.officeReqs = data.officeReqs.filter(matches);
+        data.staffingReqs = data.staffingReqs.filter(matches);
+        data.otherProgramExpenses = data.otherProgramExpenses.filter(matches);
+
         return {
             ...data,
+            operatingUnitScope: selectedOus,
             subprojects: data.subprojects.map(p => ({ ...p, details: sanitizeDetails(p.details) })),
             trainings: data.trainings.map(t => ({ ...t, expenses: sanitizeExpenses(t.expenses) })),
             otherActivities: data.otherActivities.map(a => ({ ...a, expenses: sanitizeExpenses(a.expenses) })),
             staffingReqs: data.staffingReqs.map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
         };
-    }, [props.subprojects, props.ipos, props.trainings, props.otherActivities, props.officeReqs, props.staffingReqs, props.otherProgramExpenses, selectedYear, selectedTier, selectedFundType]);
+    }, [props, dcfFilters.key, viewYear, activeTab]);
 
     return (
         <div className="data-list-page dashboards-page">
             <div className="data-list-header">
                 <h2 className="data-list-title">Strategic Dashboard</h2>
             </div>
-            {activeTab !== 'IPO Level of Development' && (
-                <DcfScopeFilterPanel idPrefix="dashboard-dcf" filters={dcfFilters} />
+            {activeTab !== 'IPO Level of Development' && activeTab !== 'Nutrition' && (
+                <DashboardScopeFilterPanel filters={dcfFilters} />
             )}
 
-            <div className="dashboard-tab-content">
+            {isAnnual && (dcfFilters.applied.years.mode === 'all' || annualYears.length > 1) && <label className="dashboard-annual-view"><span>Annual View</span><select className="form-control" aria-label="Annual View" value={viewYear} onChange={event => setAnnualYear(event.target.value)}>{annualYears.slice().sort().reverse().map(year => <option key={year}>{year}</option>)}</select></label>}
+            {dcfFilters.error && activeTab !== 'IPO Level of Development' && activeTab !== 'Nutrition' && <div className="notice notice--warning" role="alert"><p>{dcfFilters.error}</p><button type="button" className="btn btn-secondary" onClick={dcfFilters.retry}>Retry</button></div>}
+            {dcfFilters.loading && <LoadingState title="Loading dashboard" />}
+
+            <div className="dashboard-tab-content">{(activeTab === 'IPO Level of Development' || activeTab === 'Nutrition' || (!dcfFilters.loading && !dcfFilters.error)) && <>
                 {activeTab === 'Physical' && (
                     <PhysicalDashboard 
                         data={filteredData} 
                         setModalData={setModalData} 
                         selectedYear={selectedYear}
+                        selectedYears={selectedYears}
+                        selectedOus={selectedOus}
+                        scopeLabels={scopeLabels}
                         selectedOu={selectedOu}
                         isAllOuView={selectedOu === 'All'}
                         onSelectIpo={props.onSelectIpo}
@@ -214,6 +209,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                 {activeTab === 'Financial' && (
                     <FinancialDashboard 
                         data={financialSourceData} 
+                        scopeLabels={scopeLabels}
                         selectedYearProp={selectedYear}
                         selectedOuProp={selectedOu}
                         selectedTierProp={selectedTier}
@@ -236,6 +232,8 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                         programDataLoading={props.programDataLoading}
                         programDataError={props.programDataError}
                         selectedYear={selectedYear}
+                        selectedOus={selectedOus}
+                        selectedOuLabel={scopeLabels.operatingUnits}
                         selectedOu={selectedOu}
                         selectedTier={selectedTier}
                         selectedFundType={selectedFundType}
@@ -251,6 +249,8 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                         ipos={filteredData.ipos}
                         marketingPartners={props.marketingPartners}
                         selectedYear={selectedYear}
+                        selectedYears={selectedYears}
+                        scopeLabels={scopeLabels}
                         selectedOu={selectedOu}
                         selectedTier={selectedTier}
                         selectedFundType={selectedFundType}
@@ -262,12 +262,13 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                 {activeTab === 'Awards and Rankings' && (
                     <AwardsRankingsDashboard
                         data={awardsData}
+                        selectedOus={selectedOus}
                         selectedYear={selectedYear}
                         selectedTier={selectedTier}
                         selectedFundType={selectedFundType}
                     />
                 )}
-            </div>
+            </>}</div>
             
             {modalData && (
                 <div className="dashboard-modal-backdrop" onClick={() => setModalData(null)}>

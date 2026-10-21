@@ -215,7 +215,7 @@ export const updateCachedActivity = async (userId: string | number, activity: Ac
   if (!db) return;
   const tx = db.transaction(['scope_meta', 'records'], 'readwrite');
   const rows = await tx.objectStore('records').index('tableName').getAll('activities');
-  const scopeFields: (keyof Activity)[] = ['operatingUnit', 'fundingYear', 'fundType', 'tier', 'workflow_status', 'type'];
+  const scopeFields: (keyof Activity)[] = ['operatingUnit', 'fundingYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'workflow_status', 'type'];
   for (const row of rows) {
     if (row.userId !== String(userId) || Number(row.value.id) !== Number(activity.id)) continue;
     if (scopeFields.some(field => row.value[field] !== activity[field])) {
@@ -233,7 +233,7 @@ export const updateCachedSubproject = async (userId: string | number, subproject
   if (!db) return;
   const tx = db.transaction(['scope_meta', 'records'], 'readwrite');
   const rows = await tx.objectStore('records').index('tableName').getAll('subprojects');
-  const scopeFields: (keyof Subproject)[] = ['operatingUnit', 'fundingYear', 'fundType', 'tier', 'workflow_status'];
+  const scopeFields: (keyof Subproject)[] = ['operatingUnit', 'fundingYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'workflow_status'];
   const affectedScopes = new Set<string>();
   for (const row of rows) {
     if (row.userId !== String(userId) || Number(row.value.id) !== Number(subproject.id)) continue;

@@ -35,6 +35,7 @@ onSelectIpo={ipo=>{window.fixture.selected=ipo.id;navigate('/ipo-detail?id='+ipo
 if(!localStorage.getItem('dashboards_dcf_scope_1_applied'))localStorage.setItem('dashboards_dcf_scope_1_applied',JSON.stringify({selectedYear:'2025',selectedOu:'All',selectedTier:'Tier 1',selectedFundType:'Continuing'}));
 createRoot(document.getElementById('root')).render(<Harness/>);`;
 const server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(screenshots, 'node_modules', '.vite'), appType: 'custom',
+    resolve: { alias: { '@': process.cwd() } },
     server: { host: '127.0.0.1', port: serve ? 3017 : 0, strictPort: serve }, optimizeDeps: { noDiscovery: true, include: ['react', 'react-dom/client', 'lucide-react', 'recharts', 'date-fns'], entries: [] }, plugins: [{
         name: 'gad-membership-offline', enforce: 'pre',
         resolveId(id) {
@@ -158,8 +159,11 @@ try {
     await page.reload();
     await page.getByRole('button', { name: 'Return to GAD Dashboard', exact: true }).click();
     await table.waitFor();
-    assert.equal(await page.getByLabel('Fund Year', { exact: true }).inputValue(), '2025');
-    await page.getByLabel('Operating Unit', { exact: true }).selectOption('NPMO');
+    assert.equal(await page.getByRole('button', { name: 'Fund Year', exact: true }).innerText(), '2025');
+    await page.getByRole('button', { name: 'Operating Unit', exact: true }).click();
+    await page.getByRole('button', { name: 'Clear', exact: true }).click();
+    await page.getByRole('group', { name: 'Operating Unit choices', exact: true }).getByRole('checkbox', { name: 'NPMO', exact: true }).check();
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Apply', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.gad-membership-kpis strong')?.textContent === '1,200');
     assert.match(await section.locator('.data-table-pagination__full-range').innerText(), /1 to 10 of 12/);
@@ -167,7 +171,7 @@ try {
     await page.reload();
     await page.getByRole('button', { name: 'Return to GAD Dashboard', exact: true }).click();
     await table.waitFor();
-    assert.equal(await page.getByLabel('Operating Unit', { exact: true }).inputValue(), 'NPMO');
+    assert.equal(await page.getByRole('button', { name: 'Operating Unit', exact: true }).innerText(), 'NPMO');
     assert.equal(await section.locator('.gad-dashboard-kpi strong').first().innerText(), '1,200');
     await page.evaluate(() => window.loadFixture({ denied: ['IPO Management'] }));
     await table.waitFor();
@@ -176,7 +180,7 @@ try {
     await page.waitForFunction(() => document.querySelector('.gad-membership-kpis strong')?.textContent === '1,200');
     await page.evaluate(() => window.loadFixture({ scopes: { Dashboards: 'Own OU' } }));
     await page.waitForFunction(() => document.querySelector('.gad-membership-kpis strong')?.textContent === '1,200');
-    assert.equal(await page.getByLabel('Operating Unit', { exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: 'Operating Unit', exact: true }).isDisabled(), true);
     await page.evaluate(() => window.loadFixture({ ipos: [{ ...window.fixture.ipos[0], totalMembers: 2 }, { ...window.fixture.ipos[1], totalMembers: 10 }] }));
     await table.waitFor();
     await table.getByRole('button', { name: 'Total Members, not sorted', exact: true }).click();

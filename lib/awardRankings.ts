@@ -134,6 +134,7 @@ export interface AwardsDashboardData {
 }
 
 export interface AwardsInputData {
+    operatingUnitScope?: string[];
     subprojects: Subproject[];
     trainings: Training[];
     otherActivities: OtherActivity[];
@@ -142,6 +143,9 @@ export interface AwardsInputData {
     otherProgramExpenses: OtherProgramExpense[];
     ipos: IPO[];
 }
+
+const awardOperatingUnits = (data: AwardsInputData) => data.operatingUnitScope
+    ? operatingUnits.filter(ou => data.operatingUnitScope!.includes(ou)) : operatingUnits;
 
 const QUARTERS: AwardQuarter[] = ['Q1', 'Q2', 'Q3', 'Q4'];
 
@@ -360,7 +364,7 @@ const getOuPhysicalRecords = (data: AwardsInputData, year: number) => {
         annualByOu.get(ou)!.push({ ou, targetDate, actualDate });
     };
 
-    operatingUnits.forEach(ou => annualByOu.set(ou, []));
+    awardOperatingUnits(data).forEach(ou => annualByOu.set(ou, []));
 
     data.subprojects
         .filter(record => recordYearMatches(record.fundingYear, year) && isTargetRecord(record))
@@ -406,7 +410,7 @@ const buildQuarterPhysical = (
         marketingEnterprise: new Map<string, CompletionRecord[]>(),
         programManagement: new Map<string, CompletionRecord[]>(),
     };
-    operatingUnits.forEach(ou => {
+    awardOperatingUnits(data).forEach(ou => {
         recordsByOu.socialPrep.set(ou, []);
         recordsByOu.productionLivelihood.set(ou, []);
         recordsByOu.marketingEnterprise.set(ou, []);
@@ -425,7 +429,7 @@ const buildQuarterPhysical = (
     officeReqs.filter(isTargetRecord).forEach(item => addRecord(recordsByOu.programManagement, item.operatingUnit, getPmTargetDate(item), getPmActualDate(item)));
     staffingReqs.filter(isTargetRecord).forEach(item => addRecord(recordsByOu.programManagement, item.operatingUnit, getPmTargetDate(item), getPmActualDate(item)));
 
-    const socialPrepMetrics = operatingUnits.map(ou => {
+    const socialPrepMetrics = awardOperatingUnits(data).map(ou => {
         const activitiesInQuarter = socialPrepActivities.filter(activity => isCompletedActivity(activity) && activity.operatingUnit === ou && isDateInQuarter(activity.actualDate, year, quarter));
         const completion = getQuarterCompletionRate(recordsByOu.socialPrep.get(ou) || [], year, quarter);
         return {
@@ -438,7 +442,7 @@ const buildQuarterPhysical = (
         };
     });
 
-    const plMetrics = operatingUnits.map(ou => {
+    const plMetrics = awardOperatingUnits(data).map(ou => {
         const trainingsInQuarter = plTrainings.filter(activity => isCompletedActivity(activity) && activity.operatingUnit === ou && isDateInQuarter(activity.actualDate, year, quarter));
         const subprojectsInQuarter = subprojects.filter(sp => isCompletedSubproject(sp) && sp.operatingUnit === ou && isDateInQuarter(sp.actualCompletionDate, year, quarter));
         const completion = getQuarterCompletionRate(recordsByOu.productionLivelihood.get(ou) || [], year, quarter);
@@ -456,7 +460,7 @@ const buildQuarterPhysical = (
         };
     });
 
-    const marketingMetrics = operatingUnits.map(ou => {
+    const marketingMetrics = awardOperatingUnits(data).map(ou => {
         const activitiesInQuarter = marketingActivities.filter(activity => isCompletedActivity(activity) && activity.operatingUnit === ou && isDateInQuarter(activity.actualDate, year, quarter));
         const completion = getQuarterCompletionRate(recordsByOu.marketingEnterprise.get(ou) || [], year, quarter);
         return {
@@ -469,7 +473,7 @@ const buildQuarterPhysical = (
         };
     });
 
-    const programMetrics = operatingUnits.map(ou => {
+    const programMetrics = awardOperatingUnits(data).map(ou => {
         const manual = getManual(manualMap, year, quarter, ou);
         const completion = getQuarterCompletionRate(recordsByOu.programManagement.get(ou) || [], year, quarter);
         const reportorialRequired = toNumber(manual.reportorial_required);
@@ -552,7 +556,7 @@ const buildQuarterFinancial = (
     });
     const quarterIndex = QUARTERS.indexOf(quarter);
     const months = [quarterIndex * 3, quarterIndex * 3 + 1, quarterIndex * 3 + 2];
-    const rows = operatingUnits.map(ou => {
+    const rows = awardOperatingUnits(data).map(ou => {
         const ouItems = lineItems.filter(item => item.operatingUnit === ou);
         const allocation = ouItems.reduce((sum, item) => months.includes(item.targetMonth ?? -1) ? sum + item.alloc : sum, 0);
         const obligation = ouItems.reduce((sum, item) => sum + months.reduce((inner, month) => inner + (item.obligationByMonth[month] || 0), 0), 0);
@@ -602,7 +606,7 @@ const buildQuarterResult = (
         };
     }
     const physicalComponents = buildQuarterPhysical(data, year, quarter, settings, manualMap);
-    const physicalOverallBase = operatingUnits.map(ou => ({
+    const physicalOverallBase = awardOperatingUnits(data).map(ou => ({
         ou,
         componentPoints: Object.values(physicalComponents).reduce((sum, rows) => sum + (rows.find(row => row.ou === ou)?.points || 0), 0),
     }));
@@ -631,7 +635,7 @@ const buildAnnualFinancialBuckets = (data: AwardsInputData, year: number) => {
         fundType: 'All',
     });
 
-    return operatingUnits.map(ou => {
+    return awardOperatingUnits(data).map(ou => {
         const ouItems = lineItems.filter(item => item.operatingUnit === ou);
         const allocation = ouItems.reduce((sum, item) => sum + item.alloc, 0);
         const obligation = ouItems.reduce((sum, item) => sum + item.obli, 0);
@@ -653,7 +657,7 @@ const buildAnnualCounts = (data: AwardsInputData, year: number, manualMap: Map<s
     const attendanceByOu = new Map<string, number>();
     const trainingsByOu = new Map<string, number>();
     const subprojectsByOu = new Map<string, number>();
-    operatingUnits.forEach(ou => {
+    awardOperatingUnits(data).forEach(ou => {
         iposByOu.set(ou, new Set());
         targetIposByOu.set(ou, new Set());
         attendanceByOu.set(ou, 0);
@@ -691,7 +695,7 @@ const buildAnnualCounts = (data: AwardsInputData, year: number, manualMap: Map<s
             }
         });
 
-    operatingUnits.forEach(ou => {
+    awardOperatingUnits(data).forEach(ou => {
         const yearEnd = getManual(manualMap, year, 'Year End', ou);
         if (toNumber(yearEnd.national_activities_required) > 0 || toNumber(yearEnd.national_activities_attended) > 0) {
             attendanceByOu.set(ou, toNumber(yearEnd.national_activities_attended));
@@ -705,10 +709,10 @@ const buildAnnualCounts = (data: AwardsInputData, year: number, manualMap: Map<s
     });
 
     return {
-        iposAssisted: operatingUnits.map(ou => ({ ou, value: iposByOu.get(ou)?.size || 0, target: targetIposByOu.get(ou)?.size || 0 })),
-        attendance: operatingUnits.map(ou => ({ ou, value: attendanceByOu.get(ou) || 0 })),
-        trainings: operatingUnits.map(ou => ({ ou, value: trainingsByOu.get(ou) || 0 })),
-        subprojects: operatingUnits.map(ou => ({ ou, value: subprojectsByOu.get(ou) || 0 })),
+        iposAssisted: awardOperatingUnits(data).map(ou => ({ ou, value: iposByOu.get(ou)?.size || 0, target: targetIposByOu.get(ou)?.size || 0 })),
+        attendance: awardOperatingUnits(data).map(ou => ({ ou, value: attendanceByOu.get(ou) || 0 })),
+        trainings: awardOperatingUnits(data).map(ou => ({ ou, value: trainingsByOu.get(ou) || 0 })),
+        subprojects: awardOperatingUnits(data).map(ou => ({ ou, value: subprojectsByOu.get(ou) || 0 })),
     };
 };
 
@@ -736,7 +740,7 @@ const buildAnnualResults = (
 ): AwardAnnualResult => {
     const financialBuckets = buildAnnualFinancialBuckets(data, year);
     const physicalRecords = getOuPhysicalRecords(data, year);
-    const physicalRows = operatingUnits.map(ou => ({
+    const physicalRows = awardOperatingUnits(data).map(ou => ({
         ou,
         physicalCompletionRate: getAnnualCompletionRate(physicalRecords.get(ou) || [], year).rate,
     }));
@@ -750,12 +754,12 @@ const buildAnnualResults = (
 
     const financialTop4Counts = new Map<string, number>();
     const physicalTop4Counts = new Map<string, number>();
-    operatingUnits.forEach(ou => {
+    awardOperatingUnits(data).forEach(ou => {
         financialTop4Counts.set(ou, quarters.filter(quarter => (quarter.financial.find(row => row.ou === ou)?.rank || 999) <= 4).length);
         physicalTop4Counts.set(ou, quarters.filter(quarter => (quarter.physicalOverall.find(row => row.ou === ou)?.rank || 999) <= 4).length);
     });
 
-    const baseRows = operatingUnits.map(ou => {
+    const baseRows = awardOperatingUnits(data).map(ou => {
         const financialBucket = financialBuckets.find(row => row.ou === ou);
         const disbursementVsAllotmentRate = getRate(financialBuckets, ou, 'disbursementVsAllotmentRate');
         const disbursementVsObligationRate = getRate(financialBuckets, ou, 'disbursementVsObligationRate');

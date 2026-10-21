@@ -64,7 +64,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
             </div>
             <DcfScopeFilterPanel idPrefix="program-management-dcf" filters={dcfFilters} />
 
-            <div className="animate-fadeIn">
+            <div className="animate-fadeIn" style={!dcfFilters.isDataReady ? { display: 'none' } : undefined}>
                 {activeTab === 'Office' && (
                     <OfficeRequirementsTab
                         items={scopedOfficeReqs}
