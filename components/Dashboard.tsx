@@ -3,15 +3,17 @@
 import { getActivityDisplayTitle, escapeActivityHtml } from '../lib/activityTitles';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
-import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, tiers, fundTypes, operatingUnits, ouToRegionMap, SystemSettings, filterYears } from '../constants';
-import { Subproject, IPO, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../constants';
+import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, ouToRegionMap, SystemSettings } from '../constants';
+import { Subproject, IPO, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, RefFundSource } from '../constants';
 import Calendar, { CalendarEvent } from './Calendar'; // Updated Import
 import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
 import { aggregateHomepageFinancials } from '../lib/financialAggregation';
 import { aggregateHomepagePhysicalStats } from '../lib/physicalAggregation';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets, isParentExcludedFromTargets } from '../lib/budgetLineAdjustments';
-import type { DataScope } from '../lib/scopedDataFetch';
+import { fetchNpmoScheduleActivities, type DataScope } from '../lib/scopedDataFetch';
+import { DashboardScopeFilterPanel, useDashboardScopeFilters } from './ui/DashboardScopeFilters';
+import { dashboardDataScope, dashboardScopeKey, matchesDashboardScope, selectedValues, selectionMatches, selectionScalar, selectionValues, selectionLabel } from '../lib/dashboardScope';
 import { listHomepageGalleryFeed, HomepageGalleryFeedItem } from '../lib/googleDriveStorage';
 import { supabase } from '../supabaseClient';
 import { CalendarDays, ChevronLeft, ChevronRight, Ellipsis, X } from 'lucide-react';
@@ -19,13 +21,12 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import {
     ContentCard,
     EmptyState,
-    FilterToolbar,
+    LoadingState,
     MapCard,
     PageHeader,
     SectionHeading,
     StatusIndicator,
 } from './ui/enterprise';
-import useLocalStorageState from '../hooks/useLocalStorageState';
 import HomepageGalleryFeed from './ui/HomepageGalleryFeed';
 
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
@@ -399,42 +400,28 @@ interface DashboardProps {
     navigateTo: (page: string) => void;
     externalFilters?: { region?: string; year?: string; search?: string } | null;
     onDataScopeChange?: (scope: Partial<DataScope>) => void;
+    fundSources?: RefFundSource[];
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
     subprojects, ipos, activities, systemSettings,
     officeReqs, staffingReqs, otherProgramExpenses,
-    onSelectSubproject, onSelectActivity, onSelectIpo, navigateTo, externalFilters, onDataScopeChange
+    onSelectSubproject, onSelectActivity, onSelectIpo, navigateTo, externalFilters, onDataScopeChange, fundSources = []
 }) => {
     const { currentUser, getVisibilityScope, hasAccess } = useAuth();
     
     // Check Reports & Dashboards visibility scope
     const visibilityScope = getVisibilityScope('Dashboards');
     const isLockedToOwnOu = visibilityScope === 'Own OU';
-    const defaultYear = new Date().getFullYear().toString();
-    const defaultOu = isLockedToOwnOu ? (currentUser?.operatingUnit || 'All') : 'All';
 
-    const scopeStoragePrefix = `homepage_scope_${currentUser?.id || 'anonymous'}`;
-    const [selectedYear, setSelectedYear] = useLocalStorageState<string>(`${scopeStoragePrefix}_year`, defaultYear);
-    const [selectedOu, setSelectedOu] = useLocalStorageState<string>(`${scopeStoragePrefix}_ou`, defaultOu);
-    const [selectedTier, setSelectedTier] = useLocalStorageState<string>(`${scopeStoragePrefix}_tier`, 'Tier 1');
-    const [selectedFundType, setSelectedFundType] = useLocalStorageState<string>(`${scopeStoragePrefix}_fundType`, 'Current');
-    const [draftYear, setDraftYear] = useState<string>(selectedYear);
-    const [draftOu, setDraftOu] = useState<string>(selectedOu);
-    const [draftTier, setDraftTier] = useState<string>(selectedTier);
-    const [draftFundType, setDraftFundType] = useState<string>(selectedFundType);
+    const sourceRecords = useMemo(() => [...subprojects, ...activities, ...officeReqs, ...staffingReqs, ...otherProgramExpenses], [subprojects, activities, officeReqs, staffingReqs, otherProgramExpenses]);
+    const scopeFilters = useDashboardScopeFilters({ storageKey: 'homepage_scope', references: fundSources, records: sourceRecords, onDataScopeChange });
+    const scope = scopeFilters.applied;
+    const selectedYear = selectionScalar(scope.years), selectedOu = selectionScalar(scope.operatingUnits);
+    const selectedTier = selectionScalar(scope.tiers), selectedFundType = selectionScalar(scope.fundTypes);
+    const selectedOus = selectionValues(scope.operatingUnits);
     const [totalBudgetView, setTotalBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
 
-    useEffect(() => {
-        onDataScopeChange?.({
-            year: selectedYear,
-            operatingUnit: selectedOu,
-            tier: selectedTier,
-            fundType: selectedFundType,
-            canViewAllOus: !isLockedToOwnOu,
-            requestedBy: currentUser?.id ?? null
-        });
-    }, [currentUser?.id, isLockedToOwnOu, onDataScopeChange, selectedFundType, selectedOu, selectedTier, selectedYear]);
     const [spBudgetView, setSpBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
     const [trBudgetView, setTrBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
     
@@ -483,50 +470,12 @@ const Dashboard: React.FC<DashboardProps> = ({
     // React to external filters
     useEffect(() => {
         if (externalFilters?.year) {
-            setSelectedYear(externalFilters.year);
-            setDraftYear(externalFilters.year);
+            scopeFilters.applyYears(externalFilters.year);
         }
     }, [externalFilters?.year]);
 
     // ... (Filter Effects and Calculations remain same) ...
 
-    useEffect(() => {
-        if (!isLockedToOwnOu) return;
-        const lockedOu = currentUser?.operatingUnit || 'All';
-        setSelectedOu(lockedOu);
-        setDraftOu(lockedOu);
-    }, [currentUser?.operatingUnit, isLockedToOwnOu]);
-
-    const hasPendingFilterChanges = draftYear !== selectedYear
-        || draftOu !== selectedOu
-        || draftTier !== selectedTier
-        || draftFundType !== selectedFundType;
-    const filtersAreAtDefaults = selectedYear === defaultYear
-        && selectedOu === defaultOu
-        && selectedTier === 'Tier 1'
-        && selectedFundType === 'Current'
-        && draftYear === defaultYear
-        && draftOu === defaultOu
-        && draftTier === 'Tier 1'
-        && draftFundType === 'Current';
-
-    const applyFilters = () => {
-        setSelectedYear(draftYear);
-        setSelectedOu(isLockedToOwnOu ? defaultOu : draftOu);
-        setSelectedTier(draftTier);
-        setSelectedFundType(draftFundType);
-    };
-
-    const resetFilters = () => {
-        setDraftYear(defaultYear);
-        setDraftOu(defaultOu);
-        setDraftTier('Tier 1');
-        setDraftFundType('Current');
-        setSelectedYear(defaultYear);
-        setSelectedOu(defaultOu);
-        setSelectedTier('Tier 1');
-        setSelectedFundType('Current');
-    };
 
     const handleMapFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
@@ -578,10 +527,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
     };
 
-    const availableYears = useMemo(() => {
-        return [...filterYears].sort((a, b) => parseInt(b) - parseInt(a));
-    }, []);
-    
     const filteredData = useMemo(() => {
         // ... (Filtering Logic remains same)
         const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
@@ -593,26 +538,19 @@ const Dashboard: React.FC<DashboardProps> = ({
         };
 
         const filterItem = (item: any) => {
-            let matches = true;
             if (item.workflow_status && item.workflow_status !== 'APPROVED') return false;
-            const year = item.fundingYear || item.fundYear;
-            if (selectedYear !== 'All' && year?.toString() !== selectedYear) matches = false;
-            if (selectedTier !== 'All' && item.tier !== selectedTier) matches = false;
-            if (selectedFundType !== 'All' && item.fundType !== selectedFundType) matches = false;
-            if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) matches = false;
-            return matches;
+            return matchesDashboardScope(item, scope, fundSources);
         }
 
         const filterIpo = (item: IPO) => {
             if (item.workflow_status && item.workflow_status !== 'APPROVED') return false;
-            if (selectedOu !== 'All') {
-                const targetRegion = ouToRegionMap[selectedOu];
-                if (item.region !== targetRegion) return false;
+            if (selectedOus) {
+                if (!selectedOus.some(ou => ouToRegionMap[ou] === item.region)) return false;
             }
-            if (selectedYear !== 'All') {
+            if (scope.years.mode !== 'all') {
                 if (!item.registrationDate) return false;
                 const regYear = new Date(item.registrationDate).getFullYear().toString();
-                if (regYear !== selectedYear) return false;
+                if (!selectionMatches(scope.years, regYear)) return false;
             }
             return true;
         }
@@ -626,12 +564,14 @@ const Dashboard: React.FC<DashboardProps> = ({
             otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(filterItem),
         };
 
-    }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, activities, officeReqs, staffingReqs, otherProgramExpenses]);
+    }, [scopeFilters.key, fundSources, subprojects, ipos, activities, officeReqs, staffingReqs, otherProgramExpenses]);
 
-    const npmoScopeKey = `${selectedYear}|${selectedTier}|${selectedFundType}`;
+    const npmoScope = { ...scope, operatingUnits: selectedValues(['NPMO']) };
+    const npmoScopeKey = dashboardScopeKey(npmoScope);
 
     useEffect(() => {
         let cancelled = false;
+        if (scopeFilters.loading || scopeFilters.error) return () => { cancelled = true; };
         if (scheduleMode !== 'NPMO') {
             setIsNpmoLoading(false);
             setNpmoLoadError(null);
@@ -642,11 +582,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         const localNpmos = activities.filter(activity => {
             if (activity.operatingUnit !== 'NPMO') return false;
             if (activity.workflow_status && activity.workflow_status !== 'APPROVED') return false;
-            const year = activity.fundingYear || activity.fundYear;
-            if (selectedYear !== 'All' && year?.toString() !== selectedYear) return false;
-            if (selectedTier !== 'All' && activity.tier !== selectedTier) return false;
-            if (selectedFundType !== 'All' && activity.fundType !== selectedFundType) return false;
-            return true;
+            return matchesDashboardScope(activity, npmoScope, fundSources);
         });
 
         if (cached) {
@@ -669,12 +605,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         const loadNpmos = async () => {
             try {
-                let query = supabase.from('activities').select('*').eq('operatingUnit', 'NPMO');
-                if (selectedYear !== 'All') query = query.eq('fundingYear', Number(selectedYear));
-                if (selectedTier !== 'All') query = query.eq('tier', selectedTier);
-                if (selectedFundType !== 'All') query = query.eq('fundType', selectedFundType);
-                const { data, error } = await query.order('date', { ascending: true });
-                if (error) throw error;
+                const data = await fetchNpmoScheduleActivities(dashboardDataScope(npmoScope, 'homepage-schedule', true, currentUser?.id) as DataScope, fundSources);
 
                 const rows = ((data || []) as Activity[]).filter(activity => !activity.workflow_status || activity.workflow_status === 'APPROVED');
                 if (cancelled) return;
@@ -682,7 +613,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                 setNpmoActivities(rows);
             } catch (error: any) {
                 if (cancelled) return;
-                npmoCacheRef.current.set(npmoScopeKey, localNpmos);
                 setNpmoActivities(localNpmos);
                 setNpmoLoadError(error?.message || 'Unable to load NPMO schedules.');
             } finally {
@@ -692,7 +622,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         void loadNpmos();
         return () => { cancelled = true; };
-    }, [activities, npmoScopeKey, scheduleMode, selectedFundType, selectedTier, selectedYear]);
+    }, [activities, npmoScopeKey, scheduleMode, fundSources, scopeFilters.loading, scopeFilters.error]);
 
     const galleryActivityIds = useMemo(
         () => filteredData.activities.map(activity => activity.id).filter(Number.isFinite),
@@ -703,19 +633,16 @@ const Dashboard: React.FC<DashboardProps> = ({
         [filteredData.subprojects]
     );
     const galleryIpos = useMemo(() => {
-        const targetRegion = selectedOu === 'All'
-            ? null
-            : ouToRegionMap[selectedOu];
         const lockedRegion = isLockedToOwnOu && currentUser?.operatingUnit
             ? ouToRegionMap[currentUser.operatingUnit]
             : null;
 
         return ipos.filter(ipo => {
             if (ipo.workflow_status && ipo.workflow_status !== 'APPROVED') return false;
-            const region = lockedRegion || targetRegion;
-            return !region || ipo.region === region;
+            if (lockedRegion) return ipo.region === lockedRegion;
+            return !selectedOus || selectedOus.some(ou => ouToRegionMap[ou] === ipo.region);
         });
-    }, [currentUser?.operatingUnit, ipos, isLockedToOwnOu, selectedOu]);
+    }, [currentUser?.operatingUnit, ipos, isLockedToOwnOu, scopeFilters.key]);
     const galleryIpoIds = useMemo(
         () => galleryIpos.map(ipo => ipo.id).filter(Number.isFinite),
         [galleryIpos]
@@ -724,7 +651,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     useEffect(() => {
         let cancelled = false;
-        if (!currentUser?.id || (galleryActivityIds.length === 0 && gallerySubprojectIds.length === 0 && galleryIpoIds.length === 0) || !supabase) {
+        if (scopeFilters.loading || scopeFilters.error || !currentUser?.id || (galleryActivityIds.length === 0 && gallerySubprojectIds.length === 0 && galleryIpoIds.length === 0) || !supabase) {
             setGalleryFeedItems([]);
             setGalleryFeedError(null);
             setIsGalleryFeedLoading(false);
@@ -752,7 +679,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             });
 
         return () => { cancelled = true; };
-    }, [currentUser, galleryActivityIds, galleryFeedKey, galleryIpoIds, gallerySubprojectIds]);
+    }, [currentUser, galleryActivityIds, galleryFeedKey, galleryIpoIds, gallerySubprojectIds, scopeFilters.loading, scopeFilters.error]);
 
     const displayedGalleryFeedItems = useMemo(() => {
         const byId = new Map(filteredData.activities.map(activity => [activity.id, activity]));
@@ -938,7 +865,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     const totalBudgetValue = getBudgetValue(dashboardStats.financials.total, totalBudgetView);
     const subprojectsBudgetValue = getBudgetValue(dashboardStats.financials.subprojects, spBudgetView);
     const trainingsBudgetValue = getBudgetValue(dashboardStats.financials.trainings, trBudgetView);
-    const selectedYearLabel = selectedYear === 'All' ? 'All fund years' : `FY ${selectedYear}`;
+    const selectedYearLabel = scope.years.mode === 'all' ? 'All fund years' : `FY ${selectionLabel(scope.years, 'All fund years')}`;
 
     const openGalleryFeedItem = (item: HomepageGalleryFeedItem) => {
         if (item.entityType === 'activity') {
@@ -1051,73 +978,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                 metadata="Program performance, schedules, mapped activities, and delivery progress."
             />
 
-            <FilterToolbar
-                className="dashboard-filter-bar"
-                actions={(
-                    <>
-                        <button type="button" className="btn btn-secondary btn-compact" onClick={resetFilters} disabled={filtersAreAtDefaults}>
-                            Reset
-                        </button>
-                        <button type="button" className="btn btn-primary btn-compact" onClick={applyFilters} disabled={!hasPendingFilterChanges}>
-                            Apply
-                        </button>
-                    </>
-                )}
-            >
-                     <div className="dashboard-filter">
-                        <label htmlFor="ou-filter">Operating Unit</label>
-                        <select 
-                            id="ou-filter"
-                            value={draftOu}
-                            onChange={(e) => setDraftOu(e.target.value)}
-                            disabled={isLockedToOwnOu}
-                        >
-                            <option value="All">All Operating Units</option>
-                            {operatingUnits.map(ou => (
-                                <option key={ou} value={ou}>{ou}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="dashboard-filter">
-                        <label htmlFor="fund-type-filter">Fund Type</label>
-                        <select 
-                            id="fund-type-filter"
-                            value={draftFundType}
-                            onChange={(e) => setDraftFundType(e.target.value)}
-                        >
-                            <option value="All">All Fund Types</option>
-                            {fundTypes.map(f => (
-                                <option key={f} value={f}>{f}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="dashboard-filter">
-                        <label htmlFor="tier-filter">Tier</label>
-                        <select
-                            id="tier-filter"
-                            value={draftTier}
-                            onChange={(e) => setDraftTier(e.target.value)}
-                        >
-                            <option value="All">All Tiers</option>
-                            {tiers.map(tier => (
-                                <option key={tier} value={tier}>{tier}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="dashboard-filter">
-                        <label htmlFor="year-filter">Fund Year</label>
-                        <select 
-                            id="year-filter"
-                            value={draftYear}
-                            onChange={(e) => setDraftYear(e.target.value)}
-                        >
-                            <option value="All">All Fund Years</option>
-                            {availableYears.map(year => (
-                                <option key={year} value={year}>{year}</option>
-                            ))}
-                        </select>
-                    </div>
-            </FilterToolbar>
+            <DashboardScopeFilterPanel filters={scopeFilters} />
+            {scopeFilters.loading && <LoadingState title="Loading homepage" />}
+            {scopeFilters.error && <div className="notice notice--warning" role="alert"><p>{scopeFilters.error}</p><button className="btn btn-secondary" type="button" onClick={scopeFilters.retry}>Retry</button></div>}
+            {!scopeFilters.loading && !scopeFilters.error && <>
 
             <div className="dashboard-metric-grid">
                 <StatCard 
@@ -1419,6 +1283,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     onOpenItem={openGalleryFeedItem}
                 />
             </ContentCard>
+            </>}
         </div>
     );
 };

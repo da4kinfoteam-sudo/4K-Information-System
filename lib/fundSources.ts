@@ -3,6 +3,8 @@ import type { RefFundSource } from '../constants';
 export const DEFAULT_FUND_SOURCE_UID = 'FS-000001';
 export const UNSPECIFIED_FUND_SOURCE_FILTER = '__unspecified_fund_source__';
 const LEGACY_FUND_SOURCE_FILTER_PREFIX = '__legacy_fund_source__:';
+export const getFundSourceFilterFallbackLabel = (value: string) => value.startsWith(LEGACY_FUND_SOURCE_FILTER_PREFIX)
+    ? value.slice(LEGACY_FUND_SOURCE_FILTER_PREFIX.length) : value;
 
 export interface FundSourceRecord {
     fundSourceUid?: string | null;

@@ -26,6 +26,7 @@ export interface FinancialPowerPointInput {
     selectedOu: string;
     selectedTier: string;
     selectedFundType: string;
+    selectedFundSource?: string;
     totals: {
         allocation: number;
         obligation: number;
@@ -148,7 +149,7 @@ export const generateFinancialPowerPoint = async (input: FinancialPowerPointInpu
     const slideH = 7.5;
     const scopeLabel = input.selectedOu === 'All' ? 'All OUs' : input.selectedOu;
     const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    const scopeSubtitle = `${scopeLabel} | Fund Year ${input.selectedYear} | ${input.selectedTier} | ${input.selectedFundType}`;
+    const scopeSubtitle = `${scopeLabel} | Fund Year ${input.selectedYear} | ${input.selectedTier} | ${input.selectedFundType}${input.selectedFundSource ? ` | ${input.selectedFundSource}` : ''}`;
     const totals = input.totals;
     const obligationRate = rate(totals.obligation, totals.allocation);
     const disbursementEfficiency = rate(totals.disbursement, totals.obligation);

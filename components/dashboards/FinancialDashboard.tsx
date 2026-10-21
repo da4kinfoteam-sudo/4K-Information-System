@@ -22,6 +22,7 @@ import {
     flattenFinancialHierarchy,
 } from '../../lib/financialBreakdownHierarchy';
 import { generateFinancialPowerPoint } from '../../lib/financialPowerPoint';
+import type { DashboardScopeLabels } from '../../lib/dashboardScope';
 
 declare const PptxGenJS: any;
 
@@ -36,6 +37,7 @@ interface FinancialDashboardProps {
         otherProgramExpenses: OtherProgramExpense[];
     };
     selectedYearProp?: string;
+    scopeLabels?: DashboardScopeLabels;
     selectedOuProp?: string;
     selectedTierProp?: string;
     selectedFundTypeProp?: string;
@@ -151,7 +153,7 @@ const Donut = ({ title, total, data }: {
 };
 
 const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
-    data, selectedYearProp, selectedOuProp, selectedTierProp, selectedFundTypeProp,
+    data, selectedYearProp, selectedOuProp, selectedTierProp, selectedFundTypeProp, scopeLabels,
 }) => {
     const { currentUser } = useAuth();
     const canViewMatrix = currentUser?.role === 'Super Admin'
@@ -272,10 +274,11 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
         setPowerPointExportMessage(null);
         try {
             await generateFinancialPowerPoint({
-                selectedYear,
-                selectedOu,
-                selectedTier,
-                selectedFundType,
+                selectedYear: scopeLabels?.years || selectedYear,
+                selectedOu: scopeLabels?.operatingUnits || selectedOu,
+                selectedTier: scopeLabels?.tiers || selectedTier,
+                selectedFundType: scopeLabels?.fundTypes || selectedFundType,
+                selectedFundSource: scopeLabels?.fundSources,
                 totals,
                 componentRows,
                 monthlyRows: monthly,

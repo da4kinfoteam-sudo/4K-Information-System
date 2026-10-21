@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { filterYears, fundTypes, operatingUnits, tiers } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
-import useLocalStorageState from '../../hooks/useLocalStorageState';
 import type { DataScope } from '../../lib/scopedDataFetch';
 
 export interface DcfScopeFilterValue {
@@ -19,16 +18,35 @@ interface UseDcfScopeFiltersOptions {
 }
 
 const sameScope = (left: DcfScopeFilterValue, right: DcfScopeFilterValue) =>
-    left.selectedYear === right.selectedYear
-    && left.selectedOu === right.selectedOu
-    && left.selectedTier === right.selectedTier
-    && left.selectedFundType === right.selectedFundType;
+    left?.selectedYear === right.selectedYear
+    && left?.selectedOu === right.selectedOu
+    && left?.selectedTier === right.selectedTier
+    && left?.selectedFundType === right.selectedFundType;
+
+function useDcfPreference(key: string, initial: DcfScopeFilterValue) {
+    const read = useCallback((): DcfScopeFilterValue => {
+        try {
+            const value = JSON.parse(localStorage.getItem(key) || 'null');
+            return value && typeof value === 'object' ? value : initial;
+        } catch { return initial; }
+    }, [key, initial]);
+    const [saved, setSaved] = useState(() => ({ key, value: read() }));
+    const value = useMemo(() => saved.key === key ? saved.value : read(), [saved, key, read]);
+    const setValue = useCallback((update: React.SetStateAction<DcfScopeFilterValue>) => setSaved(previous => ({
+        key, value: typeof update === 'function' ? update(previous.key === key ? previous.value : read()) : update,
+    })), [key, read]);
+    useEffect(() => {
+        if (saved.key !== key) setSaved({ key, value });
+        try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Storage is optional. */ }
+    }, [key, value]);
+    return [value, setValue] as const;
+}
 
 export const useDcfScopeFilters = ({ storageKey, moduleName, onDataScopeChange, initialApplied }: UseDcfScopeFiltersOptions) => {
     const { currentUser, getVisibilityScope } = useAuth();
     const defaultYear = new Date().getFullYear().toString();
     const canViewAll = getVisibilityScope(moduleName) === 'All';
-    const defaultOu = canViewAll ? 'All' : (currentUser?.operatingUnit || 'All');
+    const defaultOu = canViewAll ? 'All' : (operatingUnits.includes(currentUser?.operatingUnit || '') ? currentUser!.operatingUnit : '');
     const defaults = useMemo<DcfScopeFilterValue>(() => ({
         selectedYear: defaultYear,
         selectedOu: defaultOu,
@@ -41,7 +59,7 @@ export const useDcfScopeFilters = ({ storageKey, moduleName, onDataScopeChange, 
         ...initialApplied,
         selectedOu: canViewAll ? (initialApplied?.selectedOu || defaults.selectedOu) : defaultOu
     }), [canViewAll, defaultOu, defaults, initialApplied]);
-    const [storedApplied, setStoredApplied] = useLocalStorageState<DcfScopeFilterValue>(userStorageKey, initialValue);
+    const [storedApplied, setStoredApplied] = useDcfPreference(userStorageKey, initialValue);
     const applied = useMemo<DcfScopeFilterValue>(() => ({
         selectedYear: storedApplied?.selectedYear || defaults.selectedYear,
         selectedOu: canViewAll ? (storedApplied?.selectedOu || 'All') : defaultOu,
@@ -49,6 +67,9 @@ export const useDcfScopeFilters = ({ storageKey, moduleName, onDataScopeChange, 
         selectedFundType: storedApplied?.selectedFundType || defaults.selectedFundType
     }), [canViewAll, defaultOu, defaults, storedApplied]);
     const [draft, setDraft] = useState<DcfScopeFilterValue>(applied);
+    const [scopeLoad, setScopeLoad] = useState<{ key: string; loading: boolean; error: string } | null>(null);
+    const [retryCount, setRetryCount] = useState(0);
+    const scopeKey = JSON.stringify([userStorageKey, applied, canViewAll]);
 
     useEffect(() => {
         setDraft(applied);
@@ -56,15 +77,30 @@ export const useDcfScopeFilters = ({ storageKey, moduleName, onDataScopeChange, 
     }, [applied, setStoredApplied, storedApplied]);
 
     useEffect(() => {
-        onDataScopeChange?.({
+        let active = true;
+        if (!onDataScopeChange) return;
+        setScopeLoad({ key: scopeKey, loading: true, error: '' });
+        const scope: Partial<DataScope> = {
             year: applied.selectedYear,
             operatingUnit: applied.selectedOu,
             tier: applied.selectedTier,
             fundType: applied.selectedFundType,
+            years: undefined, operatingUnits: undefined, tiers: undefined, fundTypes: undefined, fundSourceValues: undefined,
+            scopeOwner: storageKey,
             canViewAllOus: canViewAll,
             requestedBy: currentUser?.id ?? null
-        });
-    }, [applied, canViewAll, currentUser?.id, onDataScopeChange]);
+        };
+        void (async () => {
+            try {
+                const result: unknown = await onDataScopeChange(scope);
+                if (result && typeof result === 'object' && 'ok' in result && result.ok === false) throw new Error('error' in result && typeof result.error === 'string' ? result.error : 'Unable to load these records.');
+                if (active) setScopeLoad({ key: scopeKey, loading: false, error: '' });
+            } catch (error) {
+                if (active) setScopeLoad({ key: scopeKey, loading: false, error: error instanceof Error ? error.message : 'Unable to load these records.' });
+            }
+        })();
+        return () => { active = false; };
+    }, [scopeKey, onDataScopeChange, retryCount]);
 
     const updateDraft = useCallback((key: keyof DcfScopeFilterValue, value: string) => {
         setDraft(previous => ({ ...previous, [key]: value }));
@@ -115,7 +151,11 @@ export const useDcfScopeFilters = ({ storageKey, moduleName, onDataScopeChange, 
         hasPendingChanges: !sameScope(draft, applied),
         isDefault: sameScope(applied, defaults),
         value: applied,
-        defaults
+        defaults,
+        isDataReady: !onDataScopeChange || (scopeLoad?.key === scopeKey && !scopeLoad.loading && !scopeLoad.error),
+        scopeLoading: !!onDataScopeChange && (scopeLoad?.key !== scopeKey || scopeLoad.loading),
+        scopeError: scopeLoad?.key === scopeKey ? scopeLoad.error : '',
+        retryScope: () => setRetryCount(value => value + 1),
     };
 };
 
@@ -129,7 +169,7 @@ interface DcfScopeFilterPanelProps {
 /** @deprecated Scope filters are now permanently visible. */
 export const DcfScopeFilterToggle: React.FC<DcfScopeFilterPanelProps> = () => null;
 
-export const DcfScopeFilterPanel: React.FC<DcfScopeFilterPanelProps> = ({ idPrefix, filters, onBeforeApply, onBeforeReset }) => (
+export const DcfScopeFilterPanel: React.FC<DcfScopeFilterPanelProps> = ({ idPrefix, filters, onBeforeApply, onBeforeReset }) => (<>
     <section id={`${idPrefix}-filter-panel`} className="major-filter-bar" aria-label="Data scope filters">
         <div className="major-filter-bar__fields">
             <div className="major-filter-field">
@@ -178,7 +218,9 @@ export const DcfScopeFilterPanel: React.FC<DcfScopeFilterPanelProps> = ({ idPref
             }} disabled={!filters.hasPendingChanges}>Apply</button>
         </div>
     </section>
-);
+    {filters.scopeLoading && <p role="status">Loading records...</p>}
+    {filters.scopeError && <div className="notice notice--warning" role="alert"><p>{filters.scopeError}</p><button className="btn btn-secondary" type="button" onClick={filters.retryScope}>Retry</button></div>}
+</>);
 
 export const matchesDcfScope = (
     item: Record<string, any>,

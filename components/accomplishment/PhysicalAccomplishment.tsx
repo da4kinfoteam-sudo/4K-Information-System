@@ -1209,7 +1209,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         </label>
                     </div>
 
-                <div className="data-table-card financial-accomplishment-table-card physical-accomplishment-table-card">
+                <div className="data-table-card financial-accomplishment-table-card physical-accomplishment-table-card" style={!dcfFilters.isDataReady ? { display: 'none' } : undefined}>
 
                     <div id="physical-accomplishment-table-panel" className="data-table-scroll financial-accomplishment-table-scroll physical-accomplishment-table-scroll custom-scrollbar" role="tabpanel" aria-label={`${category} physical accomplishment records`}>
                     <table className="data-table physical-accomplishment-table">

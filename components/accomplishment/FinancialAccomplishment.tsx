@@ -1787,7 +1787,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  )}
  </label>
  </div>
- <div id="financial-accomplishment-table-panel" className="data-table-card financial-accomplishment-table-card" role="tabpanel">
+ <div id="financial-accomplishment-table-panel" className="data-table-card financial-accomplishment-table-card" role="tabpanel" style={!dcfFilters.isDataReady ? { display: 'none' } : undefined}>
  <div className="data-table-scroll financial-accomplishment-table-scroll custom-scrollbar">
  <table className="data-table financial-accomplishment-table ">
  <colgroup>

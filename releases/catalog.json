@@ -1,8 +1,31 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "gad-dashboard-white-screen",
+  "currentReleaseId": "homepage-dashboard-multiselect",
   "releases": [
+    {
+      "id": "homepage-dashboard-multiselect",
+      "version": "1.2.0",
+      "kind": "feature",
+      "title": "Homepage and dashboard multi-select filters",
+      "releaseDate": "2026-10-21",
+      "pr": null,
+      "sections": {
+        "Added": [
+          "Searchable multi-select filters for Operating Unit, Fund Type, Tier, Fund Year and Fund Source on the Homepage and dashboards.",
+          "An explicit annual view for GAD and Awards when multiple fund years are selected."
+        ],
+        "Improved": [
+          "Homepage and dashboard filters use consistent responsive layouts and retain each user's selections.",
+          "Historical records without a Fund Source remain available under All Fund Sources and Not specified."
+        ],
+        "Fixed": [
+          "DCF and ACF filters load their own authorized data instead of inheriting a Homepage or dashboard subset.",
+          "Scope changes and Fund Source edits keep filtered data and local caches consistent."
+        ],
+        "Affected Pages": ["Homepage", "Dashboards", "Data Collection Forms", "Accomplishment Forms"]
+      }
+    },
     {
       "id": "gad-dashboard-white-screen",
       "version": "1.1.1",

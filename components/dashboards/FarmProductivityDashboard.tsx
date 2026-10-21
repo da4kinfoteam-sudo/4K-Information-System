@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { IPO, MarketingPartner, ouToRegionMap, Subproject, type MarketLinkageUnit } from '../../constants';
 import { collectFinancialLineItems, FinancialAggregationFilters } from '../../lib/financialAggregation';
+import type { DashboardScopeLabels } from '../../lib/dashboardScope';
 import { isTransferAccomplishmentActive } from '../../lib/budgetItemTransferRules';
 import { isParentExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 import { calculateMarketLinkageSales, createEmptyMarketQuantityTotals, formatMarketQuantityTotals } from '../../lib/marketSalesAggregation';
@@ -25,6 +26,8 @@ interface Props {
     ipos: IPO[];
     marketingPartners: MarketingPartner[];
     selectedYear: string;
+    selectedYears?: string[];
+    scopeLabels?: DashboardScopeLabels;
     selectedOu: string;
     selectedTier: string;
     selectedFundType: string;
@@ -150,8 +153,8 @@ const getMonthIndex = (dateString?: string) => {
     return Number.isNaN(date.getTime()) ? -1 : date.getMonth();
 };
 
-const matchesYear = (dateString: string | undefined, selectedYear: string) => (
-    selectedYear === 'All' || getDateYear(dateString) === selectedYear
+const matchesYear = (dateString: string | undefined, selectedYear: string, selectedYears?: string[]) => (
+    selectedYears ? selectedYears.includes(getDateYear(dateString)) : selectedYear === 'All' || getDateYear(dateString) === selectedYear
 );
 
 const getCommodityKey = (type: string, name: string) => `${normalizeKey(type || 'Unspecified')}::${normalizeKey(name || 'Unspecified')}`;
@@ -344,6 +347,8 @@ const FarmProductivityDashboard: React.FC<Props> = ({
     ipos,
     marketingPartners,
     selectedYear,
+    selectedYears,
+    scopeLabels,
     selectedOu,
     selectedTier,
     selectedFundType,
@@ -488,7 +493,7 @@ const FarmProductivityDashboard: React.FC<Props> = ({
         (marketingPartners || []).forEach(partner => {
             (partner.marketingLinkages || []).forEach((link, index) => {
                 if (!allowedStatuses.has(link.negotiationStatus)) return;
-                if (!matchesYear(link.agreementDate, selectedYear)) return;
+                if (!matchesYear(link.agreementDate, selectedYear, selectedYears)) return;
 
                 const sales = calculateMarketLinkageSales(link);
                 if (sales.salesValue <= 0 && sales.quantity <= 0) return;
@@ -748,7 +753,7 @@ const FarmProductivityDashboard: React.FC<Props> = ({
                 averageSaleValue: marketingRows.length > 0 ? marketingIncome / marketingRows.length : 0,
             },
         };
-    }, [ipos, marketingPartners, selectedFundType, selectedOu, selectedTier, selectedYear, subprojects]);
+    }, [ipos, marketingPartners, selectedFundType, selectedOu, selectedTier, selectedYear, JSON.stringify(selectedYears), subprojects]);
 
     const hasAnyData = analytics.commodityRows.length > 0 || analytics.marketingRows.length > 0;
     const maxMarketSales = Math.max(1, ...analytics.topMarkets.map(item => item.sales));
@@ -840,7 +845,7 @@ const FarmProductivityDashboard: React.FC<Props> = ({
             Sales: row.salesValue,
             'Agreement Date': row.agreementDate || '',
         }))), 'Marketing Sales');
-        XLSX.writeFile(wb, `Farm_Productivity_Income_${selectedYear}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        XLSX.writeFile(wb, `Farm_Productivity_Income_${(scopeLabels?.years || selectedYear).replace(/[^a-z0-9-]+/gi, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`);
     };
 
     return (

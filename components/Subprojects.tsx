@@ -640,11 +640,11 @@ const Subprojects: React.FC<SubprojectsProps> = ({
 
             <div className="data-list-header">
                 <h2 className="data-list-title">Subprojects Management</h2>
-                {canEdit && <button onClick={onCreateSubproject} className="btn btn-primary"><Plus aria-hidden="true" /> Add New Subproject</button>}
+                {canEdit && <button onClick={onCreateSubproject} disabled={!dcfFilters.isDataReady} className="btn btn-primary"><Plus aria-hidden="true" /> Add New Subproject</button>}
             </div>
             <DcfScopeFilterPanel idPrefix="subprojects-dcf" filters={dcfFilters} />
 
-            <div className="data-table-card major-table-card">
+            <div className="data-table-card major-table-card" style={!dcfFilters.isDataReady ? { display: 'none' } : undefined}>
                 <MajorTableToolbar
                     searchTerm={searchTerm}
                     onSearchChange={(value) => { setSearchTerm(value); setSavedSearchTerm(value); }}
