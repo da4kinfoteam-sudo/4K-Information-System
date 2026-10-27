@@ -12,6 +12,7 @@ import { parseOfficeRequirementRow } from '../program_management/OfficeRequireme
 import { parseStaffingRequirementRow } from '../program_management/StaffingRequirementsTab';
 import { parseOtherExpenseRow } from '../program_management/OtherExpensesTab';
 import { normalizeImportedCommodity } from '../../lib/commodityProfile';
+import { parseImportedIpoIndicators } from '../../lib/ipoProfileIndicators';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets, isParentExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 import { DEFAULT_FUND_SOURCE_UID, getFundSourceByUid, getFundSourceLabel, getNewSubprojectDefaultFundSource, normalizeFundSourceLabel, resolveFundSourceUidFromLegacyLabel } from '../../lib/fundSources';
 
@@ -786,6 +787,10 @@ export const downloadIposReport = (ipos: IPO[]) => {
         'GIDA': ipo.isWithinGida ? 'Yes' : 'No',
         'ELCAC': ipo.isWithinElcac ? 'Yes' : 'No',
         'With SCAD': ipo.isWithScad ? 'Yes' : 'No',
+        'F2C2 Cluster': ipo.isF2c2Cluster == null ? '' : ipo.isF2c2Cluster ? 'Yes' : 'No',
+        'FFEDIS Registered': ipo.isFfedisRegistered == null ? '' : ipo.isFfedisRegistered ? 'Yes' : 'No',
+        'FFEDIS Registration Number': ipo.ffedisRegistrationNumber || '',
+        'FFEDIS Registration Date': ipo.ffedisRegistrationDate || '',
         'Contact Person': ipo.contactPerson,
         'Contact Number': ipo.contactNumber,
         'Registration Date': ipo.registrationDate,
@@ -803,6 +808,7 @@ export const downloadIposTemplate = () => {
     const headers = [
         'name', 'region', 'province', 'municipality', 'barangay', 'indigenousCulturalCommunity', 
         'ancestralDomainNo', 'registeringBody', 'isWomenLed', 'isWithinGida', 'isWithinElcac', 'isWithScad',
+        'isF2c2Cluster', 'isFfedisRegistered', 'ffedisRegistrationNumber', 'ffedisRegistrationDate',
         'contactPerson', 'contactNumber', 'registrationDate', 'commodities', 
         'levelOfDevelopment'
     ];
@@ -820,6 +826,10 @@ export const downloadIposTemplate = () => {
         isWithinGida: 'FALSE',
         isWithinElcac: 'TRUE',
         isWithScad: 'TRUE',
+        isF2c2Cluster: 'FALSE',
+        isFfedisRegistered: 'FALSE',
+        ffedisRegistrationNumber: '',
+        ffedisRegistrationDate: '',
         contactPerson: 'Juan Dela Cruz',
         contactNumber: '09171234567',
         registrationDate: '2023-01-15',
@@ -841,6 +851,10 @@ export const downloadIposTemplate = () => {
         ["isWithinGida", "Enter TRUE or FALSE."],
         ["isWithinElcac", "Enter TRUE or FALSE."],
         ["isWithScad", "Enter TRUE or FALSE. Note: This will be auto-recalculated based on commodities upon upload to ensure consistency."],
+        ["isF2c2Cluster", "Enter TRUE or FALSE; blank means not recorded."],
+        ["isFfedisRegistered", "Enter TRUE or FALSE; blank means not recorded. TRUE requires FFEDIS number and date."],
+        ["ffedisRegistrationNumber", "Store as Text to preserve leading zeros and punctuation. Required when FFEDIS Registered is TRUE."],
+        ["ffedisRegistrationDate", "FFEDIS date in YYYY-MM-DD format or an Excel date cell. Required when FFEDIS Registered is TRUE; independent of IPO registrationDate."],
         ["contactPerson", "Name of the contact person."],
         ["contactNumber", "Contact phone number."],
         ["registrationDate", "Date in YYYY-MM-DD format."],
@@ -850,6 +864,8 @@ export const downloadIposTemplate = () => {
 
     const wb = XLSX.utils.book_new();
     const ws_data = XLSX.utils.json_to_sheet(exampleData, { header: headers });
+    const numberAddress = XLSX.utils.encode_cell({ r: 1, c: headers.indexOf('ffedisRegistrationNumber') });
+    ws_data[numberAddress] = { t: 's', v: '', z: '@' };
     const ws_instructions = XLSX.utils.aoa_to_sheet(instructions);
     
     XLSX.utils.book_append_sheet(wb, ws_data, "IPO Data");
@@ -865,26 +881,48 @@ export const handleIposUpload = (
     logAction: (action: string, details: string) => void,
     setIsUploading: (val: boolean) => void,
     gidaAreas: any[],
-    elcacAreas: any[]
+    elcacAreas: any[],
+    onIposSaved: (records: IPO[]) => void
 ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsUploading(true);
     const reader = new FileReader();
+    const finishUpload = () => {
+        setIsUploading(false);
+        if (e.target) e.target.value = '';
+    };
+    reader.onerror = () => { alert('Failed to read the IPO file. Select the file again to retry.'); finishUpload(); };
+    reader.onabort = finishUpload;
     reader.onload = async (event) => {
         try {
             const data = event.target?.result;
-            const workbook = XLSX.read(data, { type: 'array' });
+            const workbook = XLSX.read(data, { type: 'array', cellNF: true });
             const sheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
             const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+            const headers = (XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0] || []) as string[];
+            const ffedisNumberColumn = headers.indexOf('ffedisRegistrationNumber');
 
             let currentMaxId = ipos.reduce((max, ipo) => Math.max(max, ipo.id), 0);
             
             const newIpos: Omit<IPO, 'id'>[] = jsonData.map((row: any, index: number) => {
                 if (!row.name || !row.region || !row.province || !row.municipality) {
                     throw new Error(`Row ${index + 2} is missing required fields (name, region, province, municipality).`);
+                }
+                let indicators;
+                try {
+                    const numberCell = ffedisNumberColumn < 0 ? null : worksheet[XLSX.utils.encode_cell({ r: row.__rowNum__ ?? index + 1, c: ffedisNumberColumn })];
+                    indicators = parseImportedIpoIndicators({ ...row,
+                        ...(numberCell?.t === 'n' && numberCell.z ? { ffedisRegistrationNumber: XLSX.utils.format_cell(numberCell) } : {}),
+                    }, serial => {
+                        const date = XLSX.SSF.parse_date_code(serial, { date1904: workbook.Workbook?.WBProps?.date1904 === true });
+                        if (!date) throw new Error('Invalid FFEDIS Excel date.');
+                        return `${String(date.y).padStart(4, '0')}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`;
+                    });
+                } catch (error) {
+                    throw new Error(`Row ${index + 2}: ${error instanceof Error ? error.message : 'Invalid IPO indicators.'}`);
                 }
 
                 let commodities: Commodity[];
@@ -941,6 +979,7 @@ export const handleIposUpload = (
                 const isWithinElcac = String(row.isWithinElcac).toUpperCase() === 'TRUE' || matchedElcac;
 
                 return {
+                    ...indicators,
                     name: String(row.name),
                     location: locationString,
                     region: region,
@@ -968,21 +1007,18 @@ export const handleIposUpload = (
                 };
             });
 
-            logAction('Imported IPOs', `Imported ${newIpos.length} IPOs from Excel`);
-            
             if (supabase) {
                 // Insert to DB directly to generate correct IDs and avoid conflict
                 const { data, error } = await supabase.from('ipos').insert(newIpos).select();
-                if (error) {
-                    console.error("Error inserting IPOs:", error);
-                    alert(`Error inserting data: ${error.message}`);
-                } else if (data) {
-                    setIpos(prev => [...prev, ...(data as IPO[])]);
-                    alert(`${data.length} IPO(s) imported successfully!`);
-                }
+                if (error) throw error;
+                if (!data || data.length !== newIpos.length) throw new Error('The complete saved IPO response was not returned. Refresh before retrying.');
+                onIposSaved(data as IPO[]);
+                logAction('Imported IPOs', `Imported ${data.length} IPOs from Excel`);
+                alert(`${data.length} IPO(s) imported successfully!`);
             } else {
                 const localIpos = newIpos.map((ipo, idx) => ({ id: currentMaxId + idx + 1, ...ipo }));
-                setIpos(prev => [...prev, ...localIpos]);
+                onIposSaved(localIpos);
+                logAction('Imported IPOs', `Imported ${localIpos.length} IPOs from Excel`);
                 alert(`${newIpos.length} IPO(s) imported locally!`);
             }
 
@@ -990,9 +1026,9 @@ export const handleIposUpload = (
             console.error("Error processing XLSX file:", error);
             alert(`Failed to import file. ${error.message}`);
         } finally {
-            setIsUploading(false);
-            if(e.target) e.target.value = '';
+            finishUpload();
         }
     };
-    reader.readAsArrayBuffer(file);
+    try { reader.readAsArrayBuffer(file); }
+    catch { alert('Failed to read the IPO file. Select the file again to retry.'); finishUpload(); }
 };

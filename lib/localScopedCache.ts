@@ -1,6 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { DataScope, getDataScopeKey, ScopedAppData } from './scopedDataFetch';
-import type { Activity, Subproject } from '../constants';
+import type { Activity, IPO, Subproject } from '../constants';
 import type { SubprojectConfirmedFinancial } from './subprojectAccomplishmentPersistence';
 import { reconcileSubprojectFinancialRows } from './subprojectAccomplishmentPersistence';
 
@@ -208,6 +208,30 @@ export const writeScopedCache = async (scope: DataScope, data: ScopedAppData): P
   tx.objectStore('scope_meta').put(meta);
   await tx.done;
   return meta;
+};
+
+export const updateCachedIpos = async (userId: string | number, ipos: IPO[]): Promise<void> => {
+  if (!ipos.length) return;
+  const db = await getDb();
+  if (!db) return;
+  const tx = db.transaction(['scope_meta', 'records'], 'readwrite');
+  const rows = (await tx.objectStore('records').index('tableName').getAll('ipos')).filter(row => row.userId === String(userId));
+  const confirmed = new Map(ipos.map(ipo => [Number(ipo.id), ipo]));
+  const cachedIds = new Set(rows.map(row => Number(row.value.id)));
+  let invalidate = ipos.some(ipo => !cachedIds.has(Number(ipo.id)));
+  for (const row of rows) {
+    const ipo = confirmed.get(Number(row.value.id));
+    if (!ipo) continue;
+    if (row.value.region !== ipo.region || row.value.workflow_status !== ipo.workflow_status) invalidate = true;
+    else await tx.objectStore('records').put({ ...row, value: ipo });
+  }
+  // New or moved IPOs can change membership of cached geographic cohorts.
+  if (invalidate) {
+    for (const key of await tx.objectStore('scope_meta').index('userId').getAllKeys(String(userId))) {
+      await tx.objectStore('scope_meta').delete(key);
+    }
+  }
+  await tx.done;
 };
 
 export const updateCachedActivity = async (userId: string | number, activity: Activity): Promise<void> => {

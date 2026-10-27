@@ -1,6 +1,6 @@
 
 // Author: 4K 
-import React, { useState, FormEvent, useEffect, useMemo } from 'react';
+import React, { useState, FormEvent, useEffect, useMemo, useRef } from 'react';
 import { Check, ChevronDown, Download, FileSpreadsheet, Plus, SlidersHorizontal, Upload, X } from 'lucide-react';
 import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes, LodAssessment, GidaArea, ElcacArea, normalizeRegionName } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
@@ -18,6 +18,7 @@ import { subscribeToLodDataChanges } from '../lib/lodDataSync';
 import { commodityCapacityToFormValue, getCommodityCapacityValues } from '../lib/commodityProfile';
 import { getActiveSubprojectBudget } from '../lib/subprojectItemAdjustments';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets, isParentExcludedFromTargets } from '../lib/budgetLineAdjustments';
+import { normalizeIpoIndicators } from '../lib/ipoProfileIndicators';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -25,6 +26,7 @@ declare const XLSX: any;
 interface IPOsProps {
     ipos: IPO[];
     setIpos: React.Dispatch<React.SetStateAction<IPO[]>>;
+    onIposSaved: (records: IPO[]) => void;
     subprojects: Subproject[];
     activities: Activity[];
     onSelectIpo: (ipo: IPO) => void;
@@ -57,6 +59,10 @@ const defaultFormData = {
     isWithinGida: false,
     isWithinElcac: false,
     isWithScad: false,
+    isF2c2Cluster: false,
+    isFfedisRegistered: false,
+    ffedisRegistrationNumber: '',
+    ffedisRegistrationDate: '',
     commodities: [] as Commodity[],
     levelOfDevelopment: 1 as IPO['levelOfDevelopment'],
     totalMembers: 0,
@@ -69,8 +75,18 @@ const defaultFormData = {
 };
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
+const flagDefaults = {
+    womenLed: false,
+    withinGida: false,
+    withinElcac: false,
+    withScad: false,
+    withSubprojects: false,
+    withTrainings: false,
+    f2c2Cluster: false,
+    ffedisRegistered: false,
+};
 
-const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories, externalFilters, onClearExternalFilters, gidaAreas, elcacAreas }) => {
+const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories, externalFilters, onClearExternalFilters, gidaAreas, elcacAreas }) => {
     const { currentUser } = useAuth();
     const tableStoragePrefix = `ipos_${currentUser?.id || 'anonymous'}`;
     const { canEdit } = useUserAccess('IPO Management');
@@ -116,6 +132,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     const [ipoToDelete, setIpoToDelete] = useState<IPO | null>(null);
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const uploadBusy = useRef(false);
+    const saveBusy = useRef(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     // Multi-Delete State
     const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -125,14 +144,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     // Persistent Filters using useLocalStorageState
     const [searchTerm, setSearchTerm] = useLocalStorageState(`${tableStoragePrefix}_searchTerm`, '');
     const [regionFilter, setRegionFilter] = useLocalStorageState(`${tableStoragePrefix}_regionFilter`, 'All');
-    const [flagFilter, setFlagFilter] = useLocalStorageState(`${tableStoragePrefix}_flagFilter`, {
-        womenLed: false, 
-        withinGida: false, 
-        withinElcac: false, 
-        withScad: false,
-        withSubprojects: false,
-        withTrainings: false
-    });
+    const [storedFlagFilter, setFlagFilter] = useLocalStorageState(`${tableStoragePrefix}_flagFilter`, flagDefaults);
+    const flagFilter = useMemo(() => ({ ...flagDefaults, ...storedFlagFilter }), [storedFlagFilter]);
     const [areFlagFiltersOpen, setAreFlagFiltersOpen] = useState(false);
     const [isColumnFilterOpen, setIsColumnFilterOpen] = useState(false);
     const [ipoColumnFilters, setIpoColumnFilters] = useLocalStorageState<Record<string, string[]>>(`${tableStoragePrefix}_columnFilters`, {});
@@ -259,6 +272,10 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 isWithinGida: editingIpo.isWithinGida,
                 isWithinElcac: editingIpo.isWithinElcac,
                 isWithScad: editingIpo.isWithScad,
+                isF2c2Cluster: editingIpo.isF2c2Cluster === true,
+                isFfedisRegistered: editingIpo.isFfedisRegistered === true,
+                ffedisRegistrationNumber: editingIpo.ffedisRegistrationNumber || '',
+                ffedisRegistrationDate: editingIpo.ffedisRegistrationDate || '',
                 commodities: editingIpo.commodities || [],
                 levelOfDevelopment: editingIpo.levelOfDevelopment || 1,
                 totalMembers: editingIpo.totalMembers || 0,
@@ -303,6 +320,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         if (flagFilter.withScad) {
             filteredIpos = filteredIpos.filter(ipo => ipo.isWithScad);
         }
+        if (flagFilter.f2c2Cluster) filteredIpos = filteredIpos.filter(ipo => ipo.isF2c2Cluster === true);
+        if (flagFilter.ffedisRegistered) filteredIpos = filteredIpos.filter(ipo => ipo.isFfedisRegistered === true);
 
         // New Filters
         if (flagFilter.withSubprojects) {
@@ -671,6 +690,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
+        if (saveBusy.current || !canEdit) return;
         const finalRegisteringBody = formData.registeringBody === 'Others' ? otherRegisteringBody : formData.registeringBody;
         
         if (!formData.name || !formData.location) {
@@ -678,18 +698,23 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             return;
         }
         
-        const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
-        const submissionData = { 
-            ...formData, 
-            registeringBody: finalRegisteringBody,
-            registrationDate: formData.registrationDate || null,
-            workflow_status,
-            updated_at: new Date().toISOString()
-        };
+        let indicators;
+        try { indicators = normalizeIpoIndicators(formData); }
+        catch (error) { alert(error instanceof Error ? error.message : 'Invalid IPO indicators.'); return; }
+        saveBusy.current = true;
+        setIsSaving(true);
+        try {
+            const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
+            const submissionData = {
+                ...formData,
+                ...indicators,
+                registeringBody: finalRegisteringBody,
+                registrationDate: formData.registrationDate || null,
+                workflow_status,
+                updated_at: new Date().toISOString()
+            };
 
-        if (supabase) {
-            try {
-                // Remove generated fields if creating new
+            if (supabase) {
                 const { data, error } = await supabase
                     .from('ipos')
                     .insert([{ ...submissionData, created_at: new Date().toISOString() }])
@@ -698,27 +723,25 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 
                 if (error) throw error;
                 
-                if (data) {
-                    // Log Create
-                    logAction('Created IPO', formData.name, undefined, 'IPO', String(data.id));
-                }
-                
-                refreshData();
-            } catch (error: any) {
-                console.error("Error saving IPO:", error);
-                alert("Failed to save IPO. " + error.message);
-                return;
+                if (!data) throw new Error('The saved IPO was not returned. Refresh before retrying.');
+                onIposSaved([data as IPO]);
+                logAction('Created IPO', formData.name, undefined, 'IPO', String(data.id));
+            } else {
+                const newIpo: IPO = {
+                    id: ipos.length > 0 ? Math.max(...ipos.map(ipo => ipo.id)) + 1 : 1,
+                    ...submissionData,
+                    created_at: new Date().toISOString()
+                };
+                onIposSaved([newIpo]);
             }
-        } else {
-            // Offline fallback
-            const newIpo: IPO = {
-                id: ipos.length > 0 ? Math.max(...ipos.map(ipo => ipo.id)) + 1 : 1,
-                ...submissionData,
-                created_at: new Date().toISOString()
-            };
-            setIpos(prev => [newIpo, ...prev]);
+            handleCancelEdit();
+        } catch (error: any) {
+            console.error('Error saving IPO:', error);
+            alert('Failed to save IPO. ' + error.message);
+        } finally {
+            saveBusy.current = false;
+            setIsSaving(false);
         }
-        handleCancelEdit();
     };
 
     // Renamed to clarify: Only used for NEW IPOs now
@@ -868,7 +891,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
     const ipoFilterFields = [
         { key: 'region', label: 'Location', values: Array.from(new Set(ipos.map(ipo => ipo.region).filter(Boolean))).sort() },
-        { key: 'flags', label: 'Flags', values: ['Women-Led', 'GIDA', 'ELCAC', 'SCAD', 'With Subprojects', 'With Trainings'] },
+        { key: 'flags', label: 'Flags', values: ['Women-Led', 'GIDA', 'ELCAC', 'SCAD', 'F2C2 Cluster', 'FFEDIS Registered', 'With Subprojects', 'With Trainings'] },
         { key: 'commodities', label: 'Commodities', values: Array.from(new Set(ipos.flatMap(ipo => (ipo.commodities || []).map(commodity => commodity.particular)).filter(Boolean))).sort() },
         { key: 'levelOfDevelopment', label: 'Level of Development', values: ['1', '2', '3', '4', '5', 'Dropped', 'Incomplete', 'For Assessment'] }
     ];
@@ -877,6 +900,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         flagFilter.withinGida && 'GIDA',
         flagFilter.withinElcac && 'ELCAC',
         flagFilter.withScad && 'SCAD',
+        flagFilter.f2c2Cluster && 'F2C2 Cluster',
+        flagFilter.ffedisRegistered && 'FFEDIS Registered',
         flagFilter.withSubprojects && 'With Subprojects',
         flagFilter.withTrainings && 'With Trainings'
     ].filter(Boolean) as string[];
@@ -892,6 +917,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             withinGida: flags.includes('GIDA'),
             withinElcac: flags.includes('ELCAC'),
             withScad: flags.includes('SCAD'),
+            f2c2Cluster: flags.includes('F2C2 Cluster'),
+            ffedisRegistered: flags.includes('FFEDIS Registered'),
             withSubprojects: flags.includes('With Subprojects'),
             withTrainings: flags.includes('With Trainings')
         });
@@ -922,7 +949,14 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                         {canEdit && <>
                             <button onClick={downloadIposTemplate} className="btn btn-secondary"><FileSpreadsheet aria-hidden="true" /> Template</button>
                             <label htmlFor="ipo-upload-major" className={`btn btn-secondary ${isUploading ? 'is-disabled' : ''}`}><Upload aria-hidden="true" /> {isUploading ? 'Uploading...' : 'Import'}</label>
-                            <input id="ipo-upload-major" type="file" className="hidden" onChange={(event) => handleIposUpload(event, ipos, setIpos, logAction, setIsUploading, gidaAreas, elcacAreas)} accept=".xlsx,.xls" disabled={isUploading} />
+                            <input id="ipo-upload-major" type="file" className="hidden" onChange={(event) => {
+                                if (!canEdit || uploadBusy.current || !event.target.files?.length) return;
+                                uploadBusy.current = true;
+                                handleIposUpload(event, ipos, setIpos, logAction, value => {
+                                    uploadBusy.current = value;
+                                    setIsUploading(value);
+                                }, gidaAreas, elcacAreas, onIposSaved);
+                            }} accept=".xlsx,.xls" disabled={isUploading} />
                             {isAdmin && <button onClick={handleToggleSelectionMode} className="btn btn-secondary" aria-label="Delete multiple IPOs"><TrashIcon /> Delete</button>}
                         </>}
                     </>}
@@ -939,7 +973,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                         </tr></thead>
                         <tbody>
                             {paginatedIpos.map(ipo => {
-                                const flags = [ipo.isWomenLed && 'Women-Led', ipo.isWithinGida && 'GIDA', ipo.isWithinElcac && 'ELCAC', ipo.isWithScad && 'SCAD'].filter(Boolean) as string[];
+                                const flags = [ipo.isWomenLed && 'Women-Led', ipo.isWithinGida && 'GIDA', ipo.isWithinElcac && 'ELCAC', ipo.isWithScad && 'SCAD', ipo.isF2c2Cluster === true && 'F2C2 Cluster', ipo.isFfedisRegistered === true && 'FFEDIS Registered'].filter(Boolean) as string[];
                                 const commodities = (ipo.commodities || []).map(commodity => commodity.particular).filter(Boolean);
                                 const flagPreview = flags.length ? `${flags[0]}${flags.length > 1 ? ` +${flags.length - 1}` : ''}` : '—';
                                 const commodityPreview = commodities.length ? `${commodities[0]}${commodities.length > 1 ? ` +${commodities.length - 1}` : ''}` : '—';
@@ -980,8 +1014,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 <h2 className="data-list-title">{view === 'edit' ? 'Edit IPO' : 'Add New IPO'}</h2>
                 <button type="button" onClick={handleCancelEdit} className="btn btn-secondary">Back to list</button>
             </div>
-            <form onSubmit={handleSubmit} className="form-stack form-stack--spacious">
-                <fieldset className="form-fieldset">
+            <form onSubmit={handleSubmit} className="form-stack form-stack--spacious" aria-busy={isSaving}>
+                <fieldset className="form-fieldset" disabled={isSaving}>
                     <legend className="form-legend">IPO Profile</legend>
                     <div className="form-grid">
                         <div className="form-field--full">
@@ -1051,11 +1085,29 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                 <input type="checkbox" name="isWithScad" checked={formData.isWithScad} disabled className="form-checkbox" />
                                 <span>With SCAD</span>
                             </label>
+                            <label htmlFor="isF2c2Cluster" className="form-check">
+                                <input type="checkbox" name="isF2c2Cluster" id="isF2c2Cluster" checked={formData.isF2c2Cluster} onChange={handleInputChange} className="form-checkbox" />
+                                <span>F2C2 Cluster</span>
+                            </label>
+                            <label htmlFor="isFfedisRegistered" className="form-check">
+                                <input type="checkbox" name="isFfedisRegistered" id="isFfedisRegistered" checked={formData.isFfedisRegistered} onChange={handleInputChange} className="form-checkbox" />
+                                <span>FFEDIS Registered</span>
+                            </label>
                         </div>
+                        {formData.isFfedisRegistered && <>
+                            <div>
+                                <label htmlFor="ffedisRegistrationNumber" className="form-label">FFEDIS Registration Number</label>
+                                <input type="text" id="ffedisRegistrationNumber" name="ffedisRegistrationNumber" value={formData.ffedisRegistrationNumber} onChange={handleInputChange} required className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label htmlFor="ffedisRegistrationDate" className="form-label">FFEDIS Registration Date</label>
+                                <input type="date" id="ffedisRegistrationDate" name="ffedisRegistrationDate" value={formData.ffedisRegistrationDate} onChange={handleInputChange} required className={commonInputClasses} />
+                            </div>
+                        </>}
                     </div>
                 </fieldset>
 
-                <fieldset className="form-fieldset">
+                <fieldset className="form-fieldset" disabled={isSaving}>
                     <legend className="form-legend">Commodities</legend>
                     <div className="form-repeat-list form-repeat-list--unbounded">
                         {formData.commodities.map((commodity, index) => (
@@ -1175,7 +1227,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 </fieldset>
                 
 
-                <fieldset className="form-fieldset">
+                <fieldset className="form-fieldset" disabled={isSaving}>
                     <legend className="form-legend">Membership Information</legend>
                     <div className="form-grid">
                         <div>
@@ -1214,11 +1266,11 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 </fieldset>
 
                 <div className="form-footer">
-                    <button type="button" onClick={handleCancelEdit} className="btn btn-secondary">
+                    <button type="button" onClick={handleCancelEdit} className="btn btn-secondary" disabled={isSaving}>
                         Cancel
                     </button>
-                    <button type="submit" className="btn btn-primary">
-                        Save Changes
+                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                        {isSaving ? 'Saving...' : 'Save Changes'}
                     </button>
                 </div>
              </form>

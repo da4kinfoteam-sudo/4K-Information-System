@@ -50,7 +50,7 @@ import { DcfPolicyProvider } from './contexts/DcfPolicyContext';
 import { useDcfPolicyGuard } from './hooks/useDcfPolicyGuard';
 import { DataScope, fetchMarketingDatabasePartners, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
 import { buildAuthorizedDataScope, getDataScopeModule } from './lib/appDataScope';
-import { clearUserCache, getScopeCacheMeta, readScopedCache, updateCachedActivity, updateCachedSubproject, writeScopedCache } from './lib/localScopedCache';
+import { clearUserCache, getScopeCacheMeta, readScopedCache, updateCachedActivity, updateCachedIpos, updateCachedSubproject, writeScopedCache } from './lib/localScopedCache';
 import { activityIncludesIpo, getActivityIpoIds, reconcileActivityIpoLinks } from './lib/activityIpoLinks';
 import { normalizeStaffingExpenses } from './lib/staffingExpenseIdentity';
 import {
@@ -745,6 +745,13 @@ const AppContent: React.FC = () => {
     const [subprojectDetailMode, setSubprojectDetailMode] = useState<'none' | 'details' | 'commodity' | 'budget' | 'accomplishment'>('none');
 
     const financialRowsRef = useRef({ obligations: allFinancialObligations, disbursements: allFinancialDisbursements });
+    const handleIposSaved = (confirmed: IPO[]) => {
+        iposSync.upsertLocalData(confirmed);
+        setSelectedIpo(previous => confirmed.find(ipo => ipo.id === previous?.id) || previous);
+        if (currentUser) void updateCachedIpos(currentUser.id, confirmed).catch(error => {
+            console.error('IPO saved, but its local cache could not be updated:', error);
+        });
+    };
     financialRowsRef.current = { obligations: allFinancialObligations, disbursements: allFinancialDisbursements };
     const handleSubprojectSaved = (updated: Subproject, snapshot?: SubprojectAccomplishmentSnapshot) => {
         const previous = subprojects.find(item => Number(item.id) === Number(updated.id));
@@ -2107,6 +2114,7 @@ const AppContent: React.FC = () => {
             case '/ipo':
                 return <IPOs 
                             ipos={ipos}
+                            onIposSaved={handleIposSaved}
                             setIpos={setIpos} 
                             subprojects={subprojects} 
                             activities={activities}
@@ -2241,8 +2249,7 @@ const AppContent: React.FC = () => {
                             linkedDcfError={ipoLinkedDcfState?.ipoId === latestIpo.id ? ipoLinkedDcfState.error : null}
                             marketingPartners={marketingPartners}
                             onUpdateIpo={(updated) => {
-                                setIpos(prev => prev.map(i => i.id === updated.id ? updated : i));
-                                setSelectedIpo(updated);
+                                handleIposSaved([updated]);
                             }}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}

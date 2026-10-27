@@ -38,6 +38,7 @@ import { commodityCapacityToFormValue, getCommodityCapacityValues } from '../lib
 import { getActiveSubprojectBudget } from '../lib/subprojectItemAdjustments';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets, isParentExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import { isTransferAccomplishmentActive } from '../lib/budgetItemTransferRules';
+import { buildIpoProfilePatch, ipoIndicatorHistory, normalizeIpoIndicators } from '../lib/ipoProfileIndicators';
 import {
     deleteIpoDriveFile,
     formatFileSize,
@@ -387,6 +388,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
     const canDeleteDriveFiles = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
     const [isEditing, setIsEditing] = useState(false);
     const [editedIpo, setEditedIpo] = useState<IPO>(ipo);
+    const editSource = useRef<IPO>(ipo);
+    const saveBusy = useRef(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [baseRegion, setBaseRegion] = useState(''); // Track base region from dropdown
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
@@ -795,6 +799,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
     
     useEffect(() => {
         // Reset form state if the viewed IPO changes or when exiting edit mode
+        if (isEditing && editSource.current.id === ipo.id) return;
+        editSource.current = ipo;
         const isOther = !registeringBodyOptions.includes(ipo.registeringBody);
         const registrationBodyValue = isOther ? 'Others' : ipo.registeringBody;
         
@@ -820,72 +826,78 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
+        if (saveBusy.current || !canEdit) return;
+        try { normalizeIpoIndicators(editedIpo); }
+        catch (error) { alert(error instanceof Error ? error.message : 'Invalid IPO indicators.'); return; }
         setIsConfirmModalOpen(true);
     };
 
     const handleConfirmSave = async () => {
+        if (saveBusy.current || !canEdit) return;
         const finalRegisteringBody = editedIpo.registeringBody === 'Others' ? otherRegisteringBody : editedIpo.registeringBody;
-        
-        const submissionData = { 
-            ...editedIpo, 
-            registeringBody: finalRegisteringBody,
-            registrationDate: editedIpo.registrationDate || null,
-            updated_at: new Date().toISOString()
-        };
+        let indicators;
+        try { indicators = normalizeIpoIndicators(editedIpo); }
+        catch (error) { alert(error instanceof Error ? error.message : 'Invalid IPO indicators.'); return; }
+        saveBusy.current = true;
+        setIsSaving(true);
+        try {
+            const submissionData = {
+                ...editedIpo,
+                ...indicators,
+                registeringBody: finalRegisteringBody,
+                registrationDate: editedIpo.registrationDate || null,
+                updated_at: new Date().toISOString()
+            };
+            const original = editSource.current;
+            const changes = ipoIndicatorHistory(original, submissionData);
+            if (JSON.stringify(original.commodities) !== JSON.stringify(submissionData.commodities)) {
+                changes.push('Updated Commodities');
+            }
+            if (original.levelOfDevelopment !== submissionData.levelOfDevelopment) {
+                changes.push(`Updated LOD from ${original.levelOfDevelopment} to ${submissionData.levelOfDevelopment}`);
+            }
+            if (
+                original.totalMembers !== submissionData.totalMembers ||
+                original.totalIpMembers !== submissionData.totalIpMembers ||
+                original.totalMaleMembers !== submissionData.totalMaleMembers ||
+                original.totalFemaleMembers !== submissionData.totalFemaleMembers
+            ) {
+                changes.push('Updated Membership Details');
+            }
+            if (original.name !== submissionData.name) {
+                changes.push(`Renamed IPO from ${original.name} to ${submissionData.name}`);
+            }
+            if (changes.length === 0) changes.push('Updated IPO Profile');
 
-        // Determine changes for history logging
-        const changes: string[] = [];
-        if (JSON.stringify(ipo.commodities) !== JSON.stringify(submissionData.commodities)) {
-            changes.push("Updated Commodities");
-        }
-        if (ipo.levelOfDevelopment !== submissionData.levelOfDevelopment) {
-            changes.push(`Updated LOD from ${ipo.levelOfDevelopment} to ${submissionData.levelOfDevelopment}`);
-        }
-        if (
-            ipo.totalMembers !== submissionData.totalMembers ||
-            ipo.totalIpMembers !== submissionData.totalIpMembers ||
-            ipo.totalMaleMembers !== submissionData.totalMaleMembers ||
-            ipo.totalFemaleMembers !== submissionData.totalFemaleMembers
-        ) {
-            changes.push("Updated Membership Details");
-        }
-        if (ipo.name !== submissionData.name) {
-             changes.push(`Renamed IPO from ${ipo.name} to ${submissionData.name}`);
-        }
-        // General updates catch-all if specific logic missed but object changed
-        if (changes.length === 0 && JSON.stringify(ipo) !== JSON.stringify(submissionData)) {
-            changes.push("Updated IPO Profile");
-        }
-
-        if (supabase) {
-            try {
-                const { error } = await supabase
+            if (supabase) {
+                const { data, error } = await supabase
                     .from('ipos')
-                    .update(submissionData)
-                    .eq('id', ipo.id);
+                    .update({ ...buildIpoProfilePatch(original, submissionData), updated_at: submissionData.updated_at })
+                    .eq('id', ipo.id)
+                    .select()
+                    .single();
                 
                 if (error) throw error;
+                if (!data) throw new Error('The saved IPO was not returned. Refresh before retrying.');
+                onUpdateIpo(data as IPO);
 
-                // Log History
                 for (const change of changes) {
-                    await addIpoHistory(ipo.id, change);
+                    try { await addIpoHistory(ipo.id, change); }
+                    catch (error) { console.error('IPO saved, but history could not be recorded:', error); }
                 }
 
-                // Call Parent Update to refresh UI
+            } else {
                 onUpdateIpo(submissionData);
-
-            } catch (error: any) {
-                console.error("Error updating IPO:", error);
-                alert("Failed to update IPO: " + error.message);
-                return; // Stop if error
             }
-        } else {
-             // Offline handling
-             onUpdateIpo(submissionData);
+            setIsConfirmModalOpen(false);
+            setIsEditing(false);
+        } catch (error: any) {
+            console.error('Error updating IPO:', error);
+            alert('Failed to update IPO: ' + error.message);
+        } finally {
+            saveBusy.current = false;
+            setIsSaving(false);
         }
-
-        setIsConfirmModalOpen(false);
-        setIsEditing(false);
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -1069,9 +1081,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                     <ConfirmDialog
                         title="Confirm Changes"
                         description="Are you sure you want to save these changes?"
-                        confirmLabel="Confirm"
+                        confirmLabel={isSaving ? 'Saving...' : 'Confirm'}
                         tone="primary"
-                        onCancel={() => setIsConfirmModalOpen(false)}
+                        onCancel={() => { if (!saveBusy.current) setIsConfirmModalOpen(false); }}
                         onConfirm={handleConfirmSave}
                     />
                 )}
@@ -1080,8 +1092,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                         <h1 className="detail-title">Editing: {ipo.name}</h1>
                     </div>
                 </header>
-                 <form onSubmit={handleSubmit} className="form-card form-page">
-                    <fieldset className="form-section">
+                 <form onSubmit={handleSubmit} className="form-card form-page" aria-busy={isSaving}>
+                    <fieldset className="form-section" disabled={isSaving}>
                         <legend>IPO Profile</legend>
                         <div className="form-grid">
                             <div className="form-field--full">
@@ -1151,11 +1163,29 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                     <input type="checkbox" name="isWithScad" checked={editedIpo.isWithScad} disabled />
                                     <span>With SCAD</span>
                                 </label>
+                                <label htmlFor="isF2c2Cluster" className="form-check">
+                                    <input type="checkbox" name="isF2c2Cluster" id="isF2c2Cluster" checked={editedIpo.isF2c2Cluster === true} onChange={handleInputChange} />
+                                    <span>F2C2 Cluster</span>
+                                </label>
+                                <label htmlFor="isFfedisRegistered" className="form-check">
+                                    <input type="checkbox" name="isFfedisRegistered" id="isFfedisRegistered" checked={editedIpo.isFfedisRegistered === true} onChange={handleInputChange} />
+                                    <span>FFEDIS Registered</span>
+                                </label>
                             </div>
+                            {editedIpo.isFfedisRegistered === true && <>
+                                <div>
+                                    <label htmlFor="ffedisRegistrationNumber" className="form-label">FFEDIS Registration Number</label>
+                                    <input type="text" id="ffedisRegistrationNumber" name="ffedisRegistrationNumber" value={editedIpo.ffedisRegistrationNumber || ''} onChange={handleInputChange} required className={commonInputClasses} />
+                                </div>
+                                <div>
+                                    <label htmlFor="ffedisRegistrationDate" className="form-label">FFEDIS Registration Date</label>
+                                    <input type="date" id="ffedisRegistrationDate" name="ffedisRegistrationDate" value={editedIpo.ffedisRegistrationDate || ''} onChange={handleInputChange} required className={commonInputClasses} />
+                                </div>
+                            </>}
                         </div>
                     </fieldset>
 
-                    <fieldset className="form-section">
+                    <fieldset className="form-section" disabled={isSaving}>
                         <legend>Commodities</legend>
                         <div className="space-y-2 mb-4">
                             {editedIpo.commodities.map((commodity, index) => (
@@ -1275,7 +1305,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                     </fieldset>
                     
 
-                    <fieldset className="form-section">
+                    <fieldset className="form-section" disabled={isSaving}>
                         <legend>Membership Information</legend>
                         <div className="form-grid">
                             <div>
@@ -1314,11 +1344,11 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                     </fieldset>
 
                     <div className="form-footer">
-                        <button type="button" onClick={handleCancelEdit} className="btn btn-secondary">
+                        <button type="button" onClick={handleCancelEdit} className="btn btn-secondary" disabled={isSaving}>
                             Cancel
                         </button>
-                        <button type="submit" className="btn btn-primary">
-                            Save Changes
+                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                            {isSaving ? 'Saving...' : 'Save Changes'}
                         </button>
                     </div>
                  </form>
@@ -2130,8 +2160,14 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                     {ipo.isWithinGida && <span className="status-badge status-badge--purple">Within GIDA</span>}
                                     {ipo.isWithinElcac && <span className="status-badge status-badge--orange">Within ELCAC</span>}
                                     {ipo.isWithScad && <span className="status-badge status-badge--cyan">With SCAD</span>}
+                                    {ipo.isF2c2Cluster === true && <span className="status-badge">F2C2 Cluster</span>}
+                                    {ipo.isFfedisRegistered === true && <span className="status-badge">FFEDIS Registered</span>}
                                 </div>
                             } />
+                            {ipo.isFfedisRegistered === true && <>
+                                <DetailItem label="FFEDIS Registration Number" value={ipo.ffedisRegistrationNumber || ''} />
+                                <DetailItem label="FFEDIS Registration Date" value={ipo.ffedisRegistrationDate ? formatDate(ipo.ffedisRegistrationDate) : ''} />
+                            </>}
                         </dl>
                     </IpoDetailPanel>
 
