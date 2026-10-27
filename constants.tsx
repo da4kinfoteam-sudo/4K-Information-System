@@ -290,6 +290,10 @@ export interface IPO extends BaseEntity {
     isWithinGida: boolean;
     isWithinElcac: boolean;
     isWithScad: boolean;
+    isF2c2Cluster?: boolean | null;
+    isFfedisRegistered?: boolean | null;
+    ffedisRegistrationNumber?: string | null;
+    ffedisRegistrationDate?: string | null;
     commodities: Commodity[];
     levelOfDevelopment: 1 | 2 | 3 | 4 | 5;
     totalMembers: number;

@@ -23,6 +23,8 @@
     "test:gad-dashboard-ui": "node scripts/run-gad-dashboard-resilience-ui-check.mjs",
     "test:dashboard-scope": "node scripts/run-dashboard-scope-check.mjs",
     "test:dashboard-scope-ui": "node scripts/run-dashboard-scope-ui-check.mjs",
+    "test:ipo-indicators": "node scripts/run-ipo-indicator-check.mjs",
+    "test:ipo-indicators-ui": "node scripts/run-ipo-indicator-ui-check.mjs",
     "test:financial-breakdown": "node scripts/run-financial-breakdown-hierarchy-check.mjs",
     "test:financial-obligation-sync": "node --experimental-strip-types scripts/run-financial-obligation-sync-check.mjs",
     "test:subproject-budget-lifecycle": "node --experimental-strip-types scripts/run-subproject-budget-lifecycle-check.mjs",
