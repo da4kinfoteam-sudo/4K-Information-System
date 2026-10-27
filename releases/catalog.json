@@ -9,7 +9,7 @@
       "kind": "feature",
       "title": "IPO F2C2 and FFEDIS profile indicators",
       "releaseDate": "2026-10-27",
-      "pr": null,
+      "pr": 96,
       "sections": {
         "Added": [
           "F2C2 Cluster and FFEDIS Registered indicators in IPO profiles, with registration number and date for registered IPOs.",
