@@ -1,8 +1,30 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "ipo-profile-indicators",
+  "currentReleaseId": "reports-multiselect-fund-source",
   "releases": [
+    {
+      "id": "reports-multiselect-fund-source",
+      "version": "1.4.0",
+      "kind": "feature",
+      "title": "Reports multi-select and Fund Source filters",
+      "releaseDate": "2026-10-28",
+      "pr": 97,
+      "sections": {
+        "Added": [
+          "Multi-select Operating Unit, Fund Type, Tier, Fund Year and Fund Source filters across applicable Reports views."
+        ],
+        "Improved": [
+          "Report filters match the dashboard layout while retaining independent selections and a separate Reporting Year.",
+          "Print and Excel outputs identify their selected scope; historical records without a Fund Source remain available."
+        ],
+        "Fixed": [
+          "Report loading, retry and export handling prevent stale or mismatched filtered output.",
+          "Removed the redundant filter-summary label below the report tabs."
+        ],
+        "Affected Pages": ["Reports", "Report Print and Excel Export"]
+      }
+    },
     {
       "id": "ipo-profile-indicators",
       "version": "1.3.0",

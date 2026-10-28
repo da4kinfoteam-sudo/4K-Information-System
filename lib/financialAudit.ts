@@ -204,10 +204,9 @@ const getTargetSchedule = (item: FinancialLineItem, selectedYear: string, asOfMo
 export const buildFinancialAudit = (
     data: FinancialAggregationInput,
     filters: FinancialAggregationFilters,
-    options: { auditAsOfMonth: number; budgetCeilings?: FinancialAuditBudgetCeiling[] }
+    options: { auditAsOfMonth: number; budgetCeilings?: FinancialAuditBudgetCeiling[]; annualChecksByRecordYear?: boolean }
 ): FinancialAuditResult => {
     const lineItems = collectFinancialLineItems(data, { ...filters, includeTaggedExclusions: true });
-    const selectedYear = String(filters.year);
     const issues: FinancialAuditIssue[] = [];
     const ceilingGroups = new Map<string, { operatingUnit: string; year: string; allocation: number; ceiling: number }>();
     let totalTargetAllocation = 0;
@@ -281,6 +280,7 @@ export const buildFinancialAudit = (
     };
 
     lineItems.forEach(item => {
+        const selectedYear = options.annualChecksByRecordYear ? String(item.recordYear) : String(filters.year);
         const schedule = getTargetSchedule(item, selectedYear, options.auditAsOfMonth);
         const targetAllocation = schedule.targetAllocation;
         totalExcludedTaggedAmount += item.excludedTargetAllocation || 0;

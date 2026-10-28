@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, Deadline, tiers, fundTypes, operatingUnits, ouToRegionMap, filterYears } from '../constants';
+import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, Deadline, type RefFundSource } from '../constants';
 import WFPReport from './reports/WFPReport';
 import BPFormsReport from './reports/BPFormsReport';
 import BEDSReport from './reports/BEDSReport';
@@ -12,14 +12,20 @@ import MonthlyReportMatrix from './reports/MonthlyReportMatrix'; // Import
 import DetailedAccomplishmentDataReport from './reports/DetailedAccomplishmentDataReport';
 import FinancialAuditReport from './reports/FinancialAuditReport';
 import { useAuth } from '../contexts/AuthContext';
-import { ChevronDown, Printer, SlidersHorizontal, X } from 'lucide-react';
+import { Printer, X } from 'lucide-react';
 import type { DataScope } from '../lib/scopedDataFetch';
 import { exportReportWorkbook } from '../lib/reportExcelExport';
 import type { ReportExcelRequest, ReportPrintRequest } from './reports/ReportUtils';
+import { ReportsScopeFilterPanel, useReportsScopeFilters } from './ui/ReportsScopeFilters';
+import { filterReportData, reportHistoryScope, reportCalculationScope, reportOutputName, reportScopeSummary, type ReportScope } from '../lib/reportScope';
+import { dashboardScopeKey, dashboardScopeLabels } from '../lib/dashboardScope';
 
 export type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utilization Report' | 'Monthly Matrix' | 'Detailed Accomplishment Data' | 'Financial Audit';
 
 export interface ReportsPageState {
+    fundingScope?: ReportScope;
+    filterOwnerId?: string;
+    reportingYearExplicit?: boolean;
     activeTab: ReportTab;
     selectedYear: string;
     selectedReportingYear: string;
@@ -39,6 +45,9 @@ export interface ReportsPageState {
 }
 
 interface ReportsProps {
+    fundSources: RefFundSource[];
+    dataLoading?: boolean;
+    dataError?: string | null;
     ipos: IPO[];
     subprojects: Subproject[];
     trainings: Training[];
@@ -56,7 +65,7 @@ interface ReportsProps {
     onSelectStaffingReq: (req: StaffingRequirement) => void;
     onSelectOtherExpense: (req: OtherProgramExpense) => void;
     onOpenIpoListForAncestralDomain: (adNo: string) => void;
-    onDataScopeChange?: (scope: Partial<DataScope>) => void;
+    onDataScopeChange?: (scope: Partial<DataScope>, force?: boolean) => unknown;
     reportState: ReportsPageState;
     onReportStateChange: React.Dispatch<React.SetStateAction<ReportsPageState>>;
 }
@@ -70,6 +79,9 @@ interface PreparedPrintJob extends ReportPrintRequest {
 const REPORT_PRINT_NAMES_KEY = '4kis-report-print-signatories';
 
 const Reports: React.FC<ReportsProps> = ({
+    fundSources,
+    dataLoading = false,
+    dataError,
     ipos,
     subprojects,
     trainings,
@@ -91,22 +103,12 @@ const Reports: React.FC<ReportsProps> = ({
     reportState,
     onReportStateChange,
 }) => {
-    const { currentUser, getVisibilityScope } = useAuth();
-    const visibilityScope = getVisibilityScope('Reports');
-    const isLockedToOwnOu = visibilityScope === 'Own OU';
+    const { currentUser } = useAuth();
     const isSuperAdmin = currentUser?.role === 'Super Admin';
-
-    const {
-        activeTab,
-        selectedYear,
-        selectedReportingYear,
-        selectedTier,
-        selectedFundType,
-    } = reportState;
+    const { activeTab } = reportState;
     const updateReportState = React.useCallback((patch: Partial<ReportsPageState>) => {
         onReportStateChange(prev => ({ ...prev, ...patch }));
     }, [onReportStateChange]);
-    const [filtersOpen, setFiltersOpen] = useState(false);
     const [pendingPrintRequest, setPendingPrintRequest] = useState<ReportPrintRequest | null>(null);
     const [pendingExcelRequest, setPendingExcelRequest] = useState<ReportExcelRequest | null>(null);
     const [preparedBy, setPreparedBy] = useState('');
@@ -114,44 +116,20 @@ const Reports: React.FC<ReportsProps> = ({
     const [preparedPrintJob, setPreparedPrintJob] = useState<PreparedPrintJob | null>(null);
     const [printError, setPrintError] = useState('');
     const [isExportingExcel, setIsExportingExcel] = useState(false);
-    const [ouSelectorOpen, setOuSelectorOpen] = useState(false);
-    const [ouSearchTerm, setOuSearchTerm] = useState('');
-    const requiresFinancialHistoryScope = activeTab === 'Monthly Matrix' || activeTab === 'Financial Audit';
-    const selectedOus = useMemo(() => {
-        if (isLockedToOwnOu) return currentUser?.operatingUnit ? [currentUser.operatingUnit] : [];
-        return Array.from(new Set((reportState.selectedOus || []).filter(ou => operatingUnits.includes(ou))));
-    }, [currentUser?.operatingUnit, isLockedToOwnOu, reportState.selectedOus]);
-    const allOusSelected = selectedOus.length === operatingUnits.length;
-    const selectedOu = selectedOus.length === 1 ? selectedOus[0] : 'All';
-    const selectedOuForCalculations = selectedOus.length === 1 ? selectedOus[0] : 'All';
-    const selectedOuLabel = allOusSelected
-        ? 'All OUs'
-        : selectedOus.length === 1
-            ? selectedOus[0]
-            : selectedOus.length === 0
-                ? 'No OUs selected'
-                : `${selectedOus.length} OUs selected`;
-    const selectedOuFileToken = allOusSelected
-        ? 'All_OUs'
-        : selectedOus.length === 1
-            ? selectedOus[0].replace(/\s+/g, '_')
-            : selectedOus.length === 0
-                ? 'No_OUs'
-                : `${selectedOus.length}_OUs`;
-    const filteredOuOptions = useMemo(() => {
-        const search = ouSearchTerm.trim().toLowerCase();
-        return search
-            ? operatingUnits.filter(ou => ou.toLowerCase().includes(search))
-            : operatingUnits;
-    }, [ouSearchTerm]);
-    const updateSelectedOus = React.useCallback((nextOus: string[]) => {
-        if (isLockedToOwnOu) return;
-        const normalized = Array.from(new Set(nextOus.filter(ou => operatingUnits.includes(ou))));
-        updateReportState({
-            selectedOus: normalized,
-            selectedOu: normalized.length === 1 ? normalized[0] : 'All',
-        });
-    }, [isLockedToOwnOu, updateReportState]);
+    const [outputScopeKey, setOutputScopeKey] = useState('');
+    const records = useMemo(() => [...subprojects, ...trainings, ...otherActivities, ...officeReqs, ...staffingReqs, ...otherProgramExpenses], [subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
+    const filters = useReportsScopeFilters({ state: reportState, setState: onReportStateChange, references: fundSources, records, onDataScopeChange });
+    const scope = filters.applied.scope;
+    const scopeKey = dashboardScopeKey(scope);
+    const { year: selectedYear, operatingUnit: selectedOuForCalculations, tier: selectedTier, fundType: selectedFundType } = reportCalculationScope(scope);
+    const selectedReportingYear = filters.applied.reportingYear;
+    const scopeLabel = reportScopeSummary(scope, selectedReportingYear, fundSources, records);
+    const historyLabel = reportScopeSummary(reportHistoryScope(scope), selectedReportingYear, fundSources, records);
+    const selectedOuLabel = dashboardScopeLabels(scope, fundSources, records).operatingUnits;
+    const outputLabel = activeTab === 'Monthly Matrix' ? `${scopeLabel}; Financial history: ${historyLabel}`
+        : activeTab === 'Financial Audit' && scope.fundSources.mode === 'values' ? `${scopeLabel}; whole OU/year ceiling references; selected cohort only` : scopeLabel;
+    const needsReportingYear = activeTab === 'Monthly Matrix' && selectedReportingYear === 'All';
+    const isDataReady = filters.ready && !dataLoading && !dataError && !needsReportingYear;
 
     useEffect(() => {
         try {
@@ -164,51 +142,6 @@ const Reports: React.FC<ReportsProps> = ({
             // Ignore malformed local preference data.
         }
     }, []);
-
-    useEffect(() => {
-        if (requiresFinancialHistoryScope) return;
-        onDataScopeChange?.({
-            year: selectedYear,
-            operatingUnit: selectedOu,
-            operatingUnits: allOusSelected ? undefined : selectedOus,
-            tier: selectedTier,
-            fundType: selectedFundType,
-            canViewAllOus: !isLockedToOwnOu,
-            requestedBy: currentUser?.id ?? null
-        });
-    }, [allOusSelected, currentUser?.id, isLockedToOwnOu, onDataScopeChange, requiresFinancialHistoryScope, selectedFundType, selectedOu, selectedOus, selectedTier, selectedYear]);
-
-    useEffect(() => {
-        if (!requiresFinancialHistoryScope) return;
-        if (activeTab === 'Financial Audit' && !isSuperAdmin) return;
-        onDataScopeChange?.({
-            year: 'All',
-            operatingUnit: selectedOu,
-            operatingUnits: allOusSelected ? undefined : selectedOus,
-            tier: selectedTier,
-            fundType: 'All',
-            canViewAllOus: !isLockedToOwnOu,
-            requestedBy: currentUser?.id ?? null
-        });
-    }, [activeTab, allOusSelected, currentUser?.id, isLockedToOwnOu, isSuperAdmin, onDataScopeChange, requiresFinancialHistoryScope, selectedOu, selectedOus, selectedTier]);
-
-    useEffect(() => {
-        if (isLockedToOwnOu && currentUser) {
-            updateReportState({ selectedOu: currentUser.operatingUnit, selectedOus: [currentUser.operatingUnit] });
-        }
-    }, [currentUser, isLockedToOwnOu, updateReportState]);
-
-    // Enforce User OU restriction on mount/change
-    useEffect(() => {
-        if (currentUser && currentUser.role === 'User') {
-            updateReportState({ selectedOu: currentUser.operatingUnit, selectedOus: [currentUser.operatingUnit] });
-        }
-    }, [currentUser, updateReportState]);
-
-    useEffect(() => {
-        if (isLockedToOwnOu || Array.isArray(reportState.selectedOus)) return;
-        updateReportState({ selectedOus: operatingUnits, selectedOu: 'All' });
-    }, [isLockedToOwnOu, reportState.selectedOus, updateReportState]);
 
     useEffect(() => {
         if (!isSuperAdmin && activeTab === 'Financial Audit') {
@@ -225,105 +158,9 @@ const Reports: React.FC<ReportsProps> = ({
         return () => window.removeEventListener('afterprint', handleAfterPrint);
     }, []);
 
-    const availableYears = useMemo(() => {
-        return [...filterYears].sort((a, b) => parseInt(b) - parseInt(a));
-    }, []);
-
-    // Helper functions for filtering
-    const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
-    const sanitizeExpenses = (items: any[] | undefined) => (items || []).filter(i => i);
-
-    const filterByOu = (list: any[]) => {
-        if (allOusSelected) return list;
-        if (selectedOus.length === 0) return [];
-        return list.filter(item => selectedOus.includes(item.operatingUnit));
-    };
-
-    const targetRegions = useMemo(() => {
-        if (allOusSelected) return null;
-        return new Set(selectedOus.map(ou => ouToRegionMap[ou]).filter(Boolean));
-    }, [allOusSelected, selectedOus]);
-    const filterIpoByRegion = (list: IPO[]) => {
-        const approvedList = list.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED');
-        if (allOusSelected) return approvedList;
-        if (!targetRegions || targetRegions.size === 0) return [];
-        return approvedList.filter(i => targetRegions.has(i.region));
-    };
-
-    const baseFilter = (item: any) => {
-        if (item.workflow_status && item.workflow_status !== 'APPROVED') return false;
-        if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
-        if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
-        return true;
-    };
-
-    // Filter logic for Financial History Table (Ignores Year AND Fund Type filter)
-    // This allows Table 2 in MonthlyReportMatrix to show Current vs Continuing breakdown
-    const financialBaseFilter = (item: any) => {
-        if (item.workflow_status && item.workflow_status !== 'APPROVED') return false;
-        if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
-        // NOTE: fundType filter is INTENTIONALLY skipped here to allow aggregation of Current vs Continuing
-        return true;
-    };
-
-    // Data filtered by Year (For Physical Reports)
-    const filteredData = useMemo(() => {
-        let filtered = {
-            subprojects: subprojects.filter(baseFilter),
-            ipos: ipos,
-            trainings: trainings.filter(baseFilter),
-            otherActivities: otherActivities.filter(baseFilter),
-            officeReqs: officeReqs.filter(baseFilter),
-            staffingReqs: staffingReqs.filter(baseFilter),
-            otherProgramExpenses: otherProgramExpenses.filter(baseFilter)
-        };
-
-        if (selectedYear !== 'All') {
-            filtered = {
-                ...filtered,
-                subprojects: filtered.subprojects.filter(p => p.fundingYear?.toString() === selectedYear),
-                trainings: filtered.trainings.filter(t => t.fundingYear?.toString() === selectedYear),
-                otherActivities: filtered.otherActivities.filter(a => a.fundingYear?.toString() === selectedYear),
-                officeReqs: filtered.officeReqs.filter(i => i.fundYear?.toString() === selectedYear),
-                staffingReqs: filtered.staffingReqs.filter(i => i.fundYear?.toString() === selectedYear),
-                otherProgramExpenses: filtered.otherProgramExpenses.filter(i => i.fundYear?.toString() === selectedYear),
-            };
-        }
-
-        return {
-            subprojects: filterByOu(filtered.subprojects).map(p => ({ ...p, details: sanitizeDetails(p.details) })),
-            ipos: filterIpoByRegion(filtered.ipos),
-            trainings: filterByOu(filtered.trainings).map(t => ({ ...t, expenses: sanitizeExpenses(t.expenses) })),
-            otherActivities: filterByOu(filtered.otherActivities).map(a => ({ ...a, expenses: sanitizeExpenses(a.expenses) })),
-            officeReqs: filterByOu(filtered.officeReqs),
-            staffingReqs: filterByOu(filtered.staffingReqs).map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
-            otherProgramExpenses: filterByOu(filtered.otherProgramExpenses),
-        };
-    }, [selectedYear, allOusSelected, selectedOus, targetRegions, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
-
-    // Data IGNORING Year and FundType Filter (For Financial History Table)
-    const financialFilteredData = useMemo(() => {
-        // Apply OU and Tier filters only
-        let filtered = {
-            subprojects: subprojects.filter(financialBaseFilter),
-            ipos: ipos,
-            trainings: trainings.filter(financialBaseFilter),
-            otherActivities: otherActivities.filter(financialBaseFilter),
-            officeReqs: officeReqs.filter(financialBaseFilter),
-            staffingReqs: staffingReqs.filter(financialBaseFilter),
-            otherProgramExpenses: otherProgramExpenses.filter(financialBaseFilter)
-        };
-
-        return {
-            subprojects: filterByOu(filtered.subprojects).map(p => ({ ...p, details: sanitizeDetails(p.details) })),
-            ipos: filterIpoByRegion(filtered.ipos),
-            trainings: filterByOu(filtered.trainings).map(t => ({ ...t, expenses: sanitizeExpenses(t.expenses) })),
-            otherActivities: filterByOu(filtered.otherActivities).map(a => ({ ...a, expenses: sanitizeExpenses(a.expenses) })),
-            officeReqs: filterByOu(filtered.officeReqs),
-            staffingReqs: filterByOu(filtered.staffingReqs).map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
-            otherProgramExpenses: filterByOu(filtered.otherProgramExpenses),
-        };
-    }, [allOusSelected, selectedOus, targetRegions, selectedTier, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
+    const sourceData = useMemo(() => ({ subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses }), [subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
+    const filteredData = useMemo(() => filterReportData(sourceData, scope, fundSources), [sourceData, scopeKey, fundSources]);
+    const financialFilteredData = useMemo(() => filterReportData(sourceData, reportHistoryScope(scope), fundSources), [sourceData, scopeKey, fundSources]);
 
     const reportTabs: { tabName: ReportTab; label: string }[] = [
         { tabName: 'WFP', label: 'WFP' },
@@ -369,18 +206,28 @@ const Reports: React.FC<ReportsProps> = ({
     };
 
     const handleRequestPrint = (request: ReportPrintRequest) => {
+        if (!isDataReady) return;
         setPrintError('');
+        setOutputScopeKey(`${filters.key}|${activeTab}`);
         setPendingPrintRequest({
             ...request,
+            reportName: reportOutputName(request.reportName),
+            scopeLabel: outputLabel,
             ouName: selectedOuLabel,
         });
     };
 
     const handleRequestExport = (request: ReportExcelRequest) => {
+        if (!isDataReady) return;
         setPrintError('');
-        const fileName = request.fileName.replace(/_(All|All_OUs|NPMO|RPMO[^.]*)\.xlsx$/i, `_${selectedOuFileToken}.xlsx`);
+        setOutputScopeKey(`${filters.key}|${activeTab}`);
+        const token = scopeLabel.replace(/[^a-zA-Z0-9-]+/g, '_').slice(0, 170);
+        const baseName = request.fileName.replace(/\.xlsx$/i, '').split(/_FY|_\d{4}_|_All_/)[0];
+        const fileName = `${baseName}_${token}.xlsx`;
         setPendingExcelRequest({
             ...request,
+            reportName: reportOutputName(request.reportName),
+            scopeLabel: outputLabel,
             ouName: selectedOuLabel,
             fileName,
         });
@@ -395,6 +242,10 @@ const Reports: React.FC<ReportsProps> = ({
     const handleConfirmOutput = async (event: React.FormEvent) => {
         event.preventDefault();
         if (!pendingPrintRequest && !pendingExcelRequest) return;
+        if (!isDataReady || outputScopeKey !== `${filters.key}|${activeTab}`) {
+            setPrintError('The report scope changed or is unavailable. Close this dialog and reopen the current report output.');
+            return;
+        }
         const nextPreparedBy = preparedBy.trim();
         const nextApprovedBy = approvedBy.trim();
         if (!nextPreparedBy || !nextApprovedBy) {
@@ -457,6 +308,7 @@ const Reports: React.FC<ReportsProps> = ({
             case 'BEDS':
                 return (
                     <BEDSReport
+                        hasSelectedFundYears={scope.years.mode === 'values'}
                         data={filteredData}
                         selectedYear={selectedYear}
                         selectedReportingYear={selectedReportingYear}
@@ -535,7 +387,8 @@ const Reports: React.FC<ReportsProps> = ({
                 if (!isSuperAdmin) return null;
                 return (
                     <FinancialAuditReport
-                        data={financialFilteredData}
+                        data={filteredData}
+                        reportScope={scope}
                         budgetCeilings={budgetCeilings}
                         selectedYear={selectedYear}
                         selectedOu={selectedOuForCalculations}
@@ -573,131 +426,9 @@ const Reports: React.FC<ReportsProps> = ({
         <div className="data-list-page reports-page">
             <div className="data-list-header print-hidden">
                 <h2 className="data-list-title">Reports</h2>
-                <div className="page-filter-toggle">
-                    <span className="page-filter-summary">
-                        {[selectedOuLabel, selectedTier, selectedFundType, `FY ${selectedYear}`, `RY ${selectedReportingYear}`].join(' / ')}
-                    </span>
-                    <button
-                        type="button"
-                        className={`btn btn-secondary page-filter-button ${filtersOpen ? 'is-open' : ''}`}
-                        onClick={() => setFiltersOpen(prev => !prev)}
-                        aria-expanded={filtersOpen}
-                        aria-controls="reports-filter-panel"
-                    >
-                        <SlidersHorizontal aria-hidden="true" />
-                        <span>Filters</span>
-                        <ChevronDown aria-hidden="true" className="page-filter-button__chevron" />
-                    </button>
-                </div>
             </div>
 
-            <div id="reports-filter-panel" className={`report-filter-panel page-filter-panel print-hidden ${filtersOpen ? 'is-open' : ''}`} hidden={!filtersOpen}>
-                <div className="report-filter-grid">
-                    <div className="report-filter">
-                        <label htmlFor="ou-filter-button" className="form-label">OU</label>
-                        <div className="report-ou-multiselect">
-                            <button
-                                id="ou-filter-button"
-                                type="button"
-                                className="form-control report-ou-multiselect__button"
-                                onClick={() => !isLockedToOwnOu && setOuSelectorOpen(prev => !prev)}
-                                disabled={isLockedToOwnOu}
-                                aria-expanded={ouSelectorOpen}
-                                aria-controls="reports-ou-selector"
-                            >
-                                <span>{selectedOuLabel}</span>
-                                <ChevronDown aria-hidden="true" className={`report-ou-multiselect__chevron ${ouSelectorOpen ? 'is-open' : ''}`} />
-                            </button>
-                            {ouSelectorOpen && !isLockedToOwnOu && (
-                                <div id="reports-ou-selector" className="report-ou-multiselect__menu">
-                                    <input
-                                        type="search"
-                                        value={ouSearchTerm}
-                                        onChange={(event) => setOuSearchTerm(event.target.value)}
-                                        className="form-control report-ou-multiselect__search"
-                                        placeholder="Search OU..."
-                                    />
-                                    <div className="report-ou-multiselect__actions">
-                                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => updateSelectedOus(operatingUnits)}>Select All</button>
-                                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => updateSelectedOus([])}>Clear All</button>
-                                    </div>
-                                    <div className="report-ou-multiselect__list">
-                                        {filteredOuOptions.map(ou => (
-                                            <label key={ou} className="report-ou-multiselect__option">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedOus.includes(ou)}
-                                                    onChange={(event) => {
-                                                        updateSelectedOus(event.target.checked
-                                                            ? [...selectedOus, ou]
-                                                            : selectedOus.filter(item => item !== ou));
-                                                    }}
-                                                />
-                                                <span>{ou}</span>
-                                            </label>
-                                        ))}
-                                        {filteredOuOptions.length === 0 && (
-                                            <p className="report-ou-multiselect__empty">No OUs found.</p>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    <div className="report-filter">
-                        <label htmlFor="tier-filter" className="form-label">Tier</label>
-                        <select 
-                            id="tier-filter"
-                            value={selectedTier}
-                            onChange={(e) => updateReportState({ selectedTier: e.target.value })}
-                            className="form-control"
-                        >
-                            <option value="All">All Tiers</option>
-                            {tiers.map(tier => (
-                                <option key={tier} value={tier}>{tier}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="report-filter">
-                        <label htmlFor="fund-type-filter" className="form-label">Fund Type</label>
-                        <select 
-                            id="fund-type-filter"
-                            value={selectedFundType}
-                            onChange={(e) => updateReportState({ selectedFundType: e.target.value })}
-                            className="form-control"
-                        >
-                            <option value="All">All Fund Types</option>
-                            {fundTypes.map(ft => (
-                                <option key={ft} value={ft}>{ft}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="report-filter">
-                        <label htmlFor="year-filter" className="form-label">Fund Year</label>
-                        <select 
-                            id="year-filter"
-                            value={selectedYear}
-                            onChange={(e) => updateReportState({ selectedYear: e.target.value, selectedReportingYear: e.target.value })}
-                            className="form-control"
-                        >
-                            <option value="All">All Years</option>
-                            {availableYears.map(year => ( <option key={year} value={year}>{year}</option> ))}
-                        </select>
-                    </div>
-                    <div className="report-filter">
-                        <label htmlFor="reporting-year-filter" className="form-label">Reporting Year</label>
-                        <select
-                            id="reporting-year-filter"
-                            value={selectedReportingYear}
-                            onChange={(e) => updateReportState({ selectedReportingYear: e.target.value })}
-                            className="form-control"
-                        >
-                            <option value="All">All Reporting Years</option>
-                            {availableYears.map(year => ( <option key={year} value={year}>{year}</option> ))}
-                        </select>
-                    </div>
-                </div>
-            </div>
+            <ReportsScopeFilterPanel filters={filters} />
 
             <div className="report-tabs-card print-hidden">
                 <nav className="data-tabs" aria-label="Report tabs">
@@ -708,7 +439,11 @@ const Reports: React.FC<ReportsProps> = ({
             </div>
 
             <div className="report-output">
-                {renderTabContent()}
+                {isDataReady ? <>
+                    {renderTabContent()}
+                </> : needsReportingYear ? <div role="status" className="reports-scope-state">Select a Reporting Year.</div> : filters.error || dataError ? <div role="alert" className="reports-scope-state">
+                    <p>{filters.error || dataError}</p><button type="button" className="btn btn-secondary" onClick={filters.retry}>Retry</button>
+                </div> : <div role="status" className="reports-scope-state">Loading report data...</div>}
             </div>
 
             {(pendingPrintRequest || pendingExcelRequest) && (
@@ -718,6 +453,7 @@ const Reports: React.FC<ReportsProps> = ({
                             <div>
                                 <h3>{pendingExcelRequest ? 'Export Report' : 'Print Report'}</h3>
                                 <p>{pendingPrintRequest?.sectionName || pendingPrintRequest?.reportName || pendingExcelRequest?.reportName}</p>
+                                <p>{pendingPrintRequest?.scopeLabel || pendingExcelRequest?.scopeLabel}</p>
                             </div>
                             <button
                                 type="button"
@@ -773,6 +509,7 @@ const Reports: React.FC<ReportsProps> = ({
                             <p>Department of Agriculture.</p>
                             <p>Kabuhayan at Kaunlaran ng Kababayang Katutubo</p>
                             <p>{preparedPrintJob.reportName} - {preparedPrintJob.ouName}</p>
+                            {preparedPrintJob.scopeLabel && <p>{preparedPrintJob.scopeLabel}</p>}
                         </div>
                     </header>
                     <main className="report-print-body" dangerouslySetInnerHTML={{ __html: preparedPrintJob.tableHtml }} />

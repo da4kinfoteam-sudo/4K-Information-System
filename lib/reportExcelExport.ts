@@ -85,6 +85,15 @@ const applyHeader = (
     });
 
     worksheet.getColumn(1).width = Math.max(worksheet.getColumn(1).width || 0, 9);
+    if (request.scopeLabel) {
+        worksheet.mergeCells(4, 1, 4, lastColumn);
+        const scopeCell = worksheet.getCell(4, 1);
+        scopeCell.value = request.scopeLabel;
+        scopeCell.font = { name: 'Arial', size: 10 };
+        scopeCell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+        const width = Math.max(40, sheet.columnWidths?.reduce((sum, value) => sum + value, 0) || lastColumn * 12);
+        worksheet.getRow(4).height = Math.max(28, Math.ceil(request.scopeLabel.length / width) * 16);
+    }
     if (logoBuffer) {
         const imageId = workbook.addImage({
             buffer: logoBuffer as any,

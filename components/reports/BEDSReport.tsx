@@ -11,6 +11,7 @@ import { buildFinancialAudit, FinancialAuditNavigationTarget } from '../../lib/f
 import { ReportExcelRequest, ReportPrintRequest, getReportingMonthIndex, isParentRealignmentOrSavings, withReportYearLabel } from './ReportUtils';
 
 interface BEDSReportProps {
+    hasSelectedFundYears?: boolean;
     data: {
         subprojects: Subproject[];
         trainings: Activity[];
@@ -257,6 +258,7 @@ const getBed1Totals = (items: Bed1Row[]): Bed1Row => {
 const BEDSReport: React.FC<BEDSReportProps> = ({
     data,
     selectedYear,
+    hasSelectedFundYears,
     selectedReportingYear,
     selectedOu,
     selectedFundType,
@@ -273,7 +275,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
 
     const dataCellClass = 'beds-report__cell';
     const indentClasses: Record<number, string> = { 0: '', 1: 'beds-report__indent--1', 2: 'beds-report__indent--2', 3: 'beds-report__indent--3' };
-    const isYearSelected = selectedYear !== 'All';
+    const isYearSelected = hasSelectedFundYears ?? selectedYear !== 'All';
 
     const financialInput = useMemo(() => ({
         subprojects: data.subprojects,

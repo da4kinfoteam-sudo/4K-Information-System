@@ -115,7 +115,7 @@ export function useDashboardScopeFilters({ storageKey, references, records = [],
 }
 
 interface Choice { value: string; label: string }
-function MultiSelect({ label, allLabel, value, options, disabled, onChange }: { key?: string; label: string; allLabel: string; value: ScopeSelection; options: Choice[]; disabled?: boolean; onChange: (value: ScopeSelection) => void }) {
+export function ScopeMultiSelect({ label, allLabel, value, options, disabled, onChange }: { key?: string; label: string; allLabel: string; value: ScopeSelection; options: Choice[]; disabled?: boolean; onChange: (value: ScopeSelection) => void }) {
     const [open, setOpen] = useState(false), [search, setSearch] = useState('');
     const searchRef = useRef<HTMLInputElement>(null);
     const summary = value.mode === 'all' ? allLabel : value.values.map(key => options.find(option => option.value === key)?.label || key).join(', ') || 'Select...';
@@ -147,7 +147,7 @@ function MultiSelect({ label, allLabel, value, options, disabled, onChange }: { 
 
 export function DashboardScopeFilterPanel({ filters }: { filters: ReturnType<typeof useDashboardScopeFilters> }) {
     return <section className="major-filter-bar dashboard-scope-filter" aria-label="Data scope filters">
-        <div className="major-filter-bar__fields">{filters.fields.map(field => <MultiSelect key={field.key} label={field.label} allLabel={field.all} value={filters.draft[field.key as DashboardScopeField]} options={field.options} disabled={field.disabled} onChange={value => filters.update(field.key as DashboardScopeField, value)} />)}</div>
+        <div className="major-filter-bar__fields">{filters.fields.map(field => <ScopeMultiSelect key={field.key} label={field.label} allLabel={field.all} value={filters.draft[field.key as DashboardScopeField]} options={field.options} disabled={field.disabled} onChange={value => filters.update(field.key as DashboardScopeField, value)} />)}</div>
         <div className="major-filter-bar__actions"><button type="button" className="btn btn-secondary" onClick={filters.reset} disabled={filters.isDefault && !filters.pending}>Reset</button><button type="button" className="btn btn-primary" onClick={filters.apply} disabled={!filters.pending || !filters.validDraft}>Apply</button></div>
     </section>;
 }
