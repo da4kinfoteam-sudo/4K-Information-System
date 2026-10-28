@@ -25,6 +25,8 @@
     "test:dashboard-scope-ui": "node scripts/run-dashboard-scope-ui-check.mjs",
     "test:ipo-indicators": "node scripts/run-ipo-indicator-check.mjs",
     "test:ipo-indicators-ui": "node scripts/run-ipo-indicator-ui-check.mjs",
+    "test:report-scope": "node scripts/run-report-scope-check.mjs",
+    "test:report-scope-ui": "node scripts/run-report-scope-ui-check.mjs",
     "test:financial-breakdown": "node scripts/run-financial-breakdown-hierarchy-check.mjs",
     "test:financial-obligation-sync": "node --experimental-strip-types scripts/run-financial-obligation-sync-check.mjs",
     "test:subproject-budget-lifecycle": "node --experimental-strip-types scripts/run-subproject-budget-lifecycle-check.mjs",

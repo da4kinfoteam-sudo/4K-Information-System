@@ -705,7 +705,7 @@ const AppContent: React.FC = () => {
     useEffect(() => {
         if (!isAuthReady) return;
         if (routePath === '/' || isDashboardPagePath(routePath) || isProgramManagementPagePath(routePath)
-            || ['/subprojects', '/activities', '/trainings', '/other-activities', '/accomplishment/physical', '/accomplishment/financial'].includes(routePath)) return;
+            || ['/reports', '/subprojects', '/activities', '/trainings', '/other-activities', '/accomplishment/physical', '/accomplishment/financial'].includes(routePath)) return;
         ensureDataScope();
     }, [ensureDataScope, isAuthReady, routePath]);
 
@@ -2129,6 +2129,9 @@ const AppContent: React.FC = () => {
                         />;
             case '/reports':
                 return <Reports 
+                            fundSources={fundSources}
+                            dataLoading={isGlobalRefreshing}
+                            dataError={globalRefreshError}
                             ipos={ipos} 
                             subprojects={visibleSubprojects} 
                             trainings={visibleActivities.filter(a => a.type === 'Training')}

@@ -1,6 +1,7 @@
 import { normalizeDataScope, type DataScope } from './scopedDataFetch';
 
 export const getDataScopeModule = (owner?: string) => ({
+    reports_scope: 'Reports',
     subprojects_dcf_scope: 'Subprojects',
     activities_dcf_scope: 'Activities',
     trainings_dcf_scope: 'Activities',

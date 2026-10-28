@@ -7,6 +7,7 @@ export const XLSX = (window as any).XLSX;
 export type ExcelColumnFormat = 'text' | 'money' | 'physical' | 'percent' | 'date';
 
 export interface ReportPrintRequest {
+    scopeLabel?: string;
     reportName: string;
     ouName: string;
     tableElementId: string;
@@ -28,6 +29,7 @@ export interface ReportExcelSheet {
 }
 
 export interface ReportExcelRequest {
+    scopeLabel?: string;
     reportName: string;
     ouName: string;
     fileName: string;

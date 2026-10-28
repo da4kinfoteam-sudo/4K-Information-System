@@ -3,9 +3,12 @@ import { AlertTriangle, Download, Printer, Search } from 'lucide-react';
 import { Activity, OfficeRequirement, OtherProgramExpense, StaffingRequirement, Subproject } from '../../constants';
 import { buildFinancialAudit, FinancialAuditIssue, FinancialAuditSeverity } from '../../lib/financialAudit';
 import { FinancialAggregationFilters } from '../../lib/financialAggregation';
+import { buildReportFinancialAudit, type ReportScope } from '../../lib/reportScope';
+import { dashboardScopeKey } from '../../lib/dashboardScope';
 import { ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
 
 interface FinancialAuditReportProps {
+    reportScope?: ReportScope;
     data: {
         subprojects: Subproject[];
         trainings: Activity[];
@@ -84,6 +87,7 @@ const uniqueSorted = (values: string[]) => Array.from(new Set(values.filter(Bool
 
 const FinancialAuditReport: React.FC<FinancialAuditReportProps> = ({
     data,
+    reportScope,
     budgetCeilings,
     selectedYear,
     selectedOu,
@@ -104,6 +108,7 @@ const FinancialAuditReport: React.FC<FinancialAuditReportProps> = ({
     onPrintReport,
     onExportReport,
 }) => {
+    const reportScopeKey = reportScope ? dashboardScopeKey(reportScope) : '';
     const audit = useMemo(() => {
         const filters: FinancialAggregationFilters = {
             year: selectedYear,
@@ -112,14 +117,17 @@ const FinancialAuditReport: React.FC<FinancialAuditReportProps> = ({
             fundType: selectedFundType,
         };
 
-        return buildFinancialAudit({
+        const inputs = {
             subprojects: data.subprojects,
             activities: [...data.trainings, ...data.otherActivities],
             officeReqs: data.officeReqs,
             staffingReqs: data.staffingReqs,
             otherProgramExpenses: data.otherProgramExpenses,
-        }, filters, { auditAsOfMonth, budgetCeilings });
-    }, [data, budgetCeilings, selectedYear, selectedOu, selectedTier, selectedFundType, auditAsOfMonth]);
+        };
+        return reportScope
+            ? buildReportFinancialAudit(inputs, reportScope, { auditAsOfMonth, budgetCeilings })
+            : buildFinancialAudit(inputs, filters, { auditAsOfMonth, budgetCeilings });
+    }, [data, reportScopeKey, budgetCeilings, selectedYear, selectedOu, selectedTier, selectedFundType, auditAsOfMonth]);
 
     const filterOptions = useMemo(() => ({
         reports: uniqueSorted(audit.issues.flatMap(issue => issue.affectedReports)),
@@ -257,7 +265,7 @@ const FinancialAuditReport: React.FC<FinancialAuditReportProps> = ({
                 <div className="financial-audit-summary-card">
                     <span>Budget Ceiling</span>
                     <strong>{formatCurrencyWhole(audit.summary.totalBudgetCeiling)}</strong>
-                    <small>Configured OU/year ceiling</small>
+                    <small>{reportScope?.fundSources.mode === 'values' ? 'Whole OU/year ceiling; filtered totals only' : 'Configured OU/year ceiling'}</small>
                 </div>
                 <div className="financial-audit-summary-card">
                     <span>Net Target Allocation</span>
