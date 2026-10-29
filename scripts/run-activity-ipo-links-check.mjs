@@ -56,10 +56,11 @@ try {
     }
     const form = await readFile(new URL('../components/ActivityEdit.tsx', import.meta.url), 'utf8');
     const app = await readFile(new URL('../App.tsx', import.meta.url), 'utf8');
-    assert.match(form, /if \(mode === 'accomplishment'\)\s*\{\s*const obligationIds/);
-    assert.match(form, /syncActivityObligations\(activity!\.id, data\.expenses\.filter/);
+    assert.match(form, /readActivityAccomplishments\(\[activity.id\], currentUser\)/);
+    assert.match(form, /saveActivityAccomplishment\(\{/);
+    assert.doesNotMatch(form, /syncActivityObligations\(/);
     assert.match(form, /update\(sanitizedPayload\)\.eq\('id', activity!\.id\)\.select\(\)\.single\(\)/);
-    assert.match(form, /participating_ipo_ids: entry\.participating_ipo_ids/);
+    assert.match(form, /buildRepeatingActivityPayload\(shared, entry, ipos/);
     assert.match(app, /onUpdateActivity=\{handleActivitySaved\}/);
     assert.match(app, /activitiesSync\.upsertLocalData\(\[updated\]\)/);
     console.log('PASS: Activity IPO identity, replacement/clear, legacy/duplicate/unavailable links, clone safety, details payload isolation, and persisted-row wiring.');

@@ -1,8 +1,28 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "reports-multiselect-fund-source",
+  "currentReleaseId": "activity-repeating-creation-fix",
   "releases": [
+    {
+      "id": "activity-repeating-creation-fix",
+      "version": "1.4.1",
+      "kind": "fix",
+      "title": "Activity repeating-entry creation fixes",
+      "releaseDate": "2026-10-29",
+      "pr": 98,
+      "sections": {
+        "Fixed": [
+          "Restored Fund Year, Fund Type, Tier and Fund Source controls when creating repeating Activities or Trainings.",
+          "Corrected Operating Unit selection for Super Admin and other permitted users.",
+          "Repeating schedule entries can be edited or removed before saving, with dates, participating IPOs and participant totals shown in a compact table."
+        ],
+        "Improved": [
+          "Validation protects unapplied schedule drafts and invalid dates or participant counts.",
+          "Partial saves retain the unsaved schedule entries; uncertain saves are checked before retrying to avoid duplicate activities."
+        ],
+        "Affected Pages": ["Add Activity", "Add Training", "Activity Details Editing"]
+      }
+    },
     {
       "id": "reports-multiselect-fund-source",
       "version": "1.4.0",

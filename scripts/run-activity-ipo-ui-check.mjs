@@ -15,7 +15,16 @@ const screenshots = await mkdtemp(path.join(tmpdir(), '4kis-activity-ipo-ui-'));
 
 // This server replaces all database/auth/save hooks with synthetic fixtures; it never imports the real client.
 const mocks = {
-    'supabaseClient': `export const supabase = { from(table) {
+    'supabaseClient': `const snapshot = activity => ({activity,stages:Object.fromEntries(activity.expenses.map(row=>[String(row.id),Object.fromEntries(['obligation','disbursement'].map(stage=>[stage,{source:'central',entries:(row[stage==='obligation'?'obligations':'disbursements']||[]).map(entry=>({...entry,id:String(entry.id),remarks:entry.remarks||''}))}]))]))});
+    export const supabase = { async rpc(name,args) {
+        const f=window.fixture;
+        if(name==='read_activity_accomplishments')return {data:[snapshot(f.source)],error:null};
+        if(name!=='save_activity_accomplishment')throw Error('Unexpected RPC');
+        (f.rpcWrites ||= []).push({name,args});
+        const activity={...f.source,...args.p_physical};
+        if(f.serverTitle!==undefined)activity.activity_title=f.serverTitle;
+        f.stored=activity;return {data:snapshot(activity),error:null};
+    }, from(table) {
         let action = 'select', payload, id;
         const query = {
             insert(value) { action = 'insert'; payload = value[0]; return query; },
@@ -23,10 +32,11 @@ const mocks = {
             eq(key, value) { if (key === 'id') id = value; return query; },
             delete() { action = 'delete'; return query; },
             in() { return query; },
-            select() { return query; }, single() { return query; },
+            select() { return query; }, single() { return query; }, maybeSingle() { return query; }, is() { return query; },
             then(resolve, reject) { return new Promise(done => setTimeout(() => {
                 if (window.fixture.fail) return done({ data: null, error: { message: 'Synthetic save failure' } });
                 if (window.fixture.noRow) return done({ data: null, error: null });
+                if (action === 'select') return done({data:window.fixture.source,error:null});
                 const row = { ...window.fixture.source, ...payload, id: id || 501 + window.fixture.writes.filter(write => write.table === 'activities').length, serverConfirmed: true };
                 if (window.fixture.serverTitle !== undefined && !Object.hasOwn(payload || {}, 'activity_title')) row.activity_title = window.fixture.serverTitle;
                 window.fixture.writes.push({ table, action, payload });
@@ -37,7 +47,7 @@ const mocks = {
         }; return query;
     } };`,
     'contexts/AuthContext': `const user = { id: 1, role: 'Super Admin', fullName: 'Fixture Admin', operatingUnit: 'NPMO' };
-        export const useAuth = () => ({ currentUser: user, hasAccess: () => !window.fixture.denied });`,
+        export const useAuth = () => ({ currentUser: user, hasAccess: () => !window.fixture.denied, getVisibilityScope: () => 'All' });`,
     'hooks/useDcfPolicyGuard': `export const normalizePolicyMonth = value => String(value || '').slice(0,7);
         export const useDcfPolicyGuard = () => ({
             getStatusDecision: () => ({ allowed: !window.fixture.denied }),
@@ -113,7 +123,7 @@ createRoot(document.getElementById('root')).render(<Harness />);`;
 const server = await createServer({
     configFile: false, root: process.cwd(), appType: 'custom',
     resolve: { alias: { '@': process.cwd() } },
-    server: { host: '127.0.0.1', port: 0 },
+    server: { host: '127.0.0.1', port: 0, hmr: false },
     optimizeDeps: { noDiscovery: true, include: ['react', 'react-dom/client', 'lucide-react'], entries: [] },
     plugins: [{
         name: 'activity-ipo-synthetic-fixture', enforce: 'pre',
@@ -206,7 +216,10 @@ try {
         await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
         await page.waitForFunction(() => window.fixture.saved.length === 1);
         const actualOnly = await page.evaluate(() => window.fixture);
-        assert.equal(Object.hasOwn(actualOnly.writes.find(write => write.table === 'activities').payload, 'activity_title'), false);
+        if (mode === 'accomplishment') {
+            assert.equal(actualOnly.writes.filter(write => write.table === 'activities').length, 0);
+            assert.equal(Object.hasOwn(actualOnly.rpcWrites[0].args.p_physical, 'activity_title'), false);
+        } else assert.equal(Object.hasOwn(actualOnly.writes.find(write => write.table === 'activities').payload, 'activity_title'), false);
         assert.equal(actualOnly.stored.activity_title, 'Latest saved title');
     }
     await page.evaluate(() => window.loadFixture('ordinary', { fail: true }));
@@ -226,7 +239,7 @@ try {
     await page.getByRole('button', { name: /^Remove Replacement IPO/ }).waitFor();
 
     await page.evaluate(() => window.loadFixture('ordinary', { denied: true }));
-    await replaceIpo();
+    assert.equal(await page.getByRole('button', { name: 'Remove Original IPO', exact: true }).isDisabled(), true);
     await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
     await page.waitForFunction(() => !document.querySelector('button[type="submit"]').disabled);
     assert.equal(await page.evaluate(() => window.fixture.writes.length), 0);
@@ -280,10 +293,7 @@ try {
     assert.equal(await page.evaluate(() => window.fixture.saved[0].activity_title), null);
 
     await page.evaluate(() => window.loadFixture('create', { denied: true }));
-    await page.locator('select[name="component"]').selectOption('Program Management');
-    await page.locator('select').filter({ has: page.locator('option[value="Subproject Monitoring"]') }).selectOption('Subproject Monitoring');
-    await page.locator('input[name="date"]').fill('2026-10-15');
-    await page.locator('select').filter({ has: page.locator('option[value="fixture-region"]') }).selectOption('fixture-region');
+    assert.equal(await page.locator('select[name="component"]').isDisabled(), true);
     await page.getByRole('button', { name: 'Create Activity', exact: true }).click();
     await page.waitForFunction(() => !document.querySelector('button[type="submit"]').disabled);
     assert.equal(await page.evaluate(() => window.fixture.writes.length), 0);

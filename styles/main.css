@@ -14717,6 +14717,47 @@ button.bar1-drilldown-card:focus-visible {
   }
 }
 
+.activity-repeating-table {
+  border-radius: 0;
+  max-height: 24rem;
+  overflow: auto;
+  min-width: 0;
+}
+
+.activity-repeating-table .data-table {
+  width: 100%;
+  min-width: 84rem;
+  table-layout: fixed;
+}
+
+.activity-repeating-table :is(th, td) {
+  white-space: nowrap;
+  border-right: 1px solid var(--app-border);
+  padding: 0.5rem 0.75rem;
+}
+
+.activity-repeating-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--app-surface-muted);
+}
+
+.activity-repeating-table tr[aria-selected="true"] td { background: var(--app-surface-muted); }
+.activity-repeating-table__number { width: 4rem; }
+.activity-repeating-table__title { width: 15rem; }
+.activity-repeating-table__date { width: 8rem; }
+.activity-repeating-table__ipos { width: 21rem; }
+.activity-repeating-table__count { width: 5rem; }
+.activity-repeating-table__total { width: 10rem; }
+.activity-repeating-table__actions { width: 7.5rem; }
+.activity-repeating-table__row-actions { display: flex; gap: 0.25rem; }
+.activity-repeating-table__row-actions .table-action { width: 2rem; min-width: 2rem; padding: 0; }
+
+@media (max-width: 640px) {
+  .activity-repeating-table__row-actions .table-action { width: 2.75rem; min-width: 2.75rem; min-height: 2.75rem; }
+}
+
 .form-repeat-list {
   display: grid;
   gap: 0.5rem;

@@ -1894,7 +1894,7 @@ const AppContent: React.FC = () => {
                 }
                 return <ActivityEdit 
                             mode={effectiveEditMode}
-                            activity={routeActivity || undefined}
+                            activity={effectiveEditMode === 'create' ? undefined : routeActivity || undefined}
                             ipos={activityWorkflowIpos}
                             onBack={() => navigateTo(effectiveEditMode === 'create'
                                 ? '/activities'
