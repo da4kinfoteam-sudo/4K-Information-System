@@ -13,7 +13,7 @@ const screenshots = await mkdtemp(path.join(tmpdir(),'4kis-supplement-ui-'));
 const serve = process.argv.includes('--serve');
 const mocks = {
     'contexts/AuthContext': `const user={id:1,password:'fixture-password',role:'Super Admin',fullName:'Fixture Admin',operatingUnit:'NPMO'};
-        export const useAuth=()=>({currentUser:user,hasAccess:()=>!window.fixture.denied});`,
+        export const useAuth=()=>({currentUser:user,hasAccess:()=>!window.fixture.denied,getVisibilityScope:()=> 'All'});`,
     'hooks/useDcfPolicyGuard': `export const useDcfPolicyGuard=()=>({getStatusDecision:()=>({allowed:!window.fixture.denied,message:'Fixture policy'})});`,
     'supabaseClient': `export const supabase={async rpc(name,payload){
         const f=window.fixture;

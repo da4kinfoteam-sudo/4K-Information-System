@@ -37,6 +37,8 @@
     "test:subproject-accomplishment-ui": "node scripts/run-subproject-accomplishment-ui-check.mjs",
     "test:budget-item-transfer": "node --experimental-strip-types scripts/run-budget-item-transfer-check.mjs",
     "test:activity-ipo-links": "node scripts/run-activity-ipo-links-check.mjs",
+    "test:activity-repeating": "node scripts/run-activity-repeating-check.mjs",
+    "test:activity-repeating-ui": "node scripts/run-activity-repeating-ui-check.mjs",
     "test:activity-budget-schedules": "node scripts/run-activity-budget-schedule-check.mjs",
     "test:activity-budget-ui": "node scripts/run-activity-budget-ui-check.mjs",
     "test:activity-supplements": "node scripts/run-activity-supplement-check.mjs",
