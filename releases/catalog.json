@@ -9,7 +9,7 @@
       "kind": "fix",
       "title": "Activity repeating-entry creation fixes",
       "releaseDate": "2026-10-29",
-      "pr": null,
+      "pr": 98,
       "sections": {
         "Fixed": [
           "Restored Fund Year, Fund Type, Tier and Fund Source controls when creating repeating Activities or Trainings.",
