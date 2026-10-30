@@ -1,6 +1,7 @@
 import { ActivitySupplementalSection } from './ui/ActivitySupplementalSection';
 import { getActivityBudgetSummary, isOriginalActivityBudgetLocked, isSupplementalExpense, isActivityExpenseActualEligible } from '../lib/activitySupplementalBudget';
 import { groupActivityExpenses } from '../lib/activityBudgetSchedules';
+import { BudgetTargetSummary } from './ui/BudgetTargetPlanEditor';
 
 import { getActivityDisplayTitle } from '../lib/activityTitles';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -632,8 +633,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                 {index === 0 && <td rowSpan={group.rows.length} title={getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}>
                                                     {exp.uacsCode}
                                                 </td>}
-                                                <td>{formatMonthYear(exp.obligationMonth)}</td>
-                                                <td>{formatMonthYear(exp.disbursementMonth)}</td>
+                                                <td>{exp.targetScheduleVersion === 2 ? <BudgetTargetSummary line={exp} allocation={getBudgetLineAmount(exp)} stage="obligation" /> : formatMonthYear(exp.obligationMonth)}</td>
+                                                <td>{exp.targetScheduleVersion === 2 ? <BudgetTargetSummary line={exp} allocation={getBudgetLineAmount(exp)} stage="disbursement" /> : formatMonthYear(exp.disbursementMonth)}</td>
                                                 <td className="data-table__numeric">{formatCurrency(getBudgetLineAmount(exp))}</td>
                                             </tr>
                                         )))

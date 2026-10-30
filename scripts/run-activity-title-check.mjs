@@ -89,7 +89,7 @@ try {
         const binary = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
         globalThis.FileReader = class { readAsArrayBuffer() { globalThis.importPromise = this.onload({ target: { result: binary } }); } };
         let records = [];
-        handleActivitiesUpload({ target: { files: [{}] } }, [], updater => { records = updater(records); }, [], () => {}, () => {}, {}, { fullName: 'Fixture', operatingUnit: 'NPMO' }, [{ uid: 'FS-000001', label: '4K Fund', is_active: true }]);
+        handleActivitiesUpload({ target: { files: [{}] } }, [], updater => { records = updater(records); }, [], () => {}, () => {}, {}, { fullName: 'Fixture', operatingUnit: 'NPMO' }, [{ uid: 'FS-000001', label: '4K Fund', is_active: true }], rows => { records = [...records, ...rows]; });
         await globalThis.importPromise;
         return records;
     };

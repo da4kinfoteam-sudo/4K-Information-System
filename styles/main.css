@@ -28409,3 +28409,25 @@ button.lod-table-state:hover {
   .subproject-budget-editor__draft .form-grid { grid-template-columns: minmax(0, 1fr); }
   .subproject-budget-editor__draft { padding: 0.75rem; }
 }
+
+.budget-target-plan { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; min-width: 0; margin-top: 1rem; }
+.budget-target-plan__stage { border: 0; padding: 0; margin: 0; min-width: 0; }
+.budget-target-plan__stage legend { padding: 0; margin-bottom: 0.5rem; font-size: inherit; font-weight: 600; }
+.budget-target-plan__scroll { max-height: 320px; }
+.budget-target-plan__scroll table { width: 100%; min-width: 410px; }
+.budget-target-plan__scroll th, .budget-target-plan__scroll td { white-space: nowrap; }
+.budget-target-plan__scroll input { min-width: 112px; }
+.budget-target-plan__footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; padding-top: 0.5rem; }
+.budget-target-plan__allocation { grid-column: 1 / -1; }
+.budget-target-plan__variance { color: var(--text-secondary); }
+.budget-target-plan__summary { display: block; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.budget-target-plan-dialog { width: min(1100px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; }
+.budget-target-plan-dialog .modal-card__header h3 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.budget-target-plan-dialog .modal-card__body { overflow-y: auto; min-height: 0; padding: 1rem; }
+@media (max-width: 800px) {
+  .budget-target-plan { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .budget-target-plan__stage .table-action { min-width: 44px; min-height: 44px; }
+  .budget-target-plan-dialog .modal-card__footer .btn { min-height: 44px; }
+}

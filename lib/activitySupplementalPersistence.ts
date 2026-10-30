@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 import type { Activity, ActivityExpense, User } from '../constants';
 import type { ActivitySupplement } from './activitySupplementalBudget';
+import { requireIndependentTargetSupport } from './budgetTargetPersistence';
 
 export interface ActivitySupplementResult { activity: Activity; supplements: ActivitySupplement[]; revisions?: Array<{ id: number; operation: string; reason: string; created_at: string }>; }
 export async function readActivitySupplements(activityId: number, actor: User, history = false): Promise<ActivitySupplementResult> {
@@ -16,6 +17,7 @@ export async function saveActivitySupplement(args: {
     revision: number; establishBaseline: boolean; requestKey: string;
 }): Promise<ActivitySupplementResult> {
     if (!supabase) throw new Error('The database connection is unavailable. No changes were saved.');
+    await requireIndependentTargetSupport(args.rows);
     const { data, error } = await supabase.rpc('save_activity_supplement', {
         p_actor_id: args.actor.id, p_actor_password: args.actor.password || '', p_activity_id: args.activity.id,
         p_uid: args.uid, p_operation: args.operation, p_source: args.source, p_reference: args.reference,

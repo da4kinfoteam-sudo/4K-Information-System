@@ -17,6 +17,7 @@ const mocks = {
     'hooks/useDcfPolicyGuard': `export const useDcfPolicyGuard=()=>({getStatusDecision:()=>({allowed:!window.fixture.denied,message:'Fixture policy'})});`,
     'supabaseClient': `export const supabase={async rpc(name,payload){
         const f=window.fixture;
+        if(name==='budget_target_schedule_capability')return {data:2,error:null};
         if(name==='read_activity_supplements'){f.reads++;await new Promise(resolve=>setTimeout(resolve,f.readDelay||0));return {data:structuredClone({activity:f.source,supplements:f.ledgers,revisions:f.revisions}),error:null};}
         f.calls.push(payload);await new Promise(resolve=>setTimeout(resolve,f.delay||0));
         if(f.fail)return {data:null,error:{message:'Synthetic failure: nothing saved'}};
@@ -81,11 +82,19 @@ try{
     await modal.getByRole('combobox',{name:'UACS Code',exact:true}).fill('502');
     await page.getByRole('option',{name:'502 - Travel expenses',exact:true}).click();
     const draft=modal.locator('.subproject-budget-editor__draft');
-    await draft.getByRole('button',{name:/Obligation month/}).click();
-    await page.getByRole('button',{name:'Oct 2026',exact:true}).click();
-    await draft.getByRole('button',{name:/Disbursement month/}).click();
-    await page.getByRole('button',{name:'Nov 2026',exact:true}).click();
     await draft.getByRole('spinbutton').fill('2500');
+    await draft.getByRole('button',{name:'Add Obligation Target',exact:true}).click();
+    await draft.getByRole('button',{name:/Obligation target month/}).click();
+    await page.getByRole('button',{name:'Oct 2026',exact:true}).click();
+    await draft.getByLabel(/Obligation target amount/).fill('2500');
+    await draft.getByRole('button',{name:'Add Disbursement Target',exact:true}).click();
+    await draft.getByRole('button',{name:/Disbursement target month/}).click();
+    await page.getByRole('button',{name:'Nov 2026',exact:true}).click();
+    await draft.getByLabel(/Disbursement target amount/).fill('1250');
+    await draft.getByRole('button',{name:'Add Disbursement Target',exact:true}).click();
+    await draft.getByRole('button',{name:/Disbursement target month/}).last().click();
+    await page.getByRole('button',{name:'Dec 2026',exact:true}).click();
+    await draft.getByLabel(/Disbursement target amount/).last().fill('1250');
     assert.equal(await modal.getByRole('button',{name:'Submit',exact:true}).isDisabled(),true);
     for(const width of [1440,814,390]){
         await page.setViewportSize({width,height:900});
@@ -97,6 +106,8 @@ try{
     await modal.getByRole('button',{name:'Apply',exact:true}).click();
     await modal.getByRole('button',{name:'Submit',exact:true}).dblclick();
     await page.waitForFunction(()=>window.fixture.calls.length===1&&window.budgetSummary.supplemental===7500);
+    const plan=await page.evaluate(()=>window.fixture.calls[0].p_rows[0]);
+    assert.equal(plan.targetScheduleVersion,2);assert.equal(plan.targetObligationSchedules.length,1);assert.equal(plan.targetDisbursementSchedules.length,2);assert.equal(plan.amount,2500);
     assert.equal(await page.getByRole('dialog').count(),0);
     assert.equal(await page.evaluate(()=>window.fixture.reads),1);
     await page.screenshot({path:path.join(screenshots,'supplement-section-desktop.png'),fullPage:true});

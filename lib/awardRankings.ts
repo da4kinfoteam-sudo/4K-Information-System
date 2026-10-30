@@ -10,6 +10,7 @@ import {
 } from '../constants';
 import { collectFinancialLineItems } from './financialAggregation';
 import { isTransferAccomplishmentActive } from './budgetItemTransferRules';
+import { targetScheduleMonths } from './budgetTargetSchedules';
 
 export type AwardPeriod = 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'Year End';
 export type AwardQuarter = Exclude<AwardPeriod, 'Year End'>;
@@ -558,7 +559,11 @@ const buildQuarterFinancial = (
     const months = [quarterIndex * 3, quarterIndex * 3 + 1, quarterIndex * 3 + 2];
     const rows = awardOperatingUnits(data).map(ou => {
         const ouItems = lineItems.filter(item => item.operatingUnit === ou);
-        const allocation = ouItems.reduce((sum, item) => months.includes(item.targetMonth ?? -1) ? sum + item.alloc : sum, 0);
+        const allocation = ouItems.reduce((sum, item) => {
+            if (item.line.targetScheduleVersion !== 2) return months.includes(item.targetMonth ?? -1) ? sum + item.alloc : sum;
+            const plannedMonths = targetScheduleMonths(item.targetObligationSchedules, year);
+            return sum + months.reduce((total, month) => total + plannedMonths[month], 0);
+        }, 0);
         const obligation = ouItems.reduce((sum, item) => sum + months.reduce((inner, month) => inner + (item.obligationByMonth[month] || 0), 0), 0);
         const disbursement = ouItems.reduce((sum, item) => sum + months.reduce((inner, month) => inner + (item.disbursementByMonth[month] || 0), 0), 0);
         const obligationRate = safeRate(obligation, allocation);

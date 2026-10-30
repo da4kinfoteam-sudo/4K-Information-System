@@ -24,6 +24,7 @@ import { getFundSourceByUid, getFundSourceLabel, getNewSubprojectDefaultFundSour
 import { SubprojectBudgetEditor } from './ui/SubprojectBudgetEditor';
 import { budgetTargetsChanged, latestBudgetDeliveryDate, validateBudgetSchedule } from '../lib/subprojectBudgetSchedules';
 import { persistSubprojectDraft, rescheduleBudgetTargets } from '../lib/subprojectDraftPersistence';
+import { requireIndependentTargetSupport } from '../lib/budgetTargetPersistence';
 
 interface SubprojectEditProps {
     subproject?: Subproject;
@@ -708,6 +709,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             }
 
             if (!subproject) {
+                await requireIndependentTargetSupport(dbPayload.details || []);
                 const { data, error } = await supabase.from('subprojects').insert([dbPayload]).select().single();
                 if (error) { alert("Error saving: " + error.message); return; }
                 if (data) {

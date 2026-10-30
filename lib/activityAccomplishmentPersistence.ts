@@ -1,5 +1,6 @@
 import type { Activity, ActivityExpense, User } from '../constants';
 import { supabase } from '../supabaseClient';
+import { requireIndependentTargetSupport } from './budgetTargetPersistence';
 
 export type ActivityActualStage = 'obligation' | 'disbursement';
 export interface ActivityActualEntry { id: string | number; date: string; amount: number; remarks?: string; }
@@ -113,6 +114,7 @@ export async function saveActivityAccomplishment(args: {
     if (!supabase || !args.actor?.id) throw new Error('The database connection or user session is unavailable. No changes were saved.');
     const edits = buildActivityActualEdits(args.base, args.draft, args.removals, args.onlyStage, args.onlyItem);
     const physical = (args.surface || 'activity') === 'activity' ? getActivityPhysicalChanges(args.base.activity, args.draft) : {};
+    await requireIndependentTargetSupport((args.targets || []).map(target => ({ ...args.base.activity.expenses.find(row => String(row.id) === target.itemId), ...target.values })));
     const payload = { p_base: args.base, p_edits: edits, p_physical: physical, p_targets: args.targets || [], p_surface: args.surface || 'activity' };
     const fingerprint = JSON.stringify(canonical(payload));
     if (args.request.fingerprint !== fingerprint) { args.request.fingerprint = fingerprint; args.request.key = crypto.randomUUID(); args.request.reason = args.reason || ''; }

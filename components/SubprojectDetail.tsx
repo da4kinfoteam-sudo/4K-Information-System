@@ -10,6 +10,8 @@ import { normalizePolicyMonth, useDcfPolicyGuard } from '../hooks/useDcfPolicyGu
 import { MonthYearPicker } from './ui/MonthYearPicker';
 import { SubprojectBudgetEditor } from './ui/SubprojectBudgetEditor';
 import { ReferenceCombobox } from './ui/ReferenceCombobox';
+import { BudgetTargetPlanEditor, BudgetTargetSummary } from './ui/BudgetTargetPlanEditor';
+import { BudgetTargetPlan, TARGET_PLAN_FIELDS, validateTargetPlan } from '../lib/budgetTargetSchedules';
 import { budgetTargetsChanged, getUacsOptions, groupBudgetSchedules, latestBudgetDeliveryDate, validateBudgetSchedule } from '../lib/subprojectBudgetSchedules';
 import { persistSubprojectDraft, rescheduleBudgetTargets } from '../lib/subprojectDraftPersistence';
 import { buildSubprojectActualEdits, getSubprojectPhysicalChanges, hydrateSubprojectAccomplishment, readSubprojectAccomplishments, saveSubprojectAccomplishment, type SubprojectAccomplishmentSnapshot, type SubprojectAccomplishmentRequest, type SubprojectActualRemovals } from '../lib/subprojectAccomplishmentPersistence';
@@ -133,7 +135,9 @@ interface SubprojectDetailInput extends Omit<SubprojectDetailType, 'id'> {
     isCompleted?: boolean;
 }
 
-interface AccomplishmentItemDraft {
+interface AccomplishmentItemDraft extends BudgetTargetPlan {
+    obligationMonth?: string;
+    disbursementMonth?: string;
     type: string;
     particulars: string;
     deliveryDate: string;
@@ -168,6 +172,9 @@ const createEmptyAccomplishmentItemDraft = (): AccomplishmentItemDraft => ({
     actualDeliveryDate: '',
     obligations: [],
     disbursements: [],
+    targetScheduleVersion: 2,
+    targetObligationSchedules: [],
+    targetDisbursementSchedules: [],
     adjustmentType: 'Replacement',
     adjustmentFundingSource: 'Original Allocation',
     replacementOfItemId: '',
@@ -1253,6 +1260,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setAccomplishmentItemFormMessage(null);
         setAccomplishmentItemNotice(null);
         setAccomplishmentItemDraft({
+            ...Object.fromEntries(TARGET_PLAN_FIELDS.filter(field => item[field] !== undefined).map(field => [field, item[field]])),
+            obligationMonth: item.obligationMonth,
+            disbursementMonth: item.disbursementMonth,
             type: item.type || '',
             particulars: item.particulars || '',
             deliveryDate: item.deliveryDate || '',
@@ -1277,6 +1287,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const handleAddAccomplishmentItem = async () => {
         if (!canAddAccomplishmentItem || accomplishmentItemSubmitLock.current) return;
+        const targetIssue = validateTargetPlan(accomplishmentItemDraft);
+        if (targetIssue) { setAccomplishmentItemFormMessage(targetIssue); return; }
 
         accomplishmentItemSubmitLock.current = true;
         setIsAccomplishmentItemSubmitting(true);
@@ -1365,6 +1377,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         const sourceItemId = sourceItem?.id ?? null;
         const reason = accomplishmentItemDraft.adjustmentReason.trim();
         const newItem = ensureOriginalBudgetSnapshot({
+            ...existingAdjustmentItem,
+            ...Object.fromEntries(TARGET_PLAN_FIELDS.filter(field => accomplishmentItemDraft[field] !== undefined).map(field => [field, accomplishmentItemDraft[field]])),
             budgetItemGroupId: existingAdjustmentItem?.budgetItemGroupId || crypto.randomUUID(),
             type: accomplishmentItemDraft.type,
             particulars: accomplishmentItemDraft.particulars,
@@ -1375,8 +1389,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             objectType: accomplishmentItemDraft.objectType,
             expenseParticular: accomplishmentItemDraft.expenseParticular,
             uacsCode: accomplishmentItemDraft.uacsCode,
-            obligationMonth: latestObligation?.date || '',
-            disbursementMonth: latestDisbursement?.date || '',
+            obligationMonth: accomplishmentItemDraft.obligationMonth || '',
+            disbursementMonth: accomplishmentItemDraft.disbursementMonth || '',
             actualDeliveryDate: accomplishmentItemDraft.actualDeliveryDate || '',
             actualNumberOfUnits,
             actualObligationDate: latestObligation?.date || '',
@@ -2764,6 +2778,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                     </div>
                                 </div>
 
+                                <BudgetTargetPlanEditor line={accomplishmentItemDraft} allocation={Number(accomplishmentItemDraft.pricePerUnit) * Number(accomplishmentItemDraft.numberOfUnits)} defaultYear={editedSubproject.fundingYear} disabled={isAccomplishmentItemSubmitting} onChange={plan => setAccomplishmentItemDraft(previous => ({ ...previous, ...plan }))} />
                                 <fieldset className="subproject-accomplishment-item-modal__adjustment">
                                     <legend className="form-legend">Adjustment Details</legend>
                                     <div className="form-grid subproject-accomplishment-item-modal__grid">
@@ -3069,8 +3084,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 </td>
                                                 <td>{formatMonthYear(detail.deliveryDate)}</td>
                                                 <td>{detail.uacsCode}</td>
-                                                <td>{formatMonthYear(detail.obligationMonth)}</td>
-                                                <td>{formatMonthYear(detail.disbursementMonth)}</td>
+                                                <td>{detail.targetScheduleVersion === 2 ? <BudgetTargetSummary line={detail} allocation={getBudgetLineAmount(detail)} stage="obligation" /> : formatMonthYear(detail.obligationMonth)}</td>
+                                                <td>{detail.targetScheduleVersion === 2 ? <BudgetTargetSummary line={detail} allocation={getBudgetLineAmount(detail)} stage="disbursement" /> : formatMonthYear(detail.disbursementMonth)}</td>
                                                 <td className="data-table__numeric">{detail.numberOfUnits.toLocaleString()} {detail.unitOfMeasure}</td>
                                                 <td className="data-table__numeric">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</td>
                                                 <td>

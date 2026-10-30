@@ -1,5 +1,9 @@
 import { isActivityExpenseActualEligible } from '../../lib/activitySupplementalBudget';
-import { hydrateActivityAccomplishment, readActivityAccomplishments, saveActivityAccomplishment, type ActivityAccomplishmentSnapshot, type ActivityAccomplishmentRequest } from '../../lib/activityAccomplishmentPersistence';
+import { isOriginalActivityBudgetLocked, isSupplementalExpense } from '../../lib/activitySupplementalBudget';
+import { BudgetTargetPlan, TargetPlanOwner, TARGET_PLAN_FIELDS, readTargetSchedules, targetScheduleTotal, validateTargetPlan } from '../../lib/budgetTargetSchedules';
+import { BudgetTargetPlanDialog } from '../ui/BudgetTargetPlanDialog';
+import { BudgetTargetSummary } from '../ui/BudgetTargetPlanEditor';
+import { hydrateActivityAccomplishment, readActivityAccomplishments, saveActivityAccomplishment, sameActivityActualValue, type ActivityAccomplishmentSnapshot, type ActivityAccomplishmentRequest } from '../../lib/activityAccomplishmentPersistence';
 import { hydrateSubprojectAccomplishment, readSubprojectAccomplishments, saveSubprojectAccomplishment, type SubprojectAccomplishmentSnapshot, type SubprojectAccomplishmentRequest } from '../../lib/subprojectAccomplishmentPersistence';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -51,7 +55,9 @@ interface Props {
  onDataScopeChange?: (scope: Partial<DataScope>) => void;
 }
 
-interface FinancialItem {
+interface FinancialItem extends BudgetTargetPlan {
+ allocationAmount?: number;
+ targetBudgetLocked?: boolean;
  uniqueId: string;
  sourceType: 'Subproject' | 'Activity' | 'Office' | 'Staffing' | 'Other';
  sourceId: number;
@@ -195,10 +201,21 @@ const getTargetDisbursementForTotals = (item: FinancialItem) =>
  isTaggedExclusion(item) ? 0 : toFiniteNumber(item.targetDisbursementAmount);
 
 const getTaggedAllocationAmount = (item: FinancialItem) =>
- isTaggedExclusion(item) ? toFiniteNumber(item.targetObligationAmount) : 0;
+ isTaggedExclusion(item) ? toFiniteNumber(item.allocationAmount ?? item.targetObligationAmount) : 0;
 
 const getUnobligatedAmount = (item: FinancialItem) =>
- toFiniteNumber(item.targetObligationAmount) - toFiniteNumber(item.actualObligationAmount);
+ toFiniteNumber(item.allocationAmount ?? item.targetObligationAmount) - toFiniteNumber(item.actualObligationAmount);
+
+const projectBudgetTargets = (line: TargetPlanOwner & { amount?: number; pricePerUnit?: number; numberOfUnits?: number }) => ({
+ ...Object.fromEntries(TARGET_PLAN_FIELDS.filter(field => line[field] !== undefined).map(field => [field, line[field]])),
+ allocationAmount: getBudgetLineAmount(line),
+ targetObligationAmount: targetScheduleTotal(readTargetSchedules(line, 'obligation', { amount: getBudgetLineAmount(line), month: line.obligationMonth, ownerId: line.id })),
+ targetDisbursementAmount: targetScheduleTotal(readTargetSchedules(line, 'disbursement', { amount: getBudgetLineAmount(line), month: line.disbursementMonth, ownerId: line.id })),
+});
+const targetOwner = (item: FinancialItem): TargetPlanOwner => ({ ...item, id: item.detailId, obligationMonth: item.targetObligationMonth, disbursementMonth: item.targetDisbursementMonth });
+const changedTargetPlanFields = (item: FinancialItem, original: FinancialItem) => Object.fromEntries(
+ TARGET_PLAN_FIELDS.filter(field => !sameActivityActualValue(item[field], original[field])).map(field => [field, item[field]]),
+);
 
 const getObjectTypeLabel = (objectType: string) => {
  if (objectType === 'CO') return 'CO — Capital Outlays';
@@ -240,7 +257,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  onDataScopeChange,
 }) => {
  const { canEdit } = useUserAccess('Accomplishment - Financial');
- const { currentUser } = useAuth();
+ const { currentUser, hasAccess } = useAuth();
  const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
  const defaultYear = new Date().getFullYear();
  const legacyScope = useMemo(readLegacyFinancialScope, []);
@@ -270,6 +287,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
  const [actualsDialog, setActualsDialog] = useState<{ itemId: string; kind: 'obligation' | 'disbursement' } | null>(null);
  const [actualsDialogSaving, setActualsDialogSaving] = useState(false);
  const [actualsDialogError, setActualsDialogError] = useState('');
+ const [targetDialogId, setTargetDialogId] = useState<string | null>(null);
+ const targetDialogRef = useRef(targetDialogId);
+ targetDialogRef.current = targetDialogId;
  const actualsDialogRef = useRef(actualsDialog);
  const itemsRef = useRef(items);
  actualsDialogRef.current = actualsDialog;
@@ -308,6 +328,18 @@ const FinancialAccomplishment: React.FC<Props> = ({
  action: 'editFinancialAccomplishment',
  hasModuleAccess: canEdit,
  });
+ };
+
+ const getTargetBudgetDecision = (item: FinancialItem) => {
+ const moduleKey = getDcfModuleKeyForSourceType(item.sourceType);
+ if (!['Subproject', 'Activity'].includes(item.sourceType) || item.status !== 'Proposed' || item.isSuperseded || item.targetBudgetLocked || !moduleKey) return { allowed: false, code: 'blocked_by_status' as const, message: 'Use the existing budget or supplemental workflow.' };
+ return getStatusDecision({ moduleKey, item: getPolicySubjectForFinancialItem(item), action: 'editBudget', hasModuleAccess: canEdit && (currentUser?.role === 'Super Admin' || hasAccess?.(item.sourceType === 'Subproject' ? 'Subprojects' : 'Activities', 'edit') === true) });
+ };
+ const openTargetDialog = (item: FinancialItem) => {
+ if (loadError || !getTargetBudgetDecision(item).allowed) return;
+ const issue = validateTargetPlan(item);
+ if (issue) { alert(issue); return; }
+ setTargetDialogId(item.uniqueId);
  };
 
  const ensureFinancialItemAllowed = async (item: FinancialItem) => {
@@ -362,8 +394,19 @@ const FinancialAccomplishment: React.FC<Props> = ({
  .filter(Boolean) as string[];
 
  const validateFinancialItemForSave = async (item: FinancialItem) => {
- if (!(await ensureFinancialItemAllowed(item))) return false;
  const originalItem = originalItems.find(original => original.uniqueId === item.uniqueId);
+ const managed = ['Activity', 'Subproject'].includes(item.sourceType);
+ const targetChanged = managed && originalItem && (Object.keys(changedTargetPlanFields(item, originalItem)).length > 0 || item.allocationAmount !== originalItem.allocationAmount);
+ if (targetChanged) {
+ const issue = validateTargetPlan(item);
+ if (issue) { alert(issue); return false; }
+ const decision = getTargetBudgetDecision(item);
+ if (!(await ensureDecisionAllowed(decision, { moduleKey: getDcfModuleKeyForSourceType(item.sourceType), item: getPolicySubjectForFinancialItem(item), itemId: item.sourceId, itemName: item.sourceName, status: item.status as any, action: 'editBudget' }))) return false;
+ }
+ const actualChanged = !sameActivityActualValue(item.obligations, originalItem?.obligations) || !sameActivityActualValue(item.disbursements, originalItem?.disbursements)
+   || item.actualObligationAmount !== originalItem?.actualObligationAmount || item.actualDisbursementAmount !== originalItem?.actualDisbursementAmount;
+ if (managed && !actualChanged) return true;
+ if (!(await ensureFinancialItemAllowed(item))) return false;
  const months = [
  ...getChangedRecordMonths(item.obligations || [], originalItem?.obligations || []),
  ...getChangedRecordMonths(item.disbursements || [], originalItem?.disbursements || []),
@@ -545,9 +588,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
  sourceName: sp.name,
  budgetParticular: d.particulars,
  targetObligationMonth: d.obligationMonth,
- targetObligationAmount: getBudgetLineAmount(d),
+ ...projectBudgetTargets(d),
  targetDisbursementMonth: d.disbursementMonth,
- targetDisbursementAmount: getBudgetLineAmount(d),
  actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (d.actualObligationDate || ''),
  actualObligationAmount: obs.length > 0 ? sumAmounts(obs) : toFiniteNumber(d.actualObligationAmount),
  actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (d.actualDisbursementDate || ''),
@@ -583,9 +625,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
  expenseParticular: e.expenseParticular || 'Unspecified',
  sourceName: getActivityDisplayTitle(act) || `${act.type} (${act.component})`,
  targetObligationMonth: e.obligationMonth,
- targetObligationAmount: getBudgetLineAmount(e),
+ ...projectBudgetTargets(e),
+ targetBudgetLocked: isOriginalActivityBudgetLocked(act) || isSupplementalExpense(e, act),
  targetDisbursementMonth: e.disbursementMonth,
- targetDisbursementAmount: getBudgetLineAmount(e),
  actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (e.actualObligationDate || ''),
  actualObligationAmount: obs.length > 0 ? sumAmounts(obs) : toFiniteNumber(e.actualObligationAmount),
  actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (e.actualDisbursementDate || ''),
@@ -772,12 +814,12 @@ const FinancialAccomplishment: React.FC<Props> = ({
  const oldBaselines = activityBaselines.current;
  const pending = changedItemsRef.current;
  subprojectBaselines.current = new Map(loadedItems.filter(item => item.sourceType === 'Subproject').map(item => [item.uniqueId,
-   (pending.has(item.uniqueId) || actualsDialogRef.current?.itemId === item.uniqueId) && oldSubprojectBaselines.has(item.uniqueId) ? oldSubprojectBaselines.get(item.uniqueId)! : subprojectSnapshotsById.get(item.sourceId)!]));
+   (pending.has(item.uniqueId) || actualsDialogRef.current?.itemId === item.uniqueId || targetDialogRef.current === item.uniqueId) && oldSubprojectBaselines.has(item.uniqueId) ? oldSubprojectBaselines.get(item.uniqueId)! : subprojectSnapshotsById.get(item.sourceId)!]));
  activityBaselines.current = new Map(loadedItems.filter(item => item.sourceType === 'Activity').map(item => [item.uniqueId,
-   pending.has(item.uniqueId) && oldBaselines.has(item.uniqueId) ? oldBaselines.get(item.uniqueId)! : snapshotsById.get(item.sourceId)!]));
+   (pending.has(item.uniqueId) || targetDialogRef.current === item.uniqueId) && oldBaselines.has(item.uniqueId) ? oldBaselines.get(item.uniqueId)! : snapshotsById.get(item.sourceId)!]));
  const oldOriginals = new Map(originalItemsRef.current.map(item => [item.uniqueId, item]));
- setItems(loadedItems.map(item => item.sourceType === 'Subproject' && actualsDialogRef.current?.itemId === item.uniqueId ? itemsRef.current.find(old => old.uniqueId === item.uniqueId) || item : ['Activity', 'Subproject'].includes(item.sourceType) && pending.has(item.uniqueId) ? pending.get(item.uniqueId)! : item));
- setOriginalItems(loadedItems.map(item => (['Activity', 'Subproject'].includes(item.sourceType) && pending.has(item.uniqueId)) || (item.sourceType === 'Subproject' && actualsDialogRef.current?.itemId === item.uniqueId) ? oldOriginals.get(item.uniqueId) || item : item));
+ setItems(loadedItems.map(item => targetDialogRef.current === item.uniqueId || (item.sourceType === 'Subproject' && actualsDialogRef.current?.itemId === item.uniqueId) ? itemsRef.current.find(old => old.uniqueId === item.uniqueId) || item : ['Activity', 'Subproject'].includes(item.sourceType) && pending.has(item.uniqueId) ? pending.get(item.uniqueId)! : item));
+ setOriginalItems(loadedItems.map(item => (['Activity', 'Subproject'].includes(item.sourceType) && pending.has(item.uniqueId)) || targetDialogRef.current === item.uniqueId || (item.sourceType === 'Subproject' && actualsDialogRef.current?.itemId === item.uniqueId) ? oldOriginals.get(item.uniqueId) || item : item));
  } catch (error) {
  console.error("Error loading data:", error);
  if (!cancelled) setLoadError('Financial data could not be loaded completely. Reload before editing.');
@@ -931,7 +973,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  acc.actualObligation += actualObligation;
  acc.actualDisbursement += actualDisbursement;
  acc.realignedSavings += getTaggedAllocationAmount(item);
- acc.totalAllocation += targetObligation;
+ acc.totalAllocation += isTaggedExclusion(item) ? 0 : toFiniteNumber(item.allocationAmount ?? item.targetObligationAmount);
  acc.targetObligation += targetObligation;
  acc.targetDisbursement += targetDisbursement;
 
@@ -1235,9 +1277,12 @@ const FinancialAccomplishment: React.FC<Props> = ({
    const original = originalItems.find(row => row.uniqueId === item.uniqueId);
    const targetValues: Record<string, unknown> = {};
    if (includeTargets && item.status === 'Proposed' && original) {
-     if (item.targetObligationAmount !== original.targetObligationAmount) targetValues.amount = item.targetObligationAmount;
-     if (item.targetObligationMonth !== original.targetObligationMonth) targetValues.obligationMonth = item.targetObligationMonth;
-     if (item.targetDisbursementMonth !== original.targetDisbursementMonth) targetValues.disbursementMonth = item.targetDisbursementMonth;
+     Object.assign(targetValues, changedTargetPlanFields(item, original));
+     if (item.allocationAmount !== original.allocationAmount) targetValues.amount = item.allocationAmount;
+     if (item.targetScheduleVersion !== 2) {
+       if (item.targetObligationMonth !== original.targetObligationMonth) targetValues.obligationMonth = item.targetObligationMonth;
+       if (item.targetDisbursementMonth !== original.targetDisbursementMonth) targetValues.disbursementMonth = item.targetDisbursementMonth;
+     }
    }
    const request = activityRequests.current.get(item.uniqueId) || {};
    activityRequests.current.set(item.uniqueId, request);
@@ -1248,9 +1293,11 @@ const FinancialAccomplishment: React.FC<Props> = ({
      targets: Object.keys(targetValues).length ? [{ itemId: String(item.detailId), values: targetValues }] : [],
      reason: getLastOverrideReason?.() || '',
    });
+   const confirmedExpense = confirmed.activity.expenses.find(row => String(row.id) === String(item.detailId))!;
+   const reconcilePlan = includeTargets || !changedItemsRef.current.has(item.uniqueId);
    // Advance only what this save confirmed; another open stage keeps its baseline.
    activityBaselines.current.set(item.uniqueId, {
-     activity: { ...base.activity, expenses: base.activity.expenses.map(row => String(row.id) === String(item.detailId) ? { ...row, ...targetValues } : row) },
+     activity: { ...base.activity, expenses: base.activity.expenses.map(row => String(row.id) === String(item.detailId) ? reconcilePlan ? { ...confirmedExpense } : { ...row, ...targetValues } : row) },
      stages: { ...base.stages, [String(item.detailId)]: {
        ...base.stages[String(item.detailId)],
        ...(sync === 'both' || sync === 'obligation' ? { obligation: confirmed.stages[String(item.detailId)].obligation } : {}),
@@ -1259,12 +1306,12 @@ const FinancialAccomplishment: React.FC<Props> = ({
    });
    const saved = hydrateActivityAccomplishment(confirmed);
    const savedExpense = saved.expenses.find(row => String(row.id) === String(item.detailId))!;
-   let savedItem = item;
+   let savedItem = reconcilePlan ? { ...item, ...projectBudgetTargets(savedExpense), targetObligationMonth: savedExpense.obligationMonth, targetDisbursementMonth: savedExpense.disbursementMonth } : item;
    if (sync === 'both' || sync === 'obligation') savedItem = mergeActualRecords(savedItem, 'obligation', savedExpense.obligations || []);
    if (sync === 'both' || sync === 'disbursement') savedItem = mergeActualRecords(savedItem, 'disbursement', savedExpense.disbursements || []);
    const confirmedItem = savedItem;
    setItems(previous => previous.map(row => row.uniqueId === item.uniqueId ? confirmedItem : row));
-   setOriginalItems(previous => previous.map(row => row.uniqueId !== item.uniqueId ? row : sync === 'both' ? confirmedItem : mergeActualRecords(row, sync, sync === 'obligation' ? confirmedItem.obligations : confirmedItem.disbursements)));
+   setOriginalItems(previous => previous.map(row => row.uniqueId !== item.uniqueId ? row : sync === 'both' || reconcilePlan ? confirmedItem : mergeActualRecords(row, sync, sync === 'obligation' ? confirmedItem.obligations : confirmedItem.disbursements)));
    skipNextFinancialReloadRef.current = true;
    onActivitySaved(saved);
    return confirmedItem;
@@ -1280,12 +1327,16 @@ const FinancialAccomplishment: React.FC<Props> = ({
    const original = originalItems.find(row => row.uniqueId === item.uniqueId);
    const targetValues: Record<string, unknown> = {};
    if (includeTargets && item.status === 'Proposed' && original) {
-     if (item.targetObligationAmount !== original.targetObligationAmount) {
-       targetValues.pricePerUnit = item.targetObligationAmount / (Number(detail.numberOfUnits) || 1);
+     Object.assign(targetValues, changedTargetPlanFields(item, original));
+     if (item.allocationAmount !== original.allocationAmount) {
+       targetValues.pricePerUnit = item.allocationAmount / (Number(detail.numberOfUnits) || 1);
        if (!Number(detail.numberOfUnits)) targetValues.numberOfUnits = 1;
+       if (Object.hasOwn(detail, 'amount')) targetValues.amount = item.allocationAmount;
      }
-     if (item.targetObligationMonth !== original.targetObligationMonth) targetValues.obligationMonth = item.targetObligationMonth;
-     if (item.targetDisbursementMonth !== original.targetDisbursementMonth) targetValues.disbursementMonth = item.targetDisbursementMonth;
+     if (item.targetScheduleVersion !== 2) {
+       if (item.targetObligationMonth !== original.targetObligationMonth) targetValues.obligationMonth = item.targetObligationMonth;
+       if (item.targetDisbursementMonth !== original.targetDisbursementMonth) targetValues.disbursementMonth = item.targetDisbursementMonth;
+     }
    }
    const request = subprojectRequests.current.get(item.uniqueId) || {};
    subprojectRequests.current.set(item.uniqueId, request);
@@ -1296,9 +1347,11 @@ const FinancialAccomplishment: React.FC<Props> = ({
      targets: Object.keys(targetValues).length ? [{ itemId: String(item.detailId), values: targetValues }] : [],
      reason: getLastOverrideReason?.() || '',
    });
+   const confirmedExpense = confirmed.subproject.details.find(row => String(row.id) === String(item.detailId))!;
+   const reconcilePlan = includeTargets || !changedItemsRef.current.has(item.uniqueId);
    // Advance only what this save confirmed; another open stage keeps its baseline.
    subprojectBaselines.current.set(item.uniqueId, {
-     subproject: { ...base.subproject, details: base.subproject.details.map(row => String(row.id) === String(item.detailId) ? { ...row, ...targetValues } : row) },
+     subproject: { ...base.subproject, details: base.subproject.details.map(row => String(row.id) === String(item.detailId) ? reconcilePlan ? { ...confirmedExpense } : { ...row, ...targetValues } : row) },
      stages: { ...base.stages, [String(item.detailId)]: {
        ...base.stages[String(item.detailId)],
        ...(sync === 'both' || sync === 'obligation' ? { obligation: confirmed.stages[String(item.detailId)].obligation } : {}),
@@ -1307,12 +1360,12 @@ const FinancialAccomplishment: React.FC<Props> = ({
    });
    const saved = hydrateSubprojectAccomplishment(confirmed);
    const savedExpense = saved.details.find(row => String(row.id) === String(item.detailId))!;
-   let savedItem = item;
+   let savedItem = reconcilePlan ? { ...item, ...projectBudgetTargets(savedExpense), targetObligationMonth: savedExpense.obligationMonth, targetDisbursementMonth: savedExpense.disbursementMonth } : item;
    if (sync === 'both' || sync === 'obligation') savedItem = mergeActualRecords(savedItem, 'obligation', savedExpense.obligations || []);
    if (sync === 'both' || sync === 'disbursement') savedItem = mergeActualRecords(savedItem, 'disbursement', savedExpense.disbursements || []);
    const confirmedItem = savedItem;
    setItems(previous => previous.map(row => row.uniqueId === item.uniqueId ? confirmedItem : row));
-   setOriginalItems(previous => previous.map(row => row.uniqueId !== item.uniqueId ? row : sync === 'both' ? confirmedItem : mergeActualRecords(row, sync, sync === 'obligation' ? confirmedItem.obligations : confirmedItem.disbursements)));
+   setOriginalItems(previous => previous.map(row => row.uniqueId !== item.uniqueId ? row : sync === 'both' || reconcilePlan ? confirmedItem : mergeActualRecords(row, sync, sync === 'obligation' ? confirmedItem.obligations : confirmedItem.disbursements)));
    skipNextFinancialReloadRef.current = true;
    onSubprojectSaved(saved, confirmed);
    return confirmedItem;
@@ -1709,9 +1762,11 @@ const FinancialAccomplishment: React.FC<Props> = ({
  const activeActualsCanEdit = activeActualsItem
  ? canEdit && !loadError && getFinancialStatusDecision(activeActualsItem).allowed
  : false;
+ const activeTargetItem = targetDialogId ? items.find(item => item.uniqueId === targetDialogId) || null : null;
  const confirmScopeChange = () => {
    if (changedItems.size && !window.confirm('Discard unsaved financial changes before changing the filter scope?')) return false;
    setChangedItems(new Map());
+   setTargetDialogId(null);
    return true;
  };
 
@@ -1964,8 +2019,16 @@ const FinancialAccomplishment: React.FC<Props> = ({
  const sourceId = `${subId}-${sourceGroup.sourceId}`;
 
  const sortedItems = sortConfig ? [...sourceGroup.items].sort((a, b) => {
- let valA = sortConfig.key === 'unobligatedAmount' ? getUnobligatedAmount(a) : a[sortConfig.key];
- let valB = sortConfig.key === 'unobligatedAmount' ? getUnobligatedAmount(b) : b[sortConfig.key];
+ const sortValue = (item: FinancialItem) => {
+ if (sortConfig.key === 'unobligatedAmount') return getUnobligatedAmount(item);
+ if (item.targetScheduleVersion === 2 && ['targetObligationMonth', 'targetDisbursementMonth'].includes(sortConfig.key)) {
+ const entries = sortConfig.key === 'targetObligationMonth' ? item.targetObligationSchedules : item.targetDisbursementSchedules;
+ return (entries || []).map(entry => entry.month).sort().join(';');
+ }
+ return item[sortConfig.key];
+ };
+ let valA = sortValue(a);
+ let valB = sortValue(b);
  if (valA === valB) return 0;
  if (valA === undefined || valA === null) return 1;
  if (valB === undefined || valB === null) return -1;
@@ -1983,6 +2046,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
   const taggedLabel = item.isCancelled ? 'Cancelled' : item.isSuperseded ? 'Replaced' : item.isSavings ? 'Savings' : item.isRealignment ? 'Realignment' : item.isTransferTargetExcluded ? 'Transferred' : '';
  const itemFinancialDecision = getFinancialStatusDecision(item);
  const canEditFinancialItem = canEdit && !loadError && itemFinancialDecision.allowed;
+ const managedTargets = ['Activity', 'Subproject'].includes(item.sourceType);
+ const canEditBudgetItem = !loadError && getTargetBudgetDecision(item).allowed;
 
  return (
  <React.Fragment key={item.uniqueId}>
@@ -2007,7 +2072,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
  {/* Target Obli */}
  <td className={`fac-col-target-obligation px-2 py-1.5 text-center border-l ${isTagged ? 'fac-target-excluded fac-target-excluded-amount' : ''}`}>
-  {item.status === 'Proposed' && !item.isSuperseded ? (
+  {managedTargets ? (item.status === 'Proposed' ? <button type="button" className="fac-actuals-trigger" disabled={!canEditBudgetItem} aria-label={`Edit obligation targets for ${item.sourceName}`} onClick={() => openTargetDialog(item)}>{formatCurrency(item.targetObligationAmount)}</button> : formatCurrency(item.targetObligationAmount)) : item.status === 'Proposed' && !item.isSuperseded ? (
  <FinancialAmountCell
  value={toFiniteNumber(item.targetObligationAmount)}
  onChange={(value) => updateLocalItem(item.uniqueId, { targetObligationAmount: value })}
@@ -2020,7 +2085,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  )}
  </td>
  <td className={`fac-col-target-obligation px-2 py-1.5 text-center ${isTagged ? 'fac-target-excluded' : ''}`}>
- {item.targetObligationMonth === 'Monthly' ? (
+ {managedTargets ? (item.targetScheduleVersion === 2 ? <BudgetTargetSummary line={targetOwner(item)} allocation={item.allocationAmount ?? 0} stage="obligation" showAmounts={false} /> : formatFinancialMonth(item.targetObligationMonth, item.fundYear)) : item.targetObligationMonth === 'Monthly' ? (
  'Monthly'
   ) : item.status === 'Proposed' && !item.isSuperseded ? (
  <FinancialMonthCell
@@ -2053,7 +2118,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
  {/* Target Disb */}
  <td className={`fac-col-target-disbursement px-2 py-1.5 text-center border-l ${isTagged ? 'fac-target-excluded fac-target-excluded-amount' : ''}`}>
-  {item.status === 'Proposed' && !item.isSuperseded ? (
+  {managedTargets ? (item.status === 'Proposed' ? <button type="button" className="fac-actuals-trigger" disabled={!canEditBudgetItem} aria-label={`Edit disbursement targets for ${item.sourceName}`} onClick={() => openTargetDialog(item)}>{formatCurrency(item.targetDisbursementAmount)}</button> : formatCurrency(item.targetDisbursementAmount)) : item.status === 'Proposed' && !item.isSuperseded ? (
  <FinancialAmountCell
  value={toFiniteNumber(item.targetDisbursementAmount)}
  onChange={(value) => updateLocalItem(item.uniqueId, { targetDisbursementAmount: value })}
@@ -2066,7 +2131,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  )}
  </td>
  <td className={`fac-col-target-disbursement px-2 py-1.5 text-center ${isTagged ? 'fac-target-excluded' : ''}`}>
- {item.targetDisbursementMonth === 'Monthly' ? (
+ {managedTargets ? (item.targetScheduleVersion === 2 ? <BudgetTargetSummary line={targetOwner(item)} allocation={item.allocationAmount ?? 0} stage="disbursement" showAmounts={false} /> : formatFinancialMonth(item.targetDisbursementMonth, item.fundYear)) : item.targetDisbursementMonth === 'Monthly' ? (
  'Monthly'
   ) : item.status === 'Proposed' && !item.isSuperseded ? (
  <FinancialMonthCell
@@ -2108,9 +2173,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
  )}
  <button
  onClick={() => handleConfirmItem(item)}
- disabled={localSavingIds.has(item.uniqueId) || !canEditFinancialItem}
+ disabled={localSavingIds.has(item.uniqueId) || (!canEditFinancialItem && !canEditBudgetItem)}
  className="btn btn-primary btn-sm fac-save-button"
- title={canEditFinancialItem ? 'Save row' : itemFinancialDecision.message}
+ title={canEditFinancialItem || canEditBudgetItem ? 'Save row' : itemFinancialDecision.message}
  >
  {localSavingIds.has(item.uniqueId) ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
  </button>
@@ -2178,9 +2243,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
  <button
  onClick={() => {
  setChangedItems(new Map());
- // We don't reload items here to avoid losing all progress,
- // but we clear the highlight
- setItems(prev => prev.map(item => ({ ...item })));
+ setItems(prev => prev.map(item => originalItems.find(original => original.uniqueId === item.uniqueId) || item));
  }}
  className="btn btn-secondary"
  >
@@ -2216,6 +2279,13 @@ const FinancialAccomplishment: React.FC<Props> = ({
  />
  )}
 
+ {activeTargetItem && <BudgetTargetPlanDialog key={activeTargetItem.uniqueId} line={targetOwner(activeTargetItem)} allocation={activeTargetItem.allocationAmount ?? activeTargetItem.targetObligationAmount}
+ title={activeTargetItem.sourceType === 'Subproject' ? activeTargetItem.budgetParticular || activeTargetItem.sourceName : activeTargetItem.sourceName} defaultYear={Number(activeTargetItem.fundYear)}
+ disabled={isSavingAll || !!loadError || !getTargetBudgetDecision(activeTargetItem).allowed} onClose={() => setTargetDialogId(null)} onApply={(plan, allocationAmount) => {
+ if (!getTargetBudgetDecision(activeTargetItem).allowed) return;
+ updateLocalItem(activeTargetItem.uniqueId, { ...plan, allocationAmount, targetObligationAmount: targetScheduleTotal(plan.targetObligationSchedules || []), targetDisbursementAmount: targetScheduleTotal(plan.targetDisbursementSchedules || []) });
+ setTargetDialogId(null);
+ }} />}
  {actualsDialog && activeActualsItem && (
  <FinancialActualsDialog
  open

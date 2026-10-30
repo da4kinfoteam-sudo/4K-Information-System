@@ -1,5 +1,7 @@
 import type { Subproject, SubprojectDetail, User } from '../constants';
 import { supabase } from '../supabaseClient';
+import { TARGET_PLAN_FIELDS, targetPlansEqual } from './budgetTargetSchedules';
+import { requireIndependentTargetSupport } from './budgetTargetPersistence';
 
 export type SubprojectActualStage = 'obligation' | 'disbursement';
 export interface SubprojectActualEntry { id: string | number; date: string; amount: number; remarks?: string; }
@@ -14,7 +16,7 @@ export interface SubprojectAccomplishmentRequest { key?: string; fingerprint?: s
 export type SubprojectActualRemovals = Record<string, string[]>;
 const fields = ['actualMaleBeneficiaries', 'actualFemaleBeneficiaries', 'actualFourPsBeneficiaries', 'actualPWD', 'actualMuslim', 'actualLGBTQ', 'actualSoloParent', 'actualSenior', 'actualYouth', 'accomplishmentRemarks', 'catchUpPlanRemarks'] as const;
 const physicalItemFields = ['actualDeliveryDate', 'actualNumberOfUnits', 'isCompleted'] as const;
-const adjustmentFields = ['type', 'particulars', 'deliveryDate', 'unitOfMeasure', 'pricePerUnit', 'numberOfUnits', 'objectType', 'expenseParticular', 'uacsCode', 'obligationMonth', 'disbursementMonth', 'adjustmentType', 'adjustmentFundingSource', 'replacementOfItemId', 'sourceItemId', 'adjustmentReason', 'itemRemarks', 'isCancelled', 'isRealignment', 'isSavings'] as const;
+const adjustmentFields = ['type', 'particulars', 'deliveryDate', 'unitOfMeasure', 'pricePerUnit', 'numberOfUnits', 'objectType', 'expenseParticular', 'uacsCode', 'obligationMonth', 'disbursementMonth', ...TARGET_PLAN_FIELDS, 'adjustmentType', 'adjustmentFundingSource', 'replacementOfItemId', 'sourceItemId', 'adjustmentReason', 'itemRemarks', 'isCancelled', 'isRealignment', 'isSavings'] as const;
 const replacementFields = ['isSuperseded', 'replacedByItemIds', 'replacementReason'] as const;
 const additionFields = ['id', 'budgetItemGroupId', ...adjustmentFields.filter(field => field !== 'isCancelled'), 'isAdjustmentItem', 'replacementReason', 'originalPlannedAmount', 'originalPricePerUnit', 'originalNumberOfUnits', 'originalCapturedAt'] as const;
 const keyFor = (itemId: string | number, stage: SubprojectActualStage) => `${itemId}:${stage}`;
@@ -160,6 +162,10 @@ export async function saveSubprojectAccomplishment(args: {
     reason?: string; request: SubprojectAccomplishmentRequest;
 }) {
     if (!supabase || !args.actor?.id) throw new Error('The database connection or user session is unavailable. No changes were saved.');
+    await requireIndependentTargetSupport([
+        ...(args.targets || []).map(target => ({ ...args.base.subproject.details.find(row => String(row.id) === target.itemId), ...target.values })),
+        ...args.draft.details.filter(row => !targetPlansEqual(args.base.subproject.details.find(original => original.id === row.id) || {}, row)),
+    ]);
     const edits = args.surface === 'physical' ? [] : buildSubprojectActualEdits(args.base, args.draft, args.removals, args.onlyStage, args.onlyItem);
     const physical = args.surface === 'financial' ? {} : getSubprojectPhysicalChanges(args.base.subproject, args.draft, args.surface || 'subproject');
     const payload = { p_base: args.base, p_edits: edits, p_physical: physical, p_targets: args.targets || [], p_surface: args.surface || 'subproject' };

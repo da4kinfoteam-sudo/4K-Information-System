@@ -15,8 +15,19 @@ import { normalizeImportedCommodity } from '../../lib/commodityProfile';
 import { parseImportedIpoIndicators } from '../../lib/ipoProfileIndicators';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets, isParentExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 import { DEFAULT_FUND_SOURCE_UID, getFundSourceByUid, getFundSourceLabel, getNewSubprojectDefaultFundSource, normalizeFundSourceLabel, resolveFundSourceUidFromLegacyLabel } from '../../lib/fundSources';
+import { exportTargetRows, importedBudgetItemId, importedOptionalBudgetAmount, targetWorkbookImporter, TARGET_SHEET_HEADERS, TARGET_SHEET_NAMES } from '../../lib/budgetTargetExcel';
+import type { TargetPlanOwner } from '../../lib/budgetTargetSchedules';
+import { requireIndependentTargetSupport } from '../../lib/budgetTargetPersistence';
 
 declare const XLSX: any;
+
+const appendTargetSheets = (workbook: any, owners: Array<{ uid?: string; line: TargetPlanOwner }>) => {
+    for (const stage of ['obligation', 'disbursement'] as const) XLSX.utils.book_append_sheet(workbook,
+        XLSX.utils.json_to_sheet(exportTargetRows(owners, stage), { header: TARGET_SHEET_HEADERS }), TARGET_SHEET_NAMES[stage]);
+};
+const targetImporter = (workbook: any) => targetWorkbookImporter(Object.fromEntries(
+    (['obligation', 'disbursement'] as const).map(stage => [stage, workbook.Sheets[TARGET_SHEET_NAMES[stage]] ? XLSX.utils.sheet_to_json(workbook.Sheets[TARGET_SHEET_NAMES[stage]]) : []]),
+) as Parameters<typeof targetWorkbookImporter>[0]);
 
 // Helper to map short codes/numbers to full Region names
 export const resolveRegion = (input: string | number | undefined): string => {
@@ -173,8 +184,21 @@ export const downloadSubprojectsReport = (subprojects: Subproject[], fundSources
         detail_type: row.type, detail_particulars: row.particulars, detail_unitOfMeasure: row.unitOfMeasure,
         detail_uacsCode: row.uacsCode, detail_pricePerUnit: row.pricePerUnit, detail_numberOfUnits: row.numberOfUnits,
         detail_obligationMonth: row.obligationMonth, detail_deliveryDate: row.deliveryDate, detail_disbursementMonth: row.disbursementMonth,
+        detail_targetScheduleVersion: row.targetScheduleVersion ?? '',
+        detail_amount_is_set: Object.hasOwn(row, 'amount'), detail_amount: (row as any).amount ?? '',
     })));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(schedules), 'Budget Schedules');
+    const importRows = subprojects.flatMap(parent => (parent.details.length ? parent.details : [null]).map(row => ({
+        uid: parent.uid, name: parent.name, indigenousPeopleOrganization: parent.indigenousPeopleOrganization,
+        status: 'Proposed', packageType: parent.packageType, estimatedCompletionDate: parent.estimatedCompletionDate,
+        fundingYear: parent.fundingYear, fundType: parent.fundType, fundSourceUid: parent.fundSourceUid || '', fundSource: parent.fundSource || '', tier: parent.tier, operatingUnit: parent.operatingUnit,
+        ...(row ? { detail_id: row.id, detail_budgetItemGroupId: row.budgetItemGroupId || '', detail_type: row.type, detail_particulars: row.particulars,
+            detail_deliveryDate: row.deliveryDate, detail_unitOfMeasure: row.unitOfMeasure, detail_pricePerUnit: row.pricePerUnit, detail_numberOfUnits: row.numberOfUnits,
+            detail_uacsCode: row.uacsCode, detail_obligationMonth: row.obligationMonth, detail_disbursementMonth: row.disbursementMonth, detail_targetScheduleVersion: row.targetScheduleVersion ?? '',
+            detail_amount_is_set: Object.hasOwn(row, 'amount'), detail_amount: (row as any).amount ?? '' } : {}),
+    })));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(importRows), 'Subprojects Data');
+    appendTargetSheets(wb, subprojects.flatMap(parent => parent.details.map(line => ({ uid: parent.uid, line }))));
     XLSX.writeFile(wb, "Subprojects_Report.xlsx");
 };
 
@@ -183,7 +207,7 @@ export const downloadSubprojectsTemplate = () => {
         'uid', 'name', 'indigenousPeopleOrganization', 'status', 'packageType', 
         'estimatedCompletionDate', 'actualCompletionDate', 'actualMaleBeneficiaries', 'actualFemaleBeneficiaries', 'actualFourPsBeneficiaries', 'fundingYear', 'fundType', 'fundSourceUid', 'fundSource', 'tier', 'operatingUnit', 'remarks',
         'detail_type', 'detail_particulars', 'detail_deliveryDate', 'detail_unitOfMeasure', 'detail_pricePerUnit', 'detail_numberOfUnits', 
-        'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth', 'detail_budgetItemGroupId'
+        'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth', 'detail_budgetItemGroupId', 'detail_id', 'detail_targetScheduleVersion', 'detail_amount_is_set', 'detail_amount'
     ];
 
     const exampleData = [
@@ -245,7 +269,10 @@ export const downloadSubprojectsTemplate = () => {
         ["detail_uacsCode", "Specific UACS Code. Object Type and Expense Particular will be derived from this code."],
         ["detail_obligationMonth", "Month Year (e.g., February 2024)"],
         ["detail_disbursementMonth", "Month Year (e.g., March 2024)"],
-        ["detail_budgetItemGroupId", "Optional shared item identity within this Subproject. Leave blank for independent legacy rows."]
+        ["detail_budgetItemGroupId", "Optional shared item identity within this Subproject. Leave blank for independent legacy rows."],
+        ["detail_id / detail_targetScheduleVersion", "For independent plans, use a unique whole-number detail_id within each UID and set detail_targetScheduleVersion to 2. Blank version retains legacy scalar target dates."],
+        ["Obligation Targets / Disbursement Targets", "Enter each stage independently: uid, item_id (matching detail_id), schedule_id (unique within the item), month (YYYY-MM-DD), amount. Empty stages are allowed. Do not repeat the cost/delivery row for financial dates."],
+        ["Report re-import", "The report includes a Subprojects Data planning sheet with Proposed status and no copied actual ledgers. Existing UIDs are skipped; importing does not update existing records."]
     ];
 
     const wb = XLSX.utils.book_new();
@@ -254,6 +281,7 @@ export const downloadSubprojectsTemplate = () => {
 
     XLSX.utils.book_append_sheet(wb, ws_data, "Subprojects Data");
     XLSX.utils.book_append_sheet(wb, ws_instructions, "Instructions");
+    appendTargetSheets(wb, []);
 
     XLSX.writeFile(wb, "Subprojects_Upload_Template.xlsx");
 };
@@ -280,9 +308,10 @@ export const handleSubprojectsUpload = (
         try {
             const data = event.target?.result;
             const workbook = XLSX.read(data, { type: 'array' });
-            const sheetName = workbook.SheetNames[0];
+            const sheetName = workbook.Sheets['Subprojects Data'] ? 'Subprojects Data' : workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
             const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+            const targets = targetImporter(workbook);
 
             const groupedData = new Map<string, any>();
             let maxId = subprojects.reduce((max, s) => Math.max(max, s.id), 0);
@@ -389,8 +418,12 @@ export const handleSubprojectsUpload = (
                         }
                     }
 
+                    const detailId = importedBudgetItemId(row.detail_id, Date.now() + index);
+                    if (subproject.details.some(detail => detail.id === detailId)) throw new Error(`Row ${index + 2}: Duplicate budget item ID.`);
                     subproject.details.push({
-                        id: Date.now() + index, 
+                        ...targets.read(uid, detailId, row.detail_targetScheduleVersion),
+                        id: detailId,
+                        ...importedOptionalBudgetAmount(row.detail_amount_is_set, row.detail_amount),
                         budgetItemGroupId: String(row.detail_budgetItemGroupId || '').trim() || undefined,
                         type: row.detail_type,
                         particulars: row.detail_particulars,
@@ -413,11 +446,12 @@ export const handleSubprojectsUpload = (
             }
 
             const newSubprojects = Array.from(groupedData.values());
+            targets.assertUsed(existingUids);
 
             if (newSubprojects.length > 0) {
-                logAction('Imported Subprojects', `Imported ${newSubprojects.length} subprojects from Excel`);
-                
                 if (supabase) {
+                    if (!replaceSubprojects) throw new Error('Local synchronization is unavailable. Reload before importing.');
+                    await requireIndependentTargetSupport(newSubprojects.flatMap(parent => parent.details || []));
                     // Explicit insert to prevent doubling and ID issues
                     // Remove ID so Postgres auto-generates it based on sequence
                     const payload = newSubprojects.map(({ id, ...rest }) => rest);
@@ -427,10 +461,9 @@ export const handleSubprojectsUpload = (
                         console.error("Error inserting subprojects:", error);
                         alert(`Error inserting data: ${error.message}`);
                     } else if (data) {
-                        // Update local state with returned data (containing correct IDs)
-                        // This will trigger useSupabaseTable upsert but it will be a no-op/update
+                        logAction('Imported Subprojects', `Imported ${data.length} subprojects from Excel`);
+                        // Confirmed rows reconcile locally; never send them through a database-writing setter.
                         if (replaceSubprojects) replaceSubprojects([...subprojects, ...(data as Subproject[])]);
-                        else setSubprojects(prev => [...prev, ...(data as Subproject[])]);
                         let msg = `${data.length} subprojects imported successfully!`;
                         if (skippedCount > 0) msg += ` (${skippedCount} duplicates skipped)`;
                         alert(msg);
@@ -504,6 +537,17 @@ export const downloadActivitiesReport = (activities: Activity[], fundSources: Re
         'Revision Pending': !!row.supplementRevisionPending,
     })));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(schedules), "Budget Schedules");
+    const importRows = activities.flatMap(parent => ((parent.expenses || []).length ? parent.expenses : [null]).map(row => ({
+        uid: parent.uid || '', type: parent.type, component: parent.component, name: parent.name, activity_title: parent.activity_title || '', date: parent.date,
+        location: parent.location, facilitator: parent.facilitator || '', description: parent.description, participatingIpos: (parent.participatingIpos || []).join('; '),
+        participantsMale: parent.participantsMale, participantsFemale: parent.participantsFemale, fundingYear: parent.fundingYear, fundType: parent.fundType,
+        tier: parent.tier, fundSourceUid: parent.fundSourceUid || '', fundSource: parent.fundSource || '', operatingUnit: parent.operatingUnit,
+        ...(row ? { expense_id: row.id, expense_budgetItemGroupId: row.budgetItemGroupId || '', expense_uacsCode: row.uacsCode, expense_amount: row.amount,
+            expense_obligationMonth: row.obligationMonth, expense_disbursementMonth: row.disbursementMonth, expense_targetScheduleVersion: row.targetScheduleVersion ?? '',
+            expense_supplementalSource: row.supplementalSource || (row.isSavings ? 'Savings' : row.isRealignment ? 'Realignment' : '') } : {}),
+    })));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(importRows), 'Activities Data');
+    appendTargetSheets(wb, activities.flatMap(parent => (parent.expenses || []).map(line => ({ uid: parent.uid, line }))));
     XLSX.writeFile(wb, "Activities_Report.xlsx");
 };
 
@@ -513,7 +557,7 @@ export const downloadActivitiesTemplate = (fundSources: RefFundSource[]) => {
         'uid', 'type', 'component', 'name', 'activity_title', 'date', 'province', 'municipality', 'facilitator', 'description',
         'participatingIpos', 'participantsMale', 'participantsFemale',
         'fundingYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'operatingUnit',
-        'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount', 'expense_budgetItemGroupId', 'expense_supplementalSource'
+        'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount', 'expense_budgetItemGroupId', 'expense_supplementalSource', 'expense_id', 'expense_targetScheduleVersion'
     ];
     const exampleData = [
         {
@@ -552,7 +596,10 @@ export const downloadActivitiesTemplate = (fundSources: RefFundSource[]) => {
         ["fundSourceUid / fundSource", "Use the canonical Fund Source UID where available, or its unambiguous current label. If both are blank, the active 4K Fund default is used for a new record."],
         ["expense_uacsCode", "UACS Code used to identify Expense Particular and Object Type."],
         ["expense_amount", "Amount for the expense entry."],
-        ["expense_supplementalSource", "Optional Savings or Realignment. Imported supplemental schedules are unsubmitted drafts; complete their authorization and approval in Supplemental Information. Approval or ledger UIDs cannot be imported."]
+        ["expense_supplementalSource", "Optional Savings or Realignment. Imported supplemental schedules are unsubmitted drafts; complete their authorization and approval in Supplemental Information. Approval or ledger UIDs cannot be imported."],
+        ["expense_id / expense_targetScheduleVersion", "For independent plans, use a unique whole-number expense_id within each UID and set expense_targetScheduleVersion to 2. Blank version retains legacy scalar target dates."],
+        ["Obligation Targets / Disbursement Targets", "Enter each stage independently: uid, item_id (matching expense_id), schedule_id (unique within the item), month (YYYY-MM-DD), amount. Empty stages are allowed. Do not repeat the expense row for financial dates."],
+        ["Report re-import", "The report includes an Activities Data planning sheet without copied actual ledgers or approval state. Existing UIDs are skipped; importing does not update existing records."]
     ];
 
     const wb = XLSX.utils.book_new();
@@ -560,6 +607,7 @@ export const downloadActivitiesTemplate = (fundSources: RefFundSource[]) => {
     const ws_instructions = XLSX.utils.aoa_to_sheet(instructions);
     XLSX.utils.book_append_sheet(wb, ws_data, "Activities Data");
     XLSX.utils.book_append_sheet(wb, ws_instructions, "Instructions");
+    appendTargetSheets(wb, []);
     XLSX.writeFile(wb, "Activities_Upload_Template.xlsx");
 };
 
@@ -572,7 +620,8 @@ export const handleActivitiesUpload = (
     setIsUploading: (val: boolean) => void,
     uacsCodes: any,
     currentUser: any,
-    fundSources: RefFundSource[]
+    fundSources: RefFundSource[],
+    upsertActivitiesLocally?: (rows: Activity[]) => void
 ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -583,9 +632,11 @@ export const handleActivitiesUpload = (
         try {
             const data = event.target?.result;
             const workbook = XLSX.read(data, { type: 'array' });
-            const sheetName = workbook.SheetNames[0];
+            const sheetName = workbook.Sheets['Activities Data'] ? 'Activities Data' : workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
             const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+            const targets = targetImporter(workbook);
+            const existingUids = new Set(activities.map(activity => activity.uid));
 
             let currentId = activities.reduce((max, a) => Math.max(max, a.id), 0);
             const existingIpoNames = new Set(ipos.map(ipo => ipo.name));
@@ -596,6 +647,7 @@ export const handleActivitiesUpload = (
                 const rowNum = index + 2;
                 const uid = String(row.uid || '').trim();
                 if (!uid) return; // Skip empty rows
+                if (existingUids.has(uid)) return;
                 if (row.expense_supplementUid || row.supplementUid || row['Supplement UID'] || row.expense_supplementStatus || row.supplementStatus || row['Supplement Approval']) {
                     throw new Error(`Row ${rowNum}: Supplemental approval and ledger identities cannot be imported.`);
                 }
@@ -644,7 +696,7 @@ export const handleActivitiesUpload = (
                     const municipality = String(row.municipality || '').trim();
                     const province = String(row.province || '').trim();
                     // Handle empty location fields gracefully
-                    const locationString = (municipality && province) ? `${municipality}, ${province}` : (municipality || province || '');
+                    const locationString = String(row.location || '').trim() || ((municipality && province) ? `${municipality}, ${province}` : (municipality || province || ''));
 
                     // Prioritize row.operatingUnit
                     const rawOU = row.operatingUnit ? String(row.operatingUnit) : undefined;
@@ -719,8 +771,11 @@ export const handleActivitiesUpload = (
                         }
                     }
 
+                    const expenseId = importedBudgetItemId(row.expense_id, Date.now() + index * 10);
+                    if (groupedData.get(uid).expenses.some(expense => expense.id === expenseId)) throw new Error(`Row ${rowNum}: Duplicate expense ID.`);
                     groupedData.get(uid).expenses.push({
-                        id: Date.now() + index * 10,
+                        ...targets.read(uid, expenseId, row.expense_targetScheduleVersion),
+                        id: expenseId,
                         objectType: objectType as any,
                         expenseParticular: expenseParticular,
                         uacsCode: uacsCode,
@@ -734,6 +789,7 @@ export const handleActivitiesUpload = (
             });
 
             const newActivities: any[] = [];
+            targets.assertUsed(existingUids);
             groupedData.forEach((group) => {
                 newActivities.push({
                     ...group.common,
@@ -742,16 +798,17 @@ export const handleActivitiesUpload = (
             });
 
             if (newActivities.length > 0) {
-                logAction('Imported Activities', `Imported ${newActivities.length} activities from Excel`);
-
                 if (supabase) {
+                    if (!upsertActivitiesLocally) throw new Error('Local synchronization is unavailable. Reload before importing.');
+                    await requireIndependentTargetSupport(newActivities.flatMap(parent => parent.expenses || []));
                     // Explicit insert to generate proper IDs
                     const { data, error } = await supabase.from('activities').insert(newActivities).select();
                     if (error) {
                         console.error("Error inserting activities:", error);
                         alert(`Error inserting data: ${error.message}`);
                     } else if (data) {
-                        setActivities(prev => [...prev, ...(data as Activity[])]);
+                        upsertActivitiesLocally(data as Activity[]);
+                        logAction('Imported Activities', `Imported ${data.length} activities from Excel`);
                         alert(`${data.length} activities imported successfully!`);
                     }
                 } else {

@@ -9,6 +9,7 @@ import { usePagination, useSelection, useUserAccess } from './mainfunctions/Tabl
 import { downloadSubprojectsReport, downloadSubprojectsTemplate, handleSubprojectsUpload } from './mainfunctions/ImportExportService';
 import useLocalStorageState from '../hooks/useLocalStorageState';
 import { supabase } from '../supabaseClient';
+import { requireIndependentTargetSupport } from '../lib/budgetTargetPersistence';
 import type { DataScope } from '../lib/scopedDataFetch';
 import { DcfScopeFilterPanel, matchesDcfScope, useDcfScopeFilters } from './ui/DcfScopeFilters';
 import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
@@ -411,6 +412,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 };
             });
             if (supabase) {
+                await requireIndependentTargetSupport(newItemsPayload.flatMap(item => item.details || []));
                 const { data, error } = await supabase.from('subprojects').insert(newItemsPayload).select();
                 if (error) throw error;
                 if (!data?.length) throw new Error('No created records were returned. Refresh before retrying.');

@@ -1,6 +1,8 @@
 import type { Activity, ActivityExpense } from '../constants';
 import { supabase } from '../supabaseClient';
 import { sameActivityActualValue } from './activityAccomplishmentPersistence';
+import { requireIndependentTargetSupport } from './budgetTargetPersistence';
+import { assertLegacyTargetConversionCurrent } from './budgetTargetSchedules';
 
 const equal = sameActivityActualValue;
 const conflict = () => new Error('This activity changed while you were editing. Your draft has not been saved. Reopen the current record before applying these changes.');
@@ -23,6 +25,7 @@ export function mergeActivityExpenses(base: ActivityExpense[], draft: ActivityEx
         const id = String(row.id), original = originals.get(id), edited = changed.get(id);
         if (!original) return [row];
         if (!edited) { if (!equal(original, row)) throw conflict(); return []; }
+        assertLegacyTargetConversionCurrent(original, edited, row);
         return [mergeFields(original, edited, row, ['id', ...(targetsOnly ? ACTUAL_FIELDS : [])])];
     });
     for (const row of draft) {
@@ -48,6 +51,7 @@ export function getChangedActivityActualIds(base: ActivityExpense[], draft: Acti
 
 export async function persistActivityDraft(base: Activity, draft: Activity, mode: 'expenses'): Promise<Activity> {
     if (mode !== 'expenses') throw new Error('Accomplishments must use the transactional financial save operation.');
+    await requireIndependentTargetSupport(draft.expenses || []);
     if (!supabase) return draft;
     const { data, error: readError } = await supabase.from('activities').select('*').eq('id', base.id).maybeSingle();
     if (readError) throw readError;
