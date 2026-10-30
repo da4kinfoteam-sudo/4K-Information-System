@@ -2,6 +2,7 @@ import { getActivityBudgetSummary, isOriginalActivityBudgetLocked, isSupplementa
 import { ActivityBudgetEditor } from './ui/ActivityBudgetEditor';
 import { rescheduleActivityTargets, validateActivitySchedule } from '../lib/activityBudgetSchedules';
 import { persistActivityDraft } from '../lib/activityDraftPersistence';
+import { requireIndependentTargetSupport } from '../lib/budgetTargetPersistence';
 import { buildActivityActualEdits, getActivityPhysicalChanges, hydrateActivityAccomplishment, readActivityAccomplishments, saveActivityAccomplishment, type ActivityAccomplishmentSnapshot, type ActivityAccomplishmentRequest, type ActivityActualRemovals } from '../lib/activityAccomplishmentPersistence';
 import { buildRepeatingActivityPayload, canChooseActivityOu, emptyRepeatingActivityEntry, hasRepeatingEntryDraft, normalizeRepeatingActivityEntry, validateRepeatingActivityEntry, type RepeatingActivityEntry } from '../lib/activityRepeatingEntries';
 import { persistRepeatingActivity, type RepeatingCreateAttempt } from '../lib/activityRepeatingPersistence';
@@ -793,6 +794,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     }
 
                     if (mode === 'create') {
+                         await requireIndependentTargetSupport(sanitizedPayload.expenses || []);
                          const { data, error } = await supabase.from('activities').insert([sanitizedPayload]).select();
                          if (error) throw error;
                          if (!data?.length) throw new Error('No saved activity was returned. Reload before retrying.');

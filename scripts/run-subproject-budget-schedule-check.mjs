@@ -100,7 +100,7 @@ try {
     assert.equal(globalThis.scheduleFixture.calls[1].filters.some(([key, value]) => key === 'updated_at' && value === 'newer'), true);
     globalThis.scheduleFixture.conflict = true;
     await assert.rejects(() => persistSubprojectDraft(grouped, draft, 'accomplishment'), /changed while/);
-    for (const [file, token] of [['components/reports/BEDSReport.tsx', 'item.line.obligationMonth'], ['components/reports/BEDSReport.tsx', 'item.line.disbursementMonth'], ['components/reports/WFPReport.tsx', 'detail.obligationMonth']]) assert.equal((await readFile(file, 'utf8')).includes(token), true);
+    for (const [file, token] of [['components/reports/BEDSReport.tsx', 'item.targetObligationSchedules'], ['components/reports/BEDSReport.tsx', 'item.targetDisbursementSchedules'], ['components/reports/WFPReport.tsx', 'readTargetSchedules']]) assert.equal((await readFile(file, 'utf8')).includes(token), true);
     const transfer = await readFile('supabase/migrations/202610090001_activity_subproject_budget_item_transfers.sql', 'utf8');
     assert.match(transfer, /jsonb_agg\(source_line.value/);
     globalThis.XLSX = XLSX; globalThis.window = { XLSX }; globalThis.alert = () => {};
@@ -123,7 +123,7 @@ try {
         const binary = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
         globalThis.FileReader = class { readAsArrayBuffer() { globalThis.importPromise = this.onload({ target: { result: binary } }); } };
         globalThis.scheduleFixture = { calls: [] }; let records = [];
-        handleSubprojectsUpload({ target: { files: [{}] } }, [], updater => { records = updater(records); }, [], () => {}, () => {}, references.uacsCodes, { fullName: 'Fixture', operatingUnit: 'NPMO' }, false, [{ uid: 'FS-000001', label: '4K Fund', is_active: true }]);
+        handleSubprojectsUpload({ target: { files: [{}] } }, [], updater => { records = updater(records); }, [], () => {}, () => {}, references.uacsCodes, { fullName: 'Fixture', operatingUnit: 'NPMO' }, false, [{ uid: 'FS-000001', label: '4K Fund', is_active: true }], rows => { records = rows; });
         await globalThis.importPromise; return records;
     };
     const imported = await importRows(true);

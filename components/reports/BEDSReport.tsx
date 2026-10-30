@@ -227,6 +227,10 @@ const getMonthlyTargetDisbursementTotal = (item: FinancialLineItem) =>
     MONTH_KEYS.reduce((sum, month) => sum + (Number(item.line[`disbursement${month}`]) || 0), 0);
 
 const addTargetDisbursementSchedule = (row: MonthlyRow, item: FinancialLineItem, reportingYear: string) => {
+    if (item.line.targetScheduleVersion === 2) {
+        item.targetDisbursementSchedules.forEach(entry => addToMonthlyRow(row, getReportingMonthIndex(entry.month, reportingYear, item.recordYear), entry.amount));
+        return;
+    }
     const monthlyScheduleTotal = getMonthlyTargetDisbursementTotal(item);
     if (monthlyScheduleTotal > 0) {
         const fallbackYear = item.recordYear?.toString();
@@ -294,7 +298,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
     }), [selectedYear, selectedReportingYear, selectedOu, selectedTier, selectedFundType]);
 
     const financialLineItems = useMemo(
-        () => collectFinancialLineItems(financialInput, financialFilters).filter(item => item.alloc > 0),
+        () => collectFinancialLineItems(financialInput, financialFilters).filter(item => item.alloc > 0 || item.targetObligationTotal > 0 || item.targetDisbursementTotal > 0),
         [financialInput, financialFilters]
     );
 
@@ -302,7 +306,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
         const sections = createSectionMap<Bed1Row>();
         financialLineItems.forEach(item => {
             const row = createBed1Row(item.activityName, rowKey(item), navigationTarget(item));
-            addToBed1Row(row, getReportingMonthIndex(item.line.obligationMonth || item.line.obligationDate, selectedReportingYear, item.recordYear), item.alloc);
+            item.targetObligationSchedules.forEach(entry => addToBed1Row(row, getReportingMonthIndex(entry.month, selectedReportingYear, item.recordYear), entry.amount));
             addOrMergeRow(getTargetList(sections, item), row, mergeBed1Rows);
         });
         return sections;
@@ -330,6 +334,10 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
                 alloc: 1,
                 obli: 0,
                 disb: 0,
+                targetObligationSchedules: [],
+                targetDisbursementSchedules: [],
+                targetObligationTotal: 0,
+                targetDisbursementTotal: 0,
                 obligationByMonth: [],
                 disbursementByMonth: [],
             };

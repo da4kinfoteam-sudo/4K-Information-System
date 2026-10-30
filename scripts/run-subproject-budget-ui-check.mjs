@@ -10,8 +10,9 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(path.join(process.env.PLAYWRIGHT_NODE_MODULES || 'C:/Users/joelm/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules', 'playwright'));
 const screenshots = await mkdtemp(path.join(tmpdir(), '4kis-budget-schedule-ui-'));
 const servePreview = process.argv.includes('--serve');
+const previewPort = Number(process.env.PORT || 3014);
 const mocks = {
-    'supabaseClient': `export const supabase = { from(table) { let action = 'read', payload; const q = {
+    'supabaseClient': `export const supabase = { async rpc(name){if(name==='budget_target_schedule_capability')return {data:2,error:null};throw Error('Unexpected RPC '+name);}, from(table) { let action = 'read', payload; const q = {
         select() { return q; }, eq() { return q; }, is() { return q; }, order() { return q; }, maybeSingle() { return q; }, single() { return q; },
         insert(value) { action = 'insert'; payload = value; return q; }, update(value) { action = 'update'; payload = value; return q; }, delete() { action = 'delete'; return q; },
         then(resolve) { return new Promise(done => setTimeout(() => {
@@ -59,7 +60,7 @@ function Harness() {
     </main>;
 }
 createRoot(document.getElementById('root')).render(<Harness />);`;
-const server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(screenshots, 'node_modules', '.vite'), appType: 'custom', resolve: { alias: { '@': process.cwd() } }, server: { host: '127.0.0.1', port: servePreview ? 3014 : 0, strictPort: servePreview }, optimizeDeps: { noDiscovery: true, include: ['react', 'react-dom/client', 'lucide-react'], entries: [] }, plugins: [{
+const server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(screenshots, 'node_modules', '.vite'), appType: 'custom', resolve: { alias: { '@': process.cwd() } }, server: { host: '127.0.0.1', port: servePreview ? previewPort : 0, strictPort: servePreview }, optimizeDeps: { noDiscovery: true, include: ['react', 'react-dom/client', 'lucide-react'], entries: [] }, plugins: [{
     name: 'budget-ui-isolated', enforce: 'pre',
     resolveId(id) { if (id === '/budget-harness.tsx') return '\0budget-harness.tsx'; for (const key of Object.keys(mocks)) if (id.replace(/\\/g, '/').endsWith('/' + key)) return '\0mock-' + key + '.ts'; },
     load(id) { if (id === '\0budget-harness.tsx') return transformWithEsbuild(harness, 'budget-harness.tsx', { loader: 'tsx', jsx: 'automatic' }); for (const [key, code] of Object.entries(mocks)) if (id === '\0mock-' + key + '.ts') return code; },
@@ -69,7 +70,7 @@ let browser;
 try {
     await server.listen();
     if (servePreview) {
-        console.log('Isolated sample-data budget preview: http://127.0.0.1:3014/fixture');
+        console.log('Isolated sample-data budget preview: http://127.0.0.1:'+previewPort+'/fixture');
         await new Promise(() => {});
     }
     browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -98,7 +99,7 @@ try {
     assert.equal(await page.locator('td[rowspan="3"]').count(), 6);
     await page.screenshot({ path: path.join(screenshots, 'desktop-grouped.png'), fullPage: true });
     await page.getByRole('button', { name: 'Add schedule to Coffee Roaster' }).click();
-    for (const [field, month] of [['obligationMonth', 'Jan'], ['deliveryDate', 'Feb'], ['disbursementMonth', 'Mar']]) {
+    for (const [field, month] of [['deliveryDate', 'Feb']]) {
         await page.getByRole('button', { name: field + ' schedule 1', exact: true }).click();
         await page.getByRole('button', { name: month + ' 2026', exact: true }).click();
     }
@@ -117,7 +118,7 @@ try {
         await page.evaluate(screen => window.loadFixture(screen), screen);
         await page.getByRole('button', { name: screen === 'parent' ? 'Budget Items' : 'Edit Budget', exact: true }).click();
         await page.getByRole('button', { name: 'Add schedule to Coffee Roaster', exact: true }).click();
-        await page.getByRole('button', { name: 'obligationMonth schedule 1', exact: true }).click();
+        await page.getByRole('button', { name: 'deliveryDate schedule 1', exact: true }).click();
         await page.getByRole('button', { name: 'Jan 2026', exact: true }).click();
         assert.equal(await page.evaluate(() => window.fixture.writes.length), 0);
         await page.getByRole('button', { name: 'Discard Draft', exact: true }).click();
@@ -162,13 +163,23 @@ try {
     await page.getByRole('combobox', { name: 'UACS Code', exact: true }).fill('106');
     await page.getByRole('option', { name: '106 - Equipment code', exact: true }).click();
     for (let i = 1; i <= 3; i++) {
-        if (i > 1) await page.getByRole('button', { name: 'Add Schedule', exact: true }).click();
-        for (const [field, month] of [['obligationMonth', 'Jan'], ['deliveryDate', 'Feb'], ['disbursementMonth', 'Mar']]) {
+        if (i > 1) await page.getByRole('button', { name: 'Add Delivery Line', exact: true }).click();
+        for (const [field, month] of [['deliveryDate', 'Feb']]) {
             await page.getByRole('button', { name: field + ' schedule ' + i, exact: true }).click();
             await page.getByRole('button', { name: month + ' 2026', exact: true }).click();
         }
         await page.getByRole('spinbutton', { name: 'Units schedule ' + i }).fill(String(i * 5));
         await page.getByRole('spinbutton', { name: 'Unit Price schedule ' + i }).fill('1000');
+        if(i===1)for(const [stage,months] of [['Obligation',['Jan','Mar']],['Disbursement',['Feb','Apr','Jun']]]){
+            const owner=page.locator('.budget-target-plan').first();
+            for(let index=0;index<months.length;index++){
+                await owner.getByRole('button',{name:'Add '+stage+' Target',exact:true}).click();
+                const section=owner.locator('.budget-target-plan__stage').nth(stage==='Obligation'?0:1);
+                await section.getByRole('button',{name:new RegExp('^'+stage+' target month ')}).last().click();
+                await page.getByRole('button',{name:months[index]+' 2026',exact:true}).click();
+                await section.getByRole('spinbutton').last().fill(String(stage==='Obligation'?[2000,3000][index]:[1000,1500,2500][index]));
+            }
+        }
     }
     await page.getByRole('button', { name: 'Apply Item', exact: true }).click();
     await page.getByRole('button', { name: 'Summary', exact: true }).click();
@@ -180,6 +191,9 @@ try {
     assert.equal(new Set(created.saved[0].row.details.map(row => row.id)).size, 3);
     assert.equal(new Set(created.saved[0].row.details.map(row => row.budgetItemGroupId)).size, 1);
     assert.equal(created.saved[0].row.details.some(row => row.obligations?.length), false);
+    assert.equal(created.saved[0].row.details[0].targetObligationSchedules.length,2);
+    assert.equal(created.saved[0].row.details[0].targetDisbursementSchedules.length,3);
+    assert.deepEqual(created.saved[0].row.details[1].targetObligationSchedules,[]);
     assert.deepEqual(errors, []);
     console.log('PASS: shared reference selections, merged rows, Add Schedule, both budget save entrypoints, double-click prevention, failed drafts and contained mobile/tablet overflow. Screenshots: ' + screenshots);
 } finally { await browser?.close(); await server.close(); }

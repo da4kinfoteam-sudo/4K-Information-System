@@ -10,6 +10,7 @@ export interface TrashItem {
 
 // Author: 4K 
 import React from 'react';
+import type { BudgetTargetPlan } from './lib/budgetTargetSchedules';
 
 // Icons
 export const SettingsIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -165,7 +166,7 @@ export interface DisbursementRecord {
     remarks?: string;
 }
 
-export interface SubprojectDetail {
+export interface SubprojectDetail extends BudgetTargetPlan {
     id: number;
     budgetItemGroupId?: string | null;
     type: string;
@@ -307,7 +308,7 @@ export interface IPO extends BaseEntity {
     lng?: number;
 }
 
-export interface ActivityExpense {
+export interface ActivityExpense extends BudgetTargetPlan {
     id: number;
     budgetItemGroupId?: string | null;
     fundingOrigin?: 'Supplemental' | 'SupplementalDraft';

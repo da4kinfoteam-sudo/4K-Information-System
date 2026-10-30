@@ -1,8 +1,28 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "activity-repeating-creation-fix",
+  "currentReleaseId": "independent-budget-target-schedules-fix",
   "releases": [
+    {
+      "id": "independent-budget-target-schedules-fix",
+      "version": "1.4.2",
+      "kind": "fix",
+      "title": "Independent obligation and disbursement target schedules",
+      "releaseDate": "2026-10-30",
+      "pr": null,
+      "sections": {
+        "Fixed": [
+          "Subproject and Activity budget items can have different numbers of obligation and disbursement targets, each with its own amount and month.",
+          "BEDS, WFP and Financial Audit use the correct target stage without duplicating allocation or physical delivery quantities."
+        ],
+        "Improved": [
+          "Budget editors, supplemental items and Financial ACF show independent financial schedules with separate allocation and stage totals.",
+          "Excel planning exports and imports retain schedule ownership and independent dates while supporting older templates.",
+          "Compatibility and conflict checks protect existing schedules and reported financial actuals during saves."
+        ],
+        "Affected Pages": ["Subprojects", "Activities and Trainings", "Financial Accomplishment", "Reports", "Financial Dashboard", "Awards and Rankings", "Budget Excel Import and Export"]
+      }
+    },
     {
       "id": "activity-repeating-creation-fix",
       "version": "1.4.1",

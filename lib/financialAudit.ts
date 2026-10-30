@@ -10,6 +10,7 @@ export type FinancialAuditIssueType =
     | 'Target obligation outside selected year'
     | 'Target disbursement outside selected year'
     | 'Target obligation due mismatch'
+    | 'Target obligation schedule mismatch'
     | 'Target disbursement schedule mismatch'
     | 'Target disbursement due mismatch'
     | 'Missing due actual obligation'
@@ -185,8 +186,13 @@ const getTargetSchedule = (item: FinancialLineItem, selectedYear: string, asOfMo
     const targetDisbursementDate = line.disbursementMonth || line.disbursementDate;
     const monthlyDisbursementTotal = monthlyTargetDisbursementTotal(line);
     const hasMonthlyDisbursementSchedule = monthlyDisbursementTotal > 0;
-    const targetObligationDue = isDateDue(targetObligationDate, selectedYear, asOfMonth) ? targetAllocation : 0;
-    const targetDisbursementDue = hasMonthlyDisbursementSchedule
+    const structured = line.targetScheduleVersion === 2;
+    const targetObligationDue = structured
+        ? item.targetObligationSchedules.reduce((sum, entry) => sum + (isDateDue(entry.month, selectedYear, asOfMonth) ? entry.amount : 0), 0)
+        : isDateDue(targetObligationDate, selectedYear, asOfMonth) ? targetAllocation : 0;
+    const targetDisbursementDue = structured
+        ? item.targetDisbursementSchedules.reduce((sum, entry) => sum + (isDateDue(entry.month, selectedYear, asOfMonth) ? entry.amount : 0), 0)
+        : hasMonthlyDisbursementSchedule
         ? monthlyTargetDisbursementDue(line, asOfMonth)
         : isDateDue(targetDisbursementDate, selectedYear, asOfMonth) ? targetAllocation : 0;
 
@@ -198,6 +204,7 @@ const getTargetSchedule = (item: FinancialLineItem, selectedYear: string, asOfMo
         monthlyDisbursementTotal,
         targetObligationDue,
         targetDisbursementDue,
+        structured,
     };
 };
 
@@ -396,7 +403,7 @@ export const buildFinancialAudit = (
             return;
         }
 
-        if (!schedule.targetObligationDate && selectedYear !== 'All') {
+        if (!schedule.structured && !schedule.targetObligationDate && selectedYear !== 'All') {
             addIssue(
                 item,
                 'Missing due target obligation date',
@@ -406,7 +413,7 @@ export const buildFinancialAudit = (
                 'Add target obligation month/date so this allocation can be scheduled in WFP and BEDS 1.',
                 metrics
             );
-        } else if (isOutsideSelectedYear(schedule.targetObligationDate, selectedYear)) {
+        } else if (schedule.structured ? item.targetObligationSchedules.some(entry => isOutsideSelectedYear(entry.month, selectedYear)) : isOutsideSelectedYear(schedule.targetObligationDate, selectedYear)) {
             addIssue(
                 item,
                 'Target obligation outside selected year',
@@ -418,7 +425,7 @@ export const buildFinancialAudit = (
             );
         }
 
-        if (!schedule.targetDisbursementDate && !schedule.hasMonthlyDisbursementSchedule && selectedYear !== 'All') {
+        if (!schedule.structured && !schedule.targetDisbursementDate && !schedule.hasMonthlyDisbursementSchedule && selectedYear !== 'All') {
             addIssue(
                 item,
                 'Missing due target disbursement date',
@@ -428,7 +435,7 @@ export const buildFinancialAudit = (
                 'Add target disbursement month/date or monthly target disbursement schedule so BEDS 3 can include this item.',
                 metrics
             );
-        } else if (schedule.targetDisbursementDate && isOutsideSelectedYear(schedule.targetDisbursementDate, selectedYear)) {
+        } else if (schedule.structured ? item.targetDisbursementSchedules.some(entry => isOutsideSelectedYear(entry.month, selectedYear)) : schedule.targetDisbursementDate && isOutsideSelectedYear(schedule.targetDisbursementDate, selectedYear)) {
             addIssue(
                 item,
                 'Target disbursement outside selected year',
@@ -440,7 +447,7 @@ export const buildFinancialAudit = (
             );
         }
 
-        if (schedule.hasMonthlyDisbursementSchedule && Math.abs(schedule.monthlyDisbursementTotal - targetAllocation) > EPSILON) {
+        if (!schedule.structured && schedule.hasMonthlyDisbursementSchedule && Math.abs(schedule.monthlyDisbursementTotal - targetAllocation) > EPSILON) {
             addIssue(
                 item,
                 'Target disbursement schedule mismatch',
@@ -452,7 +459,7 @@ export const buildFinancialAudit = (
             );
         }
 
-        if (schedule.targetObligationDue > 0 && Math.abs(schedule.targetObligationDue - targetAllocation) > EPSILON) {
+        if (!schedule.structured && schedule.targetObligationDue > 0 && Math.abs(schedule.targetObligationDue - targetAllocation) > EPSILON) {
             addIssue(
                 item,
                 'Target obligation due mismatch',
@@ -464,7 +471,7 @@ export const buildFinancialAudit = (
             );
         }
 
-        if (schedule.targetDisbursementDue > 0 && Math.abs(schedule.targetDisbursementDue - schedule.targetObligationDue) > EPSILON) {
+        if (!schedule.structured && schedule.targetDisbursementDue > 0 && Math.abs(schedule.targetDisbursementDue - schedule.targetObligationDue) > EPSILON) {
             addIssue(
                 item,
                 'Target disbursement due mismatch',
@@ -474,6 +481,21 @@ export const buildFinancialAudit = (
                 'Review target disbursement schedule against target obligation due amount.',
                 metrics
             );
+        }
+
+        if (schedule.structured) {
+            for (const stage of ['obligation', 'disbursement'] as const) {
+                const total = stage === 'obligation' ? item.targetObligationTotal : item.targetDisbursementTotal;
+                if (Math.abs(total - targetAllocation) > EPSILON) addIssue(
+                    item,
+                    stage === 'obligation' ? 'Target obligation schedule mismatch' : 'Target disbursement schedule mismatch',
+                    'Warning',
+                    Math.abs(total - targetAllocation),
+                    stage === 'obligation' ? ['WFP', 'BEDS 1'] : ['BEDS 3'],
+                    `Review the ${stage} plan total against allocation. Independent stages may intentionally have different totals.`,
+                    metrics,
+                );
+            }
         }
 
         if (schedule.targetObligationDue > 0 && !hasObligationRecords) {
@@ -553,6 +575,10 @@ export const buildFinancialAudit = (
                     alloc: group.allocation,
                     obli: 0,
                     disb: 0,
+                    targetObligationSchedules: [],
+                    targetDisbursementSchedules: [],
+                    targetObligationTotal: 0,
+                    targetDisbursementTotal: 0,
                     obligationByMonth: [],
                     disbursementByMonth: [],
                 },
@@ -576,6 +602,10 @@ export const buildFinancialAudit = (
                     alloc: group.allocation,
                     obli: 0,
                     disb: 0,
+                    targetObligationSchedules: [],
+                    targetDisbursementSchedules: [],
+                    targetObligationTotal: 0,
+                    targetDisbursementTotal: 0,
                     obligationByMonth: [],
                     disbursementByMonth: [],
                 },

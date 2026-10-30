@@ -8,6 +8,7 @@ import { RecordKpiCard, RecordKpiGrid, RecordPanel, formatRecordMetricCurrency }
 import { ActivitySupplement, getActivityBudgetSummary, isSupplementalExpense, SupplementalSource } from '../../lib/activitySupplementalBudget';
 import { readActivitySupplements, saveActivitySupplement } from '../../lib/activitySupplementalPersistence';
 import { getBudgetLineAmount } from '../../lib/budgetLineAdjustments';
+import { BudgetTargetSummary } from './BudgetTargetPlanEditor';
 
 type Draft = { uid: string; ledger?: ActivitySupplement; source: SupplementalSource; reference: string; date: string; reason: string; rows: ActivityExpense[]; establish: boolean; review?: boolean };
 const money = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
@@ -142,7 +143,7 @@ export function ActivitySupplementalSection({ activity, uacsCodes, onUpdate, tra
                 const first = ledger ? entries.find(item => item.supplementUid === ledger.uid)?.id === row.id : true;
                 return <tr key={row.id}>{transferSelection && <td><input type="checkbox" className="form-checkbox" aria-label={`Select supplemental schedule ${row.id} for transfer`} checked={transferSelection.selectedIds.includes(String(row.id))} disabled={busy || !transferSelection.eligibleIds.has(String(row.id))} onChange={() => transferSelection.onToggle(String(row.id))} /></td>}<td>{ledger?.source || row.supplementalSource || (row.isSavings || activity.isSavings ? 'Savings' : 'Realignment')}</td>
                     <td title={ledger?.reference}>{ledger?.reference || '-'}</td><td>{ledger?.authorization_date || '-'}</td><td title={row.expenseParticular}>{row.expenseParticular}</td><td>{row.uacsCode}</td>
-                    <td>{month(row.obligationMonth)}</td><td>{month(row.disbursementMonth)}</td><td className="data-table__numeric">{money(getBudgetLineAmount(row))}</td>
+                    <td>{row.targetScheduleVersion === 2 ? <BudgetTargetSummary line={row} allocation={getBudgetLineAmount(row)} stage="obligation" /> : month(row.obligationMonth)}</td><td>{row.targetScheduleVersion === 2 ? <BudgetTargetSummary line={row} allocation={getBudgetLineAmount(row)} stage="disbursement" /> : month(row.disbursementMonth)}</td><td className="data-table__numeric">{money(getBudgetLineAmount(row))}</td>
                     <td>{ledger?.pending_status ? `${ledger.status} / Revision ${ledger.pending_status}` : ledger?.status || (row.fundingOrigin === 'SupplementalDraft' ? 'Unsubmitted Draft' : row.supplementStatus || 'Previously Recorded')}</td>
                     <td><div className="data-table__actions">{first && ledger && ledger.status !== 'WITHDRAWN' && <>
                         <button type="button" className="table-action" aria-label={`${ledger.status === 'PENDING' || ledger.pending_status === 'PENDING' ? 'Review' : 'Edit'} supplement ${ledger.uid}`} title={ledger.status === 'PENDING' || ledger.pending_status === 'PENDING' ? 'Review supplement' : 'Edit supplement'} disabled={busy || (!allowed && ledger.status !== 'PENDING' && ledger.pending_status !== 'PENDING')} onClick={() => start(ledger)}><Pencil className="btn-symbol" /></button>

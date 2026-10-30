@@ -7,6 +7,7 @@ import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react'
 import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, RefFundSource, philippineRegions, operatingUnits, ouToRegionMap, filterYears } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
+import { requireIndependentTargetSupport } from '../lib/budgetTargetPersistence';
 import { useLogAction } from '../hooks/useLogAction';
 import { usePagination, useSelection, useUserAccess } from './mainfunctions/TableHooks';
 import { downloadActivitiesReport, downloadActivitiesTemplate, handleActivitiesUpload } from './mainfunctions/ImportExportService';
@@ -396,6 +397,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             };
             const newActivitiesPayload = itemsToClone.map(item => buildActivityClonePayload(item, context));
             if (supabase) {
+                await requireIndependentTargetSupport(newActivitiesPayload.flatMap(item => item.expenses || []));
                 const { data, error } = await supabase.from('activities').insert(newActivitiesPayload).select();
                 if (error) throw error;
                 if (!data?.length) throw new Error('No created records were returned. Refresh before retrying.');
@@ -619,7 +621,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                         {canEdit && <>
                             <button onClick={() => downloadActivitiesTemplate(fundSources)} className="btn btn-secondary"><FileSpreadsheet aria-hidden="true" /> Template</button>
                             <label htmlFor="activity-upload-major" className={`btn btn-secondary ${isUploading ? 'is-disabled' : 'cursor-pointer'}`}><Upload aria-hidden="true" /> {isUploading ? 'Uploading...' : 'Import'}</label>
-                            <input id="activity-upload-major" type="file" className="hidden" onChange={(event) => handleActivitiesUpload(event, activities, setActivities, ipos, logAction, setIsUploading, uacsCodes, currentUser, fundSources)} accept=".xlsx,.xls" disabled={isUploading} />
+                            <input id="activity-upload-major" type="file" className="hidden" onChange={(event) => handleActivitiesUpload(event, activities, setActivities, ipos, logAction, setIsUploading, uacsCodes, currentUser, fundSources, upsertActivitiesLocally)} accept=".xlsx,.xls" disabled={isUploading} />
                             <button onClick={() => handleToggleMode('clone')} className="btn btn-secondary" aria-label="Clone multiple activities"><DuplicateIcon /> Clone</button>
                             <button onClick={() => handleToggleMode('delete')} className="btn btn-secondary" aria-label="Delete multiple activities"><TrashIcon /> Delete</button>
                         </>}

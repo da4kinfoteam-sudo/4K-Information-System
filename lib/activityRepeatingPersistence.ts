@@ -1,5 +1,6 @@
 import type { Activity } from '../constants';
 import { supabase } from '../supabaseClient';
+import { requireIndependentTargetSupport } from './budgetTargetPersistence';
 
 export interface RepeatingCreateAttempt {
     payload: Omit<Activity, 'id'>;
@@ -18,6 +19,7 @@ export async function persistRepeatingActivity(attempt: RepeatingCreateAttempt):
         attempt.uncertain = false;
         return attempt.confirmed;
     }
+    await requireIndependentTargetSupport(attempt.payload.expenses || []);
     attempt.uncertain = true;
     const { data, error } = await supabase.from('activities').insert([attempt.payload]).select();
     if (error) {

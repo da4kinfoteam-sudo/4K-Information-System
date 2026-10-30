@@ -59,7 +59,7 @@ try{
     const importRow=async extras=>{
         const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.json_to_sheet([{uid:'ACT-IMPORT',type:'Activity',component:'Program Management',name:'Fixture',date:'2026-10-14',expense_uacsCode:'502',expense_amount:2000,expense_obligationMonth:'2026-10-01',expense_disbursementMonth:'2026-11-01',expense_supplementalSource:'Savings',...extras}]),'Activities Data');
         const binary=XLSX.write(book,{type:'array',bookType:'xlsx'});globalThis.FileReader=class{readAsArrayBuffer(){globalThis.importPromise=this.onload({target:{result:binary}});}};
-        let records=[];handleActivitiesUpload({target:{files:[{}]}},[],updater=>{records=updater(records);},[],()=>{},()=>{},{MOOE:{Travel:{'502':'Travel'}}},{fullName:'Fixture',operatingUnit:'NPMO'},[{uid:'FS-000001',label:'4K Fund',is_active:true}]);await globalThis.importPromise;return records;
+        let records=[];handleActivitiesUpload({target:{files:[{}]}},[],updater=>{records=updater(records);},[],()=>{},()=>{},{MOOE:{Travel:{'502':'Travel'}}},{fullName:'Fixture',operatingUnit:'NPMO'},[{uid:'FS-000001',label:'4K Fund',is_active:true}],rows=>{records=[...records,...rows];});await globalThis.importPromise;return records;
     };
     const imported=await importRow({});assert.equal(imported[0].expenses[0].fundingOrigin,'SupplementalDraft');assert.equal(getActivityBudgetSummary({...imported[0],status:'Proposed'}).current,0);
     const before=globalThis.fixture.inserts.length;await importRow({expense_supplementUid:'protected'});assert.equal(globalThis.fixture.inserts.length,before);assert.match(messages.at(-1),/cannot be imported/);

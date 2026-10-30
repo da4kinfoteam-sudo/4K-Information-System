@@ -4,6 +4,7 @@ import { getBudgetLineTag, isRecordOrLineExcludedFromTargets } from './budgetLin
 import { isTransferAccomplishmentActive } from './budgetItemTransferRules';
 import { normalizeStaffingExpenses } from './staffingExpenseIdentity';
 import { bucketActualObligationRecords, hasActualObligationRecords, sumActualObligationRecords } from './financialObligationUtils';
+import { BudgetTargetEntry, BudgetTargetPlan, readTargetSchedules, targetScheduleTotal } from './budgetTargetSchedules';
 
 type YearFilter = string | 'All';
 
@@ -37,7 +38,7 @@ export interface HomepageFinancialStats {
     trainings: FinancialBucket;
 }
 
-export type FinancialLine = {
+export type FinancialLine = BudgetTargetPlan & {
     fundingOrigin?: string;
     supplementUid?: string | null;
     supplementStatus?: string;
@@ -152,6 +153,10 @@ export interface FinancialLineItem {
     obli: number;
     disb: number;
     targetMonth?: number;
+    targetObligationSchedules: readonly BudgetTargetEntry[];
+    targetDisbursementSchedules: readonly BudgetTargetEntry[];
+    targetObligationTotal: number;
+    targetDisbursementTotal: number;
     obligationByMonth: number[];
     disbursementByMonth: number[];
 }
@@ -370,8 +375,14 @@ const addLineItem = (
     const disbursementTargetDate = line.disbursementMonth || line.disbursementDate || targetDate;
     const obligationByMonth = includeActual ? getActualObligationsByMonth(line, { year: actualYear, fallbackYear, fallbackDate: targetDate }) : createMonthlyArray();
     const disbursementByMonth = includeActual ? getActualDisbursementsByMonth(line, { year: actualYear, fallbackYear, fallbackDate: disbursementTargetDate }) : createMonthlyArray();
+    // Planned stages never alter the scalar dates used by legacy actual-ledger fallbacks.
+    const targetObligationSchedules = includeTarget ? readTargetSchedules(line, 'obligation', { amount: alloc, month: line.obligationMonth || line.obligationDate, ownerId: line.id }) : [];
+    const targetDisbursementSchedules = includeTarget ? readTargetSchedules(line, 'disbursement', { amount: alloc, month: line.disbursementMonth || line.disbursementDate, ownerId: line.id }) : [];
+    const targetObligationTotal = targetScheduleTotal(targetObligationSchedules);
+    const targetDisbursementTotal = targetScheduleTotal(targetDisbursementSchedules);
 
     if (alloc === 0 && obli === 0 && disb === 0
+        && targetObligationTotal === 0 && targetDisbursementTotal === 0
         && !hasActualObligationRecords(line)
         && (!filters.includeTaggedExclusions || excludedTargetAllocation === 0)) return;
 
@@ -401,7 +412,11 @@ const addLineItem = (
         alloc,
         obli,
         disb,
-        targetMonth: includeTarget ? getFinancialMonthIndex(targetDate) : undefined,
+        targetMonth: includeTarget && line.targetScheduleVersion !== 2 ? getFinancialMonthIndex(targetDate) : undefined,
+        targetObligationSchedules,
+        targetDisbursementSchedules,
+        targetObligationTotal,
+        targetDisbursementTotal,
         obligationByMonth,
         disbursementByMonth,
     });

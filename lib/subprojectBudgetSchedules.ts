@@ -1,4 +1,6 @@
 import type { ObjectType, SubprojectDetail } from '../constants';
+import { cloneTargetPlan, hasStructuredTargets, isValidTargetMonth, targetPlansEqual, validateTargetPlan } from './budgetTargetSchedules';
+export { isValidTargetMonth } from './budgetTargetSchedules';
 
 export type BudgetReferences = {
     particularTypes: Record<string, string[]>;
@@ -27,20 +29,15 @@ export const createBudgetScheduleId = (reserved: Set<string>) => {
     return id;
 };
 
-export const isValidTargetMonth = (value: unknown) => {
-    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-    const [year, month, day] = value.split('-').map(Number);
-    const date = new Date(Date.UTC(year, month - 1, day));
-    return year >= 1900 && date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
-};
-
 export const validateBudgetSchedule = (row: SubprojectDetail, references: BudgetReferences, original?: SubprojectDetail): string | null => {
     const sameParticular = original && original.type === row.type && original.particulars === row.particulars;
     if (!sameParticular && !references.particularTypes[row.type]?.includes(row.particulars)) return 'Select a listed Particular for this Item Type.';
     const sameUacs = original && original.objectType === row.objectType && original.expenseParticular === row.expenseParticular && original.uacsCode === row.uacsCode;
     if (!sameUacs && !Object.hasOwn(references.uacsCodes[row.objectType]?.[row.expenseParticular] || {}, row.uacsCode)) return 'Select a listed UACS Code for the selected Object Type and Expense Particular.';
     if (!row.unitOfMeasure.trim()) return 'Select a Unit of Measure.';
-    if (SCHEDULE_FIELDS.slice(0, 3).some(field => !isValidTargetMonth(row[field]))) return 'Select valid Delivery, Obligation and Disbursement months.';
+    const planError = validateTargetPlan(row);
+    if (planError) return planError;
+    if (!isValidTargetMonth(row.deliveryDate) || (!hasStructuredTargets(row) && [row.obligationMonth, row.disbursementMonth].some(value => !isValidTargetMonth(value)))) return 'Select valid Delivery, Obligation and Disbursement months.';
     if (![row.numberOfUnits, row.pricePerUnit].every(value => Number.isFinite(Number(value)) && Number(value) > 0)) return 'Units and Unit Price must be greater than zero.';
     if (!Number.isFinite(Number(row.numberOfUnits) * Number(row.pricePerUnit))) return 'The schedule amount is too large.';
     return null;
@@ -72,6 +69,7 @@ export const latestBudgetDeliveryDate = (items: SubprojectDetail[], current: str
 export const remapClonedBudgetGroups = (items: SubprojectDetail[]) => {
     const mapping = new Map<string, string>();
     return items.map(item => {
+        item = cloneTargetPlan(item);
         if (!item.budgetItemGroupId) return item;
         if (!mapping.has(item.budgetItemGroupId)) mapping.set(item.budgetItemGroupId, crypto.randomUUID());
         return { ...item, budgetItemGroupId: mapping.get(item.budgetItemGroupId)! };
@@ -79,4 +77,4 @@ export const remapClonedBudgetGroups = (items: SubprojectDetail[]) => {
 };
 
 export const budgetTargetsChanged = (before: SubprojectDetail, after: SubprojectDetail) =>
-    [...SHARED_BUDGET_FIELDS, ...SCHEDULE_FIELDS, 'budgetItemGroupId' as const].some(field => before[field] !== after[field]);
+    !targetPlansEqual(before, after) || [...SHARED_BUDGET_FIELDS, ...SCHEDULE_FIELDS, 'budgetItemGroupId' as const].some(field => before[field] !== after[field]);

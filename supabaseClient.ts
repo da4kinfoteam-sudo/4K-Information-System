@@ -15,7 +15,7 @@ if (typeof window !== 'undefined') {
 
 // Initialize client with NO auth persistence
 export const supabase = (SB_URL && SB_KEY) 
-    ? createClient(SB_URL, SB_KEY) 
+    ? createClient(SB_URL, SB_KEY, { global: { headers: { 'X-Client-Info': 'supabase-js-web/2.39.0 4kis-target-plan/2' } } })
     : null;
 
 // Diagnostics

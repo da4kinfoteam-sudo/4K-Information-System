@@ -2,6 +2,8 @@ import type { Subproject, SubprojectDetail } from '../constants';
 import { supabase } from '../supabaseClient';
 import { resolveSubprojectCompletionRollup } from './subprojectCompletion';
 import { sameSubprojectActualValue } from './subprojectAccomplishmentPersistence';
+import { assertLegacyTargetConversionCurrent, rescheduleTargetPlan } from './budgetTargetSchedules';
+import { requireIndependentTargetSupport } from './budgetTargetPersistence';
 
 const equal = sameSubprojectActualValue;
 const conflict = () => new Error('This record changed while you were editing. Your draft has not been saved. Reopen the current record before applying these changes.');
@@ -28,6 +30,7 @@ export function mergeSubprojectDraft(base: Subproject, draft: Subproject, latest
             if (!equal(original, row)) throw conflict();
             return [];
         }
+        assertLegacyTargetConversionCurrent(original, changed, row);
         return [mergeFields(original, changed, row, ['id'])];
     });
     for (const row of draft.details || []) {
@@ -55,6 +58,7 @@ export function getChangedSubprojectActualIds(base: SubprojectDetail[], draft: S
 }
 
 export async function persistSubprojectDraft(base: Subproject, draft: Subproject, mode: string, expectedStatus?: string | null): Promise<Subproject> {
+    if (mode === 'budget') await requireIndependentTargetSupport(draft.details || []);
     if (!supabase) return draft;
     const { data: latest, error: readError } = await supabase.from('subprojects').select('*').eq('id', base.id).maybeSingle();
     if (readError) throw readError;
@@ -81,5 +85,5 @@ export async function persistSubprojectDraft(base: Subproject, draft: Subproject
 
 export function rescheduleBudgetTargets(items: SubprojectDetail[], year: number): SubprojectDetail[] {
     const change = (date?: string) => date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? `${year}-${date.slice(5, 7)}-01` : date;
-    return items.map(row => row.isSuperseded ? row : { ...row, deliveryDate: change(row.deliveryDate), obligationMonth: change(row.obligationMonth), disbursementMonth: change(row.disbursementMonth) });
+    return items.map(row => row.isSuperseded ? row : { ...rescheduleTargetPlan(row, year), deliveryDate: change(row.deliveryDate), obligationMonth: change(row.obligationMonth), disbursementMonth: change(row.disbursementMonth) });
 }

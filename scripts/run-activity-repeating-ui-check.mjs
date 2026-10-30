@@ -14,7 +14,7 @@ const artifacts = await mkdtemp(path.join(tmpdir(), '4kis-activity-repeating-ui-
 assert.match(await readFile('App.tsx','utf8'), /activity=\{effectiveEditMode === 'create' \? undefined : routeActivity \|\| undefined\}/, 'Creation must not receive the selected activity after a confirmed row callback');
 // All client/auth/location/history dependencies are replaced; no production session or network data.
 const mocks = {
-    supabaseClient: `export const supabase = { from(table) {
+    supabaseClient: `export const supabase = { async rpc(name){if(name==='budget_target_schedule_capability')return{data:2,error:null};throw Error('Unexpected RPC '+name);}, from(table) {
         let action='read',payload; const filters=[];
         const query={select(){return query;},eq(key,value){filters.push([key,value]);return query;},maybeSingle(){return query;},single(){return query;},
             insert(value){action='insert';payload=value[0];return query;},
@@ -169,16 +169,24 @@ try {
     const budgetDraft=page.locator('.subproject-budget-editor__draft');
     await page.getByRole('combobox',{name:'Expense Particular',exact:true}).fill('Travel');await page.getByRole('option',{name:'Travel',exact:true}).click();
     await page.getByRole('combobox',{name:'UACS Code',exact:true}).fill('502');await page.getByRole('option',{name:'502 - Travel',exact:true}).click();
-    await budgetDraft.getByRole('button',{name:/Obligation month/}).click();await page.getByRole('button',{name:'Jan 2027',exact:true}).click();
-    await budgetDraft.getByRole('button',{name:/Disbursement month/}).click();await page.getByRole('button',{name:'Mar 2027',exact:true}).click();
-    await budgetDraft.getByRole('spinbutton').fill('2500');await page.getByRole('button',{name:'Apply',exact:true}).click();
-    await page.getByRole('button',{name:'Add schedule to Travel',exact:true}).click();
-    await budgetDraft.getByRole('button',{name:/Obligation month/}).click();await page.getByRole('button',{name:'Apr 2027',exact:true}).click();
-    await budgetDraft.getByRole('button',{name:/Disbursement month/}).click();await page.getByRole('button',{name:'Jun 2027',exact:true}).click();
-    await budgetDraft.getByRole('spinbutton').fill('500');await page.getByRole('button',{name:'Apply',exact:true}).click();
+    await budgetDraft.getByRole('spinbutton').fill('2500');
+    const addTarget=async(stage,month,amount)=>{
+        await budgetDraft.getByRole('button',{name:'Add '+stage+' Target',exact:true}).click();
+        await budgetDraft.getByRole('button',{name:new RegExp(stage+' target month')}).last().click();
+        await page.getByRole('button',{name:month,exact:true}).click();
+        await budgetDraft.getByLabel(new RegExp(stage+' target amount')).last().fill(String(amount));
+    };
+    await addTarget('Obligation','Jan 2027',2000);await addTarget('Obligation','Apr 2027',500);
+    await addTarget('Disbursement','Mar 2027',1500);await addTarget('Disbursement','Jun 2027',500);await addTarget('Disbursement','Sep 2027',500);
+    await page.getByRole('button',{name:'Apply',exact:true}).click();
     await submit();await page.waitForFunction(()=>window.fixture.saved.length===2);result=await snapshot();
-    for(const row of result.rows)assert.deepEqual(row.expenses.map(expense=>[expense.amount,expense.obligationMonth,expense.disbursementMonth]),[[2500,'2027-01-01','2027-03-01'],[500,'2027-04-01','2027-06-01']]);
-    assert.equal(new Set(result.rows.flatMap(row=>row.expenses.map(expense=>expense.id))).size,4);
+    for(const row of result.rows){
+        assert.equal(row.expenses.length,1);assert.equal(row.expenses[0].amount,2500);
+        assert.deepEqual(row.expenses[0].targetObligationSchedules.map(entry=>[entry.amount,entry.month]),[[2000,'2027-01-01'],[500,'2027-04-01']]);
+        assert.deepEqual(row.expenses[0].targetDisbursementSchedules.map(entry=>[entry.amount,entry.month]),[[1500,'2027-03-01'],[500,'2027-06-01'],[500,'2027-09-01']]);
+    }
+    assert.equal(new Set(result.rows.flatMap(row=>row.expenses.map(expense=>expense.id))).size,2);
+    assert.equal(new Set(result.rows.flatMap(row=>row.expenses.flatMap(expense=>[...expense.targetObligationSchedules,...expense.targetDisbursementSchedules].map(entry=>entry.id)))).size,10);
     assert.notEqual(result.rows[0].expenses[0].budgetItemGroupId,result.rows[1].expenses[0].budgetItemGroupId);
     await reset();await setup();await add();await add('2027-03-04','22');
     for(const width of [1440,814,390]){
