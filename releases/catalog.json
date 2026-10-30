@@ -9,7 +9,7 @@
       "kind": "fix",
       "title": "Independent obligation and disbursement target schedules",
       "releaseDate": "2026-10-30",
-      "pr": null,
+      "pr": 99,
       "sections": {
         "Fixed": [
           "Subproject and Activity budget items can have different numbers of obligation and disbursement targets, each with its own amount and month.",
