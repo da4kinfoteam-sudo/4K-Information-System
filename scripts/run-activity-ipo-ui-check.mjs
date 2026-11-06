@@ -8,9 +8,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 const require = createRequire(import.meta.url);
-const { chromium } = process.env.PLAYWRIGHT_NODE_MODULES
-    ? require(path.join(process.env.PLAYWRIGHT_NODE_MODULES, 'playwright'))
-    : require('playwright');
+const { chromium } = require(path.join(process.env.PLAYWRIGHT_NODE_MODULES || 'C:/Users/joelm/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules', 'playwright'));
 const screenshots = await mkdtemp(path.join(tmpdir(), '4kis-activity-ipo-ui-'));
 
 // This server replaces all database/auth/save hooks with synthetic fixtures; it never imports the real client.
@@ -18,6 +16,18 @@ const mocks = {
     'supabaseClient': `const snapshot = activity => ({activity,stages:Object.fromEntries(activity.expenses.map(row=>[String(row.id),Object.fromEntries(['obligation','disbursement'].map(stage=>[stage,{source:'central',entries:(row[stage==='obligation'?'obligations':'disbursements']||[]).map(entry=>({...entry,id:String(entry.id),remarks:entry.remarks||''}))}]))]))});
     export const supabase = { async rpc(name,args) {
         const f=window.fixture;
+        if(name==='read_dcf_state')return {data:{record:f.source,financial:{obligations:[],disbursements:[],stages:snapshot(f.source).stages}},error:null};
+        if(name==='commit_dcf_change'){
+            await new Promise(done=>setTimeout(done,f.delay||0));
+            if(f.fail)return {data:null,error:{message:'Synthetic save failure'}};
+            if(f.noRow)return {data:null,error:null};
+            const payload=args.p_changes;
+            const row={...f.source,...payload,id:args.p_parent_id||501,serverConfirmed:true};
+            if(f.serverTitle!==undefined&&!Object.hasOwn(payload,'activity_title'))row.activity_title=f.serverTitle;
+            f.writes.push({table:'activities',action:args.p_parent_id?'update':'insert',payload});
+            (f.rpcWrites||=[]).push({name,args});f.stored=row;
+            return {data:{record:row,financial:{obligations:[],disbursements:[],stages:snapshot(row).stages},revisionId:1},error:null};
+        }
         if(name==='read_activity_accomplishments')return {data:[snapshot(f.source)],error:null};
         if(name!=='save_activity_accomplishment')throw Error('Unexpected RPC');
         (f.rpcWrites ||= []).push({name,args});

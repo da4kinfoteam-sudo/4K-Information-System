@@ -59,7 +59,9 @@ try {
     assert.match(form, /readActivityAccomplishments\(\[activity.id\], currentUser\)/);
     assert.match(form, /saveActivityAccomplishment\(\{/);
     assert.doesNotMatch(form, /syncActivityObligations\(/);
-    assert.match(form, /update\(sanitizedPayload\)\.eq\('id', activity!\.id\)\.select\(\)\.single\(\)/);
+    assert.match(form, /await persistDcfMutation<Activity>\(/);
+    assert.match(form, /const changes = dcfChangedFields\(initialActivity, sanitizedPayload\)/);
+    assert.doesNotMatch(form,/update\(sanitizedPayload\)/);
     assert.match(form, /buildRepeatingActivityPayload\(shared, entry, ipos/);
     assert.match(app, /onUpdateActivity=\{handleActivitySaved\}/);
     assert.match(app, /activitiesSync\.upsertLocalData\(\[updated\]\)/);

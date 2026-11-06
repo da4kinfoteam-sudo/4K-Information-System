@@ -17,6 +17,16 @@ const mocks = {
     export const supabase = { async rpc(name,args) {
         const f=window.fixture;
         if(name==='budget_target_schedule_capability')return {data:2,error:null};
+        if(name==='read_dcf_state'){const activity=f.latest||f.stored||f.source;return {data:{record:activity,financial:{obligations:[],disbursements:[],stages:snapshot(activity).stages},revisionId:1},error:null};}
+        if(name==='commit_dcf_change'){
+            f.writes.push({action:args.p_parent_id===null?'insert':'update',payload:args.p_changes});
+            await new Promise(resolve=>setTimeout(resolve,f.delay||0));
+            if(f.fail)return {data:null,error:{message:'Synthetic save failure'}};
+            if(f.noRow)return {data:null,error:null};
+            if(args.p_financial.length)throw Error('Budget fixture must not write financial actuals');
+            f.stored={...(f.latest||f.stored||f.source),...args.p_changes,id:f.source.id,serverConfirmed:true};
+            return {data:{record:f.stored,financial:{obligations:[],disbursements:[],stages:snapshot(f.stored).stages},revisionId:1},error:null};
+        }
         if(name==='read_activity_accomplishments')return {data:[snapshot(f.latest||f.stored||f.source)],error:null};
         if(name!=='save_activity_accomplishment')throw Error('Unexpected RPC');
         f.actualRpcWrites=(f.actualRpcWrites||0)+1;
@@ -26,7 +36,7 @@ const mocks = {
             for(const op of edit.operations){if(op.action==='update')row[key]=row[key].map(entry=>String(entry.id)===op.id?{...entry,...op.value}:entry);else if(op.action==='insert')row[key].push({id:Date.now(),...op.value});else row[key]=row[key].filter(entry=>String(entry.id)!==op.id);}}
         Object.assign(activity,args.p_physical);f.stored=activity;return {data:snapshot(activity),error:null};
     }, from(table) { let action = 'read', payload; const filters = []; const q = {
-        select() { return q; }, eq(key,value) { filters.push([key,value]); return q; }, is() { return q; }, order() { return q; }, maybeSingle() { return q; }, single() { return q; },
+        select() { return q; }, eq(key,value) { filters.push([key,value]); return q; }, is() { return q; }, order() { return q; }, limit() { return q; }, maybeSingle() { return q; }, single() { return q; },
         insert(value) { action = 'insert'; payload = value; return q; }, update(value) { action = 'update'; payload = value; return q; }, delete() { action = 'delete'; return q; },
         then(resolve) { return new Promise(done => setTimeout(() => {
             const f = window.fixture;

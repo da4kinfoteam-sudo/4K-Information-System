@@ -3,7 +3,7 @@ import { User, UserRole } from '../constants';
 export const DCF_POLICY_SETTINGS_KEY = 'dcf_editing_policy';
 
 export type DcfModuleKey = 'subprojects' | 'activities' | 'office_requirements' | 'staffing_requirements' | 'other_program_expenses';
-export type DcfPolicyAction = 'editDetails' | 'editBudget' | 'editSupplementalBudget' | 'editPhysicalAccomplishment' | 'editFinancialAccomplishment' | 'delete';
+export type DcfPolicyAction = 'editDetails' | 'editBudget' | 'editSupplementalBudget' | 'editPhysicalAccomplishment' | 'editFinancialAccomplishment' | 'delete' | 'restoreHistory';
 export type StandardDcfStatus = 'Proposed' | 'Ongoing' | 'Completed' | 'Cancelled';
 export type StaffingDcfStatus = 'Proposed' | 'Filled' | 'Unfilled';
 export type DcfPolicyStatus = StandardDcfStatus | StaffingDcfStatus;
@@ -53,6 +53,7 @@ export const DCF_POLICY_ACTIONS: Array<{ key: DcfPolicyAction; label: string; sh
     { key: 'editPhysicalAccomplishment', label: 'Edit Physical Accomplishment', shortLabel: 'Physical' },
     { key: 'editFinancialAccomplishment', label: 'Edit Financial Accomplishment', shortLabel: 'Financial' },
     { key: 'delete', label: 'Delete', shortLabel: 'Delete' },
+    { key: 'restoreHistory', label: 'Restore History', shortLabel: 'Restore History' },
 ];
 
 const ADMIN_ACTIONS: Record<DcfPolicyAction, boolean> = {
@@ -62,6 +63,7 @@ const ADMIN_ACTIONS: Record<DcfPolicyAction, boolean> = {
     editPhysicalAccomplishment: true,
     editFinancialAccomplishment: true,
     delete: true,
+    restoreHistory: false,
 };
 
 const GUEST_ACTIONS: Record<DcfPolicyAction, boolean> = {
@@ -71,6 +73,7 @@ const GUEST_ACTIONS: Record<DcfPolicyAction, boolean> = {
     editPhysicalAccomplishment: false,
     editFinancialAccomplishment: false,
     delete: false,
+    restoreHistory: false,
 };
 
 const PROPOSED_RULES: Record<DcfPolicyAction, boolean> = {
@@ -80,6 +83,7 @@ const PROPOSED_RULES: Record<DcfPolicyAction, boolean> = {
     editPhysicalAccomplishment: false,
     editFinancialAccomplishment: false,
     delete: true,
+    restoreHistory: false,
 };
 
 const ONGOING_RULES: Record<DcfPolicyAction, boolean> = {
@@ -89,6 +93,7 @@ const ONGOING_RULES: Record<DcfPolicyAction, boolean> = {
     editPhysicalAccomplishment: true,
     editFinancialAccomplishment: true,
     delete: false,
+    restoreHistory: false,
 };
 
 const LOCKED_RULES: Record<DcfPolicyAction, boolean> = {
@@ -98,6 +103,7 @@ const LOCKED_RULES: Record<DcfPolicyAction, boolean> = {
     editPhysicalAccomplishment: false,
     editFinancialAccomplishment: false,
     delete: false,
+    restoreHistory: false,
 };
 
 const buildRoleRules = (role: UserRole): DcfRolePolicyRules => {
@@ -119,6 +125,7 @@ const buildRoleRules = (role: UserRole): DcfRolePolicyRules => {
         });
         roleRules[module.key] = statusRules;
         for (const status of module.statuses) {
+            statusRules[status]!.restoreHistory = role === 'Super Admin';
             statusRules[status]!.editSupplementalBudget = module.key === 'activities' && role !== 'Guest' && status !== 'Cancelled'
                 && (status === 'Proposed' || status === 'Ongoing' || role === 'Super Admin' || role === 'Administrator');
         }
@@ -207,6 +214,8 @@ export const getDcfRuleValue = (
     status: DcfPolicyStatus,
     action: DcfPolicyAction
 ): boolean => {
+    if (role === 'Guest') return false;
+    if (action === 'restoreHistory') return policy.roleRules[role]?.[moduleKey]?.[status]?.restoreHistory === true;
     if (moduleKey === 'activities' && action === 'editBudget' && status !== 'Proposed') return false;
     return !!policy.roleRules[role]?.[moduleKey]?.[status]?.[action];
 };
@@ -252,6 +261,16 @@ export const canEditDcfSection = ({
 }): DcfPolicyDecision => {
     if (!user) {
         return { allowed: false, code: 'blocked_by_permission', message: 'No signed-in user.' };
+    }
+
+    if (user.role === 'Guest') {
+        return { allowed: false, code: 'blocked_by_permission', message: 'Guest accounts cannot change DCF records.' };
+    }
+
+    // Restoration is a separate capability, never a status/month override.
+    if (action === 'restoreHistory') {
+        const allowed = hasModuleAccess && getDcfRuleValue(policy, user.role, moduleKey, status, action);
+        return { allowed, code: allowed ? 'allowed' : 'blocked_by_permission', message: allowed ? 'History restoration capability is enabled. Applicable change permissions must also be checked.' : 'History restoration is disabled for this role or status, or module access is missing.' };
     }
 
     if (moduleKey === 'activities' && action === 'editBudget' && status !== 'Proposed') {

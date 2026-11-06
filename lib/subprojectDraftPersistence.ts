@@ -1,4 +1,5 @@
-import type { Subproject, SubprojectDetail } from '../constants';
+import type { Subproject, SubprojectDetail, User } from '../constants';
+import { dcfChangedFields, persistDcfMutation, type DcfMutationRequest } from './dcfMutation';
 import { supabase } from '../supabaseClient';
 import { resolveSubprojectCompletionRollup } from './subprojectCompletion';
 import { sameSubprojectActualValue } from './subprojectAccomplishmentPersistence';
@@ -57,9 +58,10 @@ export function getChangedSubprojectActualIds(base: SubprojectDetail[], draft: S
     }).map(row => String(row.id)));
 }
 
-export async function persistSubprojectDraft(base: Subproject, draft: Subproject, mode: string, expectedStatus?: string | null): Promise<Subproject> {
+export async function persistSubprojectDraft(base: Subproject, draft: Subproject, mode: string, expectedStatus?: string | null, actor?: User, options: { reason?: string; source?: string; request?: DcfMutationRequest } = {}): Promise<Subproject> {
     if (mode === 'budget') await requireIndependentTargetSupport(draft.details || []);
     if (!supabase) return draft;
+    if (!actor?.id) throw new Error('A signed-in user is required. Your draft was not saved.');
     const { data: latest, error: readError } = await supabase.from('subprojects').select('*').eq('id', base.id).maybeSingle();
     if (readError) throw readError;
     if (!latest) throw new Error('The subproject is no longer available. No changes were saved.');
@@ -72,15 +74,11 @@ export async function persistSubprojectDraft(base: Subproject, draft: Subproject
         else if (merged.status !== 'Cancelled') merged.status = rollup.isComplete ? 'Completed' : (merged.status === 'Completed' || mode === 'accomplishment' ? 'Ongoing' : merged.status);
         merged.actualCompletionDate = merged.status === 'Completed' ? rollup.actualCompletionDate : null;
     }
-    const { id, created_at, ...payload } = merged;
-    payload.updated_at = new Date().toISOString();
-    for (const field of ['startDate', 'estimatedCompletionDate', 'actualCompletionDate']) if (payload[field] === '') payload[field] = null;
-    let query = supabase.from('subprojects').update(payload).eq('id', id).eq('status', latest.status);
-    query = latest.updated_at ? query.eq('updated_at', latest.updated_at) : query.is('updated_at', null);
-    const { data, error } = await query.select('*').maybeSingle();
-    if (error) throw error;
-    if (!data) throw conflict();
-    return data as Subproject;
+    for (const field of ['startDate', 'estimatedCompletionDate', 'actualCompletionDate']) if (merged[field] === '') merged[field] = null;
+    const changes = Object.fromEntries(Object.entries(dcfChangedFields(latest, merged)).filter(([field, value]) => field !== 'uid' && !equal(latest[field], value)));
+    const confirmed = await persistDcfMutation({ entityType: 'subprojects', parentId: base.id, base: latest,
+        changes, actor, source: options.source || `subproject-detail-${mode}`, reason: options.reason || '', request: options.request });
+    return confirmed.record as Subproject;
 }
 
 export function rescheduleBudgetTargets(items: SubprojectDetail[], year: number): SubprojectDetail[] {

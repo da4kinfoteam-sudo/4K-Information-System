@@ -39,6 +39,7 @@ import {
 } from '../../lib/googleDriveStorage';
 
 export type GalleryViewMode = 'thumbnail' | 'list' | 'carousel';
+import { formatUploadedAt } from '../../lib/driveFilePresentation';
 type UploadStatus = 'queued' | 'uploading' | 'completed' | 'failed';
 
 interface UploadQueueItem {
@@ -90,13 +91,6 @@ const getSafeUploadErrorMessage = (error: unknown) => {
         return 'The upload folder could not be prepared. Refresh the section and try again.';
     }
     return message || 'Upload failed.';
-};
-
-const formatUploadedAt = (value?: string | null) => {
-    if (!value) return 'Unknown date';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
 const DriveUploadDropzoneInner = <TFile extends DriveMediaFile>(

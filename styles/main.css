@@ -28431,3 +28431,86 @@ button.lod-table-state:hover {
   .budget-target-plan__stage .table-action { min-width: 44px; min-height: 44px; }
   .budget-target-plan-dialog .modal-card__footer .btn { min-height: 44px; }
 }
+
+/* Shared DCF revision history; intentionally isolated from live detail tables. */
+.dcf-revision-history { min-width: 0; width: 100%; }
+.dcf-revision-history__heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.dcf-revision-history__toggle { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; color: inherit; background: transparent; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+.dcf-revision-history svg, .dcf-revision-modal .btn-symbol { width: 16px; height: 16px; flex-shrink: 0; }
+.dcf-revision-history__scroll { max-height: 400px; overflow: auto; }
+.dcf-revision-history__table { width: 100%; min-width: 660px; table-layout: fixed; }
+.dcf-revision-history__table th { text-align: center; position: sticky; top: 0; background: var(--surface-card); z-index: 1; }
+.dcf-revision-history__table th:nth-child(1) { width: 224px; }
+.dcf-revision-history__table th:nth-child(2) { width: auto; }
+.dcf-revision-history__table th:nth-child(3) { width: 170px; }
+.dcf-revision-history__table th:nth-child(4) { width: 72px; }
+.dcf-revision-history__table td { padding: 6px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dcf-revision-history__table td:last-child { text-align: center; }
+.dcf-revision-unavailable { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; opacity: 0.45; }
+.dcf-revision-history__footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 12px 0; font-size: 0.875rem; }
+.dcf-revision-history__footer label, .dcf-revision-history__footer > div { display: flex; align-items: center; gap: 8px; }
+.dcf-revision-history__footer select { width: 72px; min-height: 32px; padding: 4px 8px; }
+.dcf-revision-history__legacy { margin-top: 8px; }
+.dcf-revision-history__legacy summary { cursor: pointer; }
+.dcf-revision-backdrop { z-index: 10000; padding: 16px; }
+.dcf-revision-modal { width: min(1280px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; margin: auto; }
+.dcf-revision-modal .modal-card__header, .dcf-revision-modal .modal-card__footer { flex: 0 0 auto; gap: 12px; }
+.dcf-revision-modal .modal-card__header h2 { min-width: 0; margin: 0; font-size: 1.125rem; font-weight: 600; overflow-wrap: anywhere; letter-spacing: 0; }
+.dcf-revision-modal .modal-close-btn { flex-shrink: 0; }
+.dcf-revision-modal__body { overflow: auto; min-height: 0; padding: 16px 20px; container-type: inline-size; }
+.dcf-historical-detail { min-width: 0; padding: 0; }
+.dcf-historical-detail .record-detail-kpi__value { overflow-wrap: anywhere; }
+.dcf-historical-detail .record-detail-kpi__empty { font-size: var(--font-size-body); font-weight: 400; }
+.dcf-historical-detail .record-detail-panel__header { min-height: 0; }
+.dcf-historical-program .detail-dl { margin: 0; }
+.dcf-historical-detail .detail-item, .dcf-historical-detail .detail-card,
+.dcf-historical-detail .record-detail-main, .dcf-historical-detail .record-detail-aside { min-width: 0; }
+.dcf-historical-detail .detail-value, .dcf-historical-detail .detail-note,
+.dcf-historical-detail .detail-list-title { overflow-wrap: anywhere; }
+.dcf-historical-detail .data-table-scroll { max-width: 100%; }
+.dcf-historical-detail .data-table th, .dcf-historical-detail .data-table td { white-space: nowrap; }
+.dcf-historical-detail .detail-progress progress { display: block; width: 100%; height: 8px; margin-top: 8px; accent-color: var(--primary-color, #2b704c); }
+.dcf-historical-detail .activity-supplemental-section .record-detail-kpi-grid { margin-bottom: 16px; }
+.dcf-historical-detail summary.program-expense-card__trigger { list-style: none; cursor: pointer; }
+.dcf-historical-detail summary.program-expense-card__trigger::-webkit-details-marker { display: none; }
+.dcf-historical-detail details[open] .program-expense-card__chevron { transform: rotate(180deg); }
+.dcf-historical-detail .program-expense-card__date > div { display: flex; gap: 8px; flex-wrap: wrap; }
+.dcf-historical-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.dcf-historical-gallery .detail-list-item { display: flex; align-items: flex-start; gap: 12px; }
+.dcf-historical-detail .detail-list-item > svg { width: 20px; height: 20px; flex-shrink: 0; }
+@container (max-width: 1000px) {
+  .dcf-historical-detail .record-detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .dcf-historical-detail .record-detail-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container (max-width: 600px) {
+  .dcf-historical-detail .record-detail-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dcf-historical-detail .detail-grid, .dcf-historical-detail .detail-dl, .dcf-historical-gallery { grid-template-columns: minmax(0, 1fr); }
+  .dcf-historical-detail .program-expense-card__trigger { flex-wrap: wrap; }
+}
+.dcf-revision-stamp { margin: 0 0 16px; color: var(--text-secondary); font-size: 0.875rem; overflow-wrap: anywhere; }
+.dcf-revision-section { min-width: 0; margin: 0 0 20px; }
+.dcf-revision-section:last-child { margin-bottom: 0; }
+.dcf-revision-section h3 { font-size: 1rem; font-weight: 600; margin: 0 0 8px; letter-spacing: 0; }
+.dcf-revision-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 24px; margin: 0 0 16px; }
+.dcf-revision-fields > div { min-width: 0; }
+.dcf-revision-fields dt { color: var(--text-secondary); font-size: 0.8125rem; }
+.dcf-revision-fields dd { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dcf-revision-section__table { max-height: 340px; overflow: auto; }
+.dcf-revision-section__table table { width: 100%; }
+.dcf-revision-section__table th { text-align: center; white-space: nowrap; }
+.dcf-revision-section__table td { min-width: 120px; white-space: pre-wrap; overflow-wrap: anywhere; vertical-align: top; padding: 6px 12px; }
+.dcf-revision-section__table td:focus { white-space: normal; }
+.dcf-revision-acknowledgement { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; }
+.dcf-revision-acknowledgement input { flex-shrink: 0; margin-top: 3px; }
+.dcf-revision-modal .modal-card__footer { flex-wrap: wrap; }
+.dcf-revision-history :focus-visible, .dcf-revision-modal :focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+@media (max-width: 800px) {
+  .dcf-revision-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .dcf-revision-backdrop { padding: 8px; }
+  .dcf-revision-modal { width: calc(100vw - 16px); max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .dcf-revision-modal__body { padding: 12px; }
+  .dcf-revision-fields { grid-template-columns: minmax(0, 1fr); }
+  .dcf-revision-history .table-action, .dcf-revision-modal .btn, .dcf-revision-modal .modal-close-btn { min-width: 44px; min-height: 44px; }
+}

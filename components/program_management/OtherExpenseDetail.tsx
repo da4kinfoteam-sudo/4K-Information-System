@@ -1,5 +1,6 @@
+import { DcfRevisionHistory } from '../shared/DcfRevisionHistory';
 // Author: 4K
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { getActualObligationValidationError } from '../../lib/financialObligationUtils';
 import { OtherProgramExpense, operatingUnits, fundTypes, tiers, objectTypes, ObjectType, RefFundSource } from '../../constants';
@@ -12,7 +13,7 @@ import { normalizePolicyMonth, useDcfPolicyGuard } from '../../hooks/useDcfPolic
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 import { createDisbursementsFromMonthlyFields, summarizeDisbursements } from '../../lib/disbursementUtils';
-import { replaceFinancialObligationRecords } from '../../lib/financialObligationSync';
+import { hydrateProgramManagementState, saveProgramManagementChange, useProgramManagementBaseline, type ProgramManagementState } from '../../lib/programManagementPersistence';
 import { FundSourceField } from '../ui/FundSourceField';
 import { getFundSourceByUid, getFundSourceLabel } from '../../lib/fundSources';
 
@@ -20,7 +21,7 @@ interface OtherExpenseDetailProps {
     item: OtherProgramExpense;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     fundSources: RefFundSource[];
-    onUpdate: (item: OtherProgramExpense) => void;
+    onUpdate: (item: OtherProgramExpense, financial?: ProgramManagementState['financial']) => void;
 }
 
 const commonInputClasses = "form-control";
@@ -35,10 +36,10 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes, fundSources, onUpdate }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, rolesConfigs, hasAccess, getVisibilityScope } = useAuth();
     const { canEdit } = useUserAccess('Program Management');
     const { logAction } = useLogAction();
-    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
     const detailsDecision = getStatusDecision({
         moduleKey: 'other_program_expenses',
         item,
@@ -107,6 +108,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
     const [formData, setFormData] = useState<OtherProgramExpense>(item);
     const [originalFormData, setOriginalFormData] = useState<OtherProgramExpense>(item);
     const [isSaving, setIsSaving] = useState(false);
+    const saveInFlight = useRef(false);
     const [monthLockMessage, setMonthLockMessage] = useState('');
 
     const getDisplayItem = (source: OtherProgramExpense) => {
@@ -120,56 +122,13 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
         };
     };
 
-    // Initial load and whenever the item ID changes
+    const baseline = useProgramManagementBaseline('other_program_expenses', item, currentUser, editMode === 'none');
     useEffect(() => {
-        if (!item) return;
-
-        // Always reset form data to current item first
-        const displayItem = getDisplayItem(item);
-        setFormData(displayItem);
-        setOriginalFormData(displayItem);
-
-        const fetchObligations = async () => {
-            if (!item?.id || !supabase) return;
-
-            const { data, error } = await supabase
-                .from('financial_obligations')
-                .select('*')
-                .eq('entity_type', 'other_program_expense')
-                .eq('parent_id', item.id);
-
-            if (!error && data && data.length > 0) {
-                const mappedObligations = data.map(o => ({
-                    id: o.id,
-                    date: o.obligation_date,
-                    amount: o.amount,
-                    remarks: o.remarks
-                }));
-                const totalAmount = mappedObligations.reduce((sum, ob) => sum + (Number(ob.amount) || 0), 0);
-                setFormData(prev => ({
-                    ...prev,
-                    obligations: mappedObligations,
-                    actualObligationAmount: totalAmount
-                }));
-                setOriginalFormData(prev => ({
-                    ...prev,
-                    obligations: mappedObligations,
-                    actualObligationAmount: totalAmount
-                }));
-            } else if (item && (!item.obligations || item.obligations.length === 0) && Number(item.actualObligationAmount) !== 0) {
-                const virtualObligations = [{
-                    id: Date.now(),
-                    date: item.actualObligationDate || '',
-                    amount: item.actualObligationAmount || 0,
-                    remarks: 'Legacy Record'
-                }];
-                setFormData(prev => ({ ...prev, obligations: virtualObligations }));
-                setOriginalFormData(prev => ({ ...prev, obligations: virtualObligations }));
-            }
-        };
-
-        fetchObligations();
-    }, [item, supabase]);
+        if (!baseline.state || editMode !== 'none') return;
+        const loaded = hydrateProgramManagementState(baseline.state, 'other_program_expenses');
+        setFormData(loaded);
+        setOriginalFormData(loaded);
+    }, [baseline.state, editMode]);
 
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
@@ -224,7 +183,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
             setSelectedParticular(foundParticular);
         } else if (editMode === 'none') {
             // Reset to original state when canceling
-            const displayItem = getDisplayItem(item);
+            const displayItem = baseline.state ? hydrateProgramManagementState(baseline.state, 'other_program_expenses') : getDisplayItem(item);
             setFormData(displayItem);
             setOriginalFormData(displayItem);
         }
@@ -289,6 +248,14 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (saveInFlight.current) return;
+        saveInFlight.current = true;
+        try { await submitForm(e); } finally { saveInFlight.current = false; }
+    };
+
+    const submitForm = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (isSaving) return;
 
         if (editMode === 'accomplishment') {
             const obligationError = getActualObligationValidationError(formData.obligations || []);
@@ -367,52 +334,19 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
         if (supabase) {
             try {
                 setIsSaving(true);
-                // Exclude ID and obligations from payload
-                const { id, obligations, disbursements, ...payload } = updatedItem;
-
-                console.log("Saving Other Program Expense...", { id: item.id, payload });
-                const { error: updateError } = await supabase.from('other_program_expenses').update(payload).eq('id', item.id);
-                if (updateError) throw updateError;
-
-                const entityType = 'other_program_expense';
-                const parentId = item.id;
-                await replaceFinancialObligationRecords({
-                    entityType,
-                    parentId,
-                    itemId: null,
-                    records: obligations || [],
+                if (!baseline.state) throw new Error(baseline.error || 'Existing DCF state is unavailable. Reopen before saving.');
+                const confirmed = await saveProgramManagementChange({
+                    entityType: 'other_program_expenses', base: baseline.state,
+                    original: originalFormData, proposed: updatedItem,
+                    financial: editMode === 'accomplishment', currentUser, source: 'program-management-detail', reason: getLastOverrideReason?.() || '', request: baseline.request.current,
                 });
-
-                const { error: disbursementDeleteError } = await supabase.from('financial_disbursements')
-                    .delete()
-                    .eq('entity_type', entityType)
-                    .eq('parent_id', parentId);
-
-                if (disbursementDeleteError) {
-                    console.error("Error deleting old disbursements:", disbursementDeleteError);
-                }
-
-                const disbursementPayload = createDisbursementsFromMonthlyFields(updatedItem, updatedItem.fundYear, 'Synced from other expense monthly matrix')
-                    .map(disb => ({
-                        entity_type: entityType,
-                        parent_id: parentId,
-                        disbursement_date: disb.date,
-                        amount: Number(disb.amount) || 0,
-                        remarks: disb.remarks || ''
-                    }));
-
-                if (disbursementPayload.length > 0) {
-                    const { error: disbursementInsertError } = await supabase.from('financial_disbursements').insert(disbursementPayload);
-                    if (disbursementInsertError) {
-                        console.error("Critical RLS Error or Insert Error in financial_disbursements:", disbursementInsertError);
-                        throw new Error(`Failed to sync disbursements: ${disbursementInsertError.message}. This might be a database permission (RLS) issue.`);
-                    }
-                }
+                baseline.setState(confirmed);
+                const confirmedItem = hydrateProgramManagementState(confirmed, 'other_program_expenses');
 
                 const metadata = getMonetaryChanges(item, updatedItem, 'Other');
                 logAction('Updated Other Program Expense', updatedItem.particulars, undefined, 'Other Program Expense', String(item.id), metadata);
 
-                onUpdate(updatedItem as OtherProgramExpense);
+                onUpdate(confirmedItem as OtherProgramExpense, confirmed.financial);
                 setEditMode('none');
                 console.log("Save successful!");
             } catch (err: any) {
@@ -806,6 +740,12 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
                 </div>
 
             </div>
+            <DcfRevisionHistory entityType="other_program_expenses" parentId={item.id} currentUser={currentUser} currentVersionKey={item.updated_at}
+                permissions={{ canView: hasAccess('Program Management', 'view') && (getVisibilityScope('Program Management') === 'All' || !!currentUser?.operatingUnit && currentUser.operatingUnit === item.operatingUnit),
+                    canRestore: getStatusDecision({ moduleKey: 'other_program_expenses', item, action: 'restoreHistory', hasModuleAccess: canEdit }).allowed,
+                    authorizationKey: JSON.stringify(rolesConfigs) }}
+                onRestored={confirmed => onUpdate(confirmed.record as unknown as OtherProgramExpense, confirmed.financial)} />
+
         </div>
     );
 };

@@ -50,7 +50,7 @@ import { DcfPolicyProvider } from './contexts/DcfPolicyContext';
 import { useDcfPolicyGuard } from './hooks/useDcfPolicyGuard';
 import { DataScope, fetchMarketingDatabasePartners, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
 import { buildAuthorizedDataScope, getDataScopeModule } from './lib/appDataScope';
-import { clearUserCache, getScopeCacheMeta, readScopedCache, updateCachedActivity, updateCachedIpos, updateCachedSubproject, writeScopedCache } from './lib/localScopedCache';
+import { clearUserCache, getScopeCacheMeta, readScopedCache, updateCachedActivity, updateCachedIpos, updateCachedSubproject, updateCachedDcfVersion, writeScopedCache } from './lib/localScopedCache';
 import { activityIncludesIpo, getActivityIpoIds, reconcileActivityIpoLinks } from './lib/activityIpoLinks';
 import { normalizeStaffingExpenses } from './lib/staffingExpenseIdentity';
 import {
@@ -230,7 +230,7 @@ const AppContent: React.FC = () => {
     // --- DATA STATE MANAGEMENT ---
     
     // Subprojects, IPOs, Activities use the sync hook
-    const scopedTableOptions = { autoFetch: false };
+    const scopedTableOptions = { autoFetch: false, actor: currentUser || undefined };
     const [subprojects, setSubprojects, subprojectsSync] = useSupabaseTable<Subproject>('subprojects', sampleSubprojects, scopedTableOptions);
     const [ipos, setIpos, iposSync] = useSupabaseTable<IPO>('ipos', sampleIPOs, scopedTableOptions);
     const [activityWorkflowIpos, setActivityWorkflowIpos] = useState<IPO[]>([]);
@@ -791,6 +791,34 @@ const AppContent: React.FC = () => {
         if (currentUser) void updateCachedActivity(currentUser.id, updated).catch(error => {
             console.error('Activity saved, but its local cache could not be updated:', error);
         });
+    };
+
+    const handleConfirmedDcfFinancial = (entityType: string, updated: { id: number }, financial?: { obligations: any[]; disbursements: any[] }) => {
+        if (financial) {
+            const ledgerType = ({ activities: 'activity_expense', subprojects: 'subproject_detail', office_requirements: 'office_requirement', staffing_requirements: 'staffing_expense', other_program_expenses: 'other_program_expense' } as Record<string, string>)[entityType];
+            const merge = (existing: any[], confirmed: any[]) => [...existing.filter(row => row.entity_type !== ledgerType || Number(row.parent_id) !== Number(updated.id)), ...confirmed.filter(row => row.entity_type === ledgerType && Number(row.parent_id) === Number(updated.id))];
+            const obligations = merge(financialRowsRef.current.obligations, financial.obligations);
+            const disbursements = merge(financialRowsRef.current.disbursements, financial.disbursements);
+            financialRowsRef.current = { obligations, disbursements };
+            financialObligationsSync.replaceLocalData(obligations);
+            financialDisbursementsSync.replaceLocalData(disbursements);
+        }
+        if (currentUser) void updateCachedDcfVersion(currentUser.id, entityType, updated, financial).catch(error => console.error('DCF saved, but its scoped local cache could not refresh:', error));
+    };
+    const handleOfficeSaved = (updated: OfficeRequirement, financial?: { obligations: any[]; disbursements: any[] }) => {
+        officeReqsSync.upsertLocalData([updated]);
+        handleConfirmedDcfFinancial('office_requirements', updated, financial);
+        if (selectedOfficeReq?.id === updated.id) setSelectedOfficeReq(updated);
+    };
+    const handleStaffingSaved = (updated: StaffingRequirement, financial?: { obligations: any[]; disbursements: any[] }) => {
+        staffingReqsSync.upsertLocalData([updated]);
+        handleConfirmedDcfFinancial('staffing_requirements', updated, financial);
+        if (selectedStaffingReq?.id === updated.id) setSelectedStaffingReq(updated);
+    };
+    const handleOtherExpenseSaved = (updated: OtherProgramExpense, financial?: { obligations: any[]; disbursements: any[] }) => {
+        otherProgramExpensesSync.upsertLocalData([updated]);
+        handleConfirmedDcfFinancial('other_program_expenses', updated, financial);
+        if (selectedOtherExpense?.id === updated.id) setSelectedOtherExpense(updated);
     };
 
     const handleMarketingPartnerUpdated = useCallback((updatedPartner: MarketingPartner) => {
@@ -1720,11 +1748,11 @@ const AppContent: React.FC = () => {
             return <ProgramManagement
                 activePage={programPage.page}
                 officeReqs={visibleOfficeReqs}
-                setOfficeReqs={setOfficeReqs}
+                setOfficeReqs={officeReqsSync.setLocalData}
                 staffingReqs={visibleStaffingReqs}
-                setStaffingReqs={setStaffingReqs}
+                setStaffingReqs={staffingReqsSync.setLocalData}
                 otherProgramExpenses={visibleOtherExpenses}
-                setOtherProgramExpenses={setOtherProgramExpenses}
+                setOtherProgramExpenses={otherProgramExpensesSync.setLocalData}
                 uacsCodes={derivedUacsCodes}
                 fundSources={fundSources}
                 onSelectOfficeReq={handleSelectOfficeReq}
@@ -1987,6 +2015,9 @@ const AppContent: React.FC = () => {
             // NEW ACCOMPLISHMENT ROUTES
             case '/accomplishment/financial':
                 return <FinancialAccomplishment 
+                            onOfficeSaved={handleOfficeSaved}
+                            onStaffingSaved={handleStaffingSaved}
+                            onOtherExpenseSaved={handleOtherExpenseSaved}
                             subprojects={visibleSubprojects}
                             onSubprojectSaved={handleSubprojectSaved}
                             setSubprojects={setSubprojects}
@@ -2011,6 +2042,10 @@ const AppContent: React.FC = () => {
                         />;
             case '/accomplishment/physical':
                 return <PhysicalAccomplishment 
+                            onActivitySaved={handleActivitySaved}
+                            onOfficeSaved={handleOfficeSaved}
+                            onStaffingSaved={handleStaffingSaved}
+                            onOtherExpenseSaved={handleOtherExpenseSaved}
                             subprojects={visibleSubprojects}
                             onSubprojectSaved={handleSubprojectSaved}
                             setSubprojects={setSubprojects}
@@ -2049,8 +2084,8 @@ const AppContent: React.FC = () => {
                             item={latestOffice}
                             uacsCodes={derivedUacsCodes}
                             fundSources={fundSources}
-                            onUpdate={(updatedItem) => {
-                                setOfficeReqs(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
+                            onUpdate={(updatedItem, financial) => {
+                                handleOfficeSaved(updatedItem, financial);
                                 setSelectedOfficeReq(updatedItem);
                             }}
                         />;
@@ -2077,8 +2112,8 @@ const AppContent: React.FC = () => {
                             item={latestStaff}
                             uacsCodes={derivedUacsCodes}
                             fundSources={fundSources}
-                            onUpdate={(updatedItem) => {
-                                setStaffingReqs(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
+                            onUpdate={(updatedItem, financial) => {
+                                handleStaffingSaved(updatedItem, financial);
                                 setSelectedStaffingReq(updatedItem);
                             }}
                         />;
@@ -2105,8 +2140,8 @@ const AppContent: React.FC = () => {
                             item={latestOther}
                             uacsCodes={derivedUacsCodes}
                             fundSources={fundSources}
-                            onUpdate={(updatedItem) => {
-                                setOtherProgramExpenses(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
+                            onUpdate={(updatedItem, financial) => {
+                                handleOtherExpenseSaved(updatedItem, financial);
                                 setSelectedOtherExpense(updatedItem);
                             }}
                         />;
@@ -2172,6 +2207,7 @@ const AppContent: React.FC = () => {
                     );
                 }
                 return <SubprojectDetail 
+                            onRevisionRestored={(updated, financial) => { handleSubprojectSaved(updated); handleConfirmedDcfFinancial('subprojects', updated, financial as any); }}
                             subproject={latestSp} 
                             onAccomplishmentSaved={handleSubprojectSaved}
                             ipos={subprojectWorkflowIpos}
@@ -2282,6 +2318,7 @@ const AppContent: React.FC = () => {
                     );
                 }
                 return <ActivityDetail
+                            onRevisionRestored={(updated, financial) => { handleActivitySaved(updated); handleConfirmedDcfFinancial('activities', updated, financial as any); }}
                             activity={latestAct}
                             ipos={activityWorkflowIpos}
                             fundSources={fundSources}
@@ -2349,12 +2386,12 @@ const AppContent: React.FC = () => {
                             deadlines={deadlines}
                             setDeadlines={setDeadlines}
                             // Pass data for DCF Management
-                            subprojects={subprojects} setSubprojects={setSubprojects}
-                            activities={activities} setActivities={setActivities}
+                            subprojects={subprojects} setSubprojects={subprojectsSync.setLocalData}
+                            activities={activities} setActivities={activitiesSync.setLocalData}
                             ipos={ipos} setIpos={setIpos}
-                            officeReqs={officeReqs} setOfficeReqs={setOfficeReqs}
-                            staffingReqs={staffingReqs} setStaffingReqs={setStaffingReqs}
-                            otherProgramExpenses={otherProgramExpenses} setOtherProgramExpenses={setOtherProgramExpenses}
+                            officeReqs={officeReqs} setOfficeReqs={officeReqsSync.setLocalData}
+                            staffingReqs={staffingReqs} setStaffingReqs={staffingReqsSync.setLocalData}
+                            otherProgramExpenses={otherProgramExpenses} setOtherProgramExpenses={otherProgramExpensesSync.setLocalData}
                             fundSources={fundSources}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}

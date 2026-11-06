@@ -249,7 +249,7 @@ const UserControlCenterTab: React.FC = () => {
         setSaving(false);
     };
 
-    const getPendingRoleAccess = (role: UserRole, module: string, field: 'can_edit' | 'can_delete') => {
+    const getPendingRoleAccess = (role: UserRole, module: string, field: 'can_view' | 'can_edit' | 'can_delete') => {
         if (['Super Admin', 'Administrator'].includes(role)) return true;
         if (role === 'Guest') return false;
         const roleConfig = pendingConfigs.find(c => c.role === role && c.module === module);
@@ -259,6 +259,7 @@ const UserControlCenterTab: React.FC = () => {
     const getPreviewModuleAccess = (role: UserRole, moduleKey: DcfModuleKey, action: DcfPolicyAction) => {
         const moduleMeta = DCF_MODULES.find(module => module.key === moduleKey);
         const moduleName = moduleMeta?.moduleName || 'Subprojects';
+        if (action === 'restoreHistory') return getPendingRoleAccess(role, moduleName, 'can_view') && getPendingRoleAccess(role, moduleName, 'can_edit');
         if (action === 'delete') return getPendingRoleAccess(role, moduleName, 'can_delete');
         if (action === 'editPhysicalAccomplishment') {
             return getPendingRoleAccess(role, moduleName, 'can_edit') || getPendingRoleAccess(role, 'Accomplishment - Physical', 'can_edit');

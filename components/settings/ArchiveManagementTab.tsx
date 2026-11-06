@@ -1,16 +1,16 @@
 
 // Author: 4K 
 import { getActivityDisplayTitle } from '../../lib/activityTitles';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { RefFundSource, TrashItem } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { format } from 'date-fns';
 import { DataTablePagination } from '../ui/enterprise';
-import { getFundSourceByUid, resolveFundSourceUidFromLegacyLabel } from '../../lib/fundSources';
+import { recoverDcfArchive } from '../../lib/dcfArchiveRecovery';
 
-const ArchiveManagementTab: React.FC<{ fundSources: RefFundSource[] }> = ({ fundSources }) => {
+const ArchiveManagementTab: React.FC<{ fundSources: RefFundSource[] }> = () => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const [items, setItems] = useState<TrashItem[]>([]);
@@ -19,6 +19,7 @@ const ArchiveManagementTab: React.FC<{ fundSources: RefFundSource[] }> = ({ fund
     const [isProcessing, setIsProcessing] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
+    const recoveryPending = useRef(false);
 
     const fetchTrashItems = async () => {
         if (!supabase) {
@@ -56,16 +57,6 @@ const ArchiveManagementTab: React.FC<{ fundSources: RefFundSource[] }> = ({ fund
 
     const totalPages = Math.ceil(items.length / itemsPerPage);
 
-    const prepareRestoreData = (item: TrashItem) => {
-        const data = { ...item.data };
-        if (['subproject', 'activity', 'office_requirement', 'staffing_requirement', 'other_program_expense'].includes(item.entity_type)) {
-            data.fundSourceUid = getFundSourceByUid(data.fundSourceUid, fundSources)?.uid
-                || resolveFundSourceUidFromLegacyLabel(data.fundSource, fundSources)
-                || null;
-        }
-        return data;
-    };
-
     const getItemName = (item: TrashItem) => {
         const data = item.data;
         if (!data) return 'N/A';
@@ -96,48 +87,19 @@ const ArchiveManagementTab: React.FC<{ fundSources: RefFundSource[] }> = ({ fund
         }
     };
 
-    const getTableName = (entityType: string) => {
-        switch (entityType) {
-            case 'subproject': return 'subprojects';
-            case 'activity': return 'activities';
-            case 'office_requirement': return 'office_requirements';
-            case 'staffing_requirement': return 'staffing_requirements';
-            case 'other_program_expense': return 'other_program_expenses';
-            default: return null;
-        }
-    };
-
     const recoverItem = async (item: TrashItem) => {
-        const tableName = getTableName(item.entity_type);
-        if (!tableName) {
-            alert(`Unknown entity type: ${item.entity_type}`);
-            return;
-        }
-
+        if (!currentUser || recoveryPending.current) return;
+        recoveryPending.current = true;
         setIsProcessing(true);
         try {
-            // 1. Insert back to original table
-            const { error: insertError } = await supabase
-                .from(tableName)
-                .insert([prepareRestoreData(item)]);
-
-            if (insertError) throw insertError;
-
-            // 2. Delete from trash_bin
-            const { error: deleteError } = await supabase
-                .from('trash_bin')
-                .delete()
-                .eq('id', item.id);
-
-            if (deleteError) throw deleteError;
-
-            await logAction('Recovered item from archive', 'Archive', undefined, item.entity_type, String(item.original_id));
+            await recoverDcfArchive(item.id, currentUser);
             await fetchTrashItems();
             setSelectedIds(prev => prev.filter(id => id !== item.id));
         } catch (error: any) {
             console.error('Error recovering item:', error);
             alert(`Failed to recover item: ${error.message}`);
         } finally {
+            recoveryPending.current = false;
             setIsProcessing(false);
         }
     };
@@ -166,46 +128,29 @@ const ArchiveManagementTab: React.FC<{ fundSources: RefFundSource[] }> = ({ fund
     };
 
     const handleBulkRecover = async () => {
-        if (selectedIds.length === 0) return;
+        if (!currentUser || recoveryPending.current || selectedIds.length === 0) return;
         if (!window.confirm(`Are you sure you want to recover ${selectedIds.length} items?`)) return;
-
+        recoveryPending.current = true;
         setIsProcessing(true);
         let successCount = 0;
-        let failCount = 0;
-
-        for (const id of selectedIds) {
-            const item = items.find(i => i.id === id);
-            if (!item) continue;
-
-            const tableName = getTableName(item.entity_type);
-            if (!tableName) {
-                failCount++;
-                continue;
+        const failed: number[] = [];
+        const failures: string[] = [];
+        try {
+            for (const id of selectedIds) {
+                try {
+                    await recoverDcfArchive(id, currentUser);
+                    successCount++;
+                } catch (err) {
+                    failed.push(id);
+                    failures.push(`${id}: ${err instanceof Error ? err.message : String(err)}`);
+                }
             }
-
-            try {
-                const { error: insertError } = await supabase.from(tableName).insert([prepareRestoreData(item)]);
-                if (insertError) throw insertError;
-
-                const { error: deleteError } = await supabase.from('trash_bin').delete().eq('id', item.id);
-                if (deleteError) throw deleteError;
-
-                successCount++;
-            } catch (err) {
-                console.error(`Failed to recover item ${id}:`, err);
-                failCount++;
-            }
-        }
-
-        await logAction(`Bulk recovered ${successCount} items from archive`, 'Archive', undefined, 'trash_bin');
-        await fetchTrashItems();
-        setSelectedIds([]);
-        setIsProcessing(false);
-
-        if (failCount > 0) {
-            alert(`Recovered ${successCount} items. Failed to recover ${failCount} items.`);
-        } else {
-            alert(`Successfully recovered ${successCount} items.`);
+            await fetchTrashItems();
+            setSelectedIds(failed);
+            alert(failed.length ? `Recovered ${successCount} items. Failed to recover ${failed.length} items.\n${failures.join('\n')}` : `Successfully recovered ${successCount} items.`);
+        } finally {
+            recoveryPending.current = false;
+            setIsProcessing(false);
         }
     };
 
@@ -336,10 +281,11 @@ const ArchiveManagementTab: React.FC<{ fundSources: RefFundSource[] }> = ({ fund
                             )}
                         </tbody>
                     </table>
-                </div></div>
+                </div>
 
             {/* Pagination */}
             <DataTablePagination aria-label="Archive pagination" currentPage={currentPage} totalPages={totalPages} totalItems={items.length} itemsPerPage={itemsPerPage} onPageChange={setCurrentPage} onItemsPerPageChange={size => { setItemsPerPage(size); setCurrentPage(1); }} />
+            </div>
         </div>
     );
 };

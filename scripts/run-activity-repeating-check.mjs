@@ -5,7 +5,12 @@ const server = await createServer({ configFile: false, appType: 'custom', server
     optimizeDeps: { noDiscovery: true, entries: [] }, plugins: [{
         name: 'repeating-offline-client', enforce: 'pre',
         resolveId(id) { if (id.endsWith('/supabaseClient')) return '\0repeating-client'; },
-        load(id) { if (id === '\0repeating-client') return `export const supabase = { from(table) {
+        load(id) { if (id === '\0repeating-client') return `export const supabase = { async rpc(name,args){
+            const f=globalThis.repeatFixture;f.calls.push({action:'insert',name,args});
+            if(f.throw)throw Error('Synthetic transport failure');
+            const data=Array.isArray(f.result.data)?f.result.data[0]:f.result.data;
+            return {data:data?{record:data,financial:{obligations:[],disbursements:[],stages:{}},revisionId:1}:null,error:f.result.error};
+        }, from(table) {
             const filters = []; let action = 'read', payload;
             const query = { select() { return query; }, eq(key, value) { filters.push([key,value]); return query; }, maybeSingle() { return query; },
                 insert(value) { action = 'insert'; payload = value; return query; },
@@ -66,20 +71,21 @@ try {
     assert.notEqual(first.expenses[0].budgetItemGroupId,second.expenses[0].budgetItemGroupId);
     assert.deepEqual(first.expenses.map(row=>[row.obligationMonth,row.disbursementMonth,row.amount]),shared.expenses.map(row=>[row.obligationMonth,row.disbursementMonth,row.amount]));
     const attempt = { payload:first, uncertain:false };
+    const actor={id:1,role:'Super Admin',password:'fixture-only',operatingUnit:'RPMO 1'};
     globalThis.repeatFixture={calls:[],result:{data:[{...first,id:91}],error:null}};
-    assert.equal((await persistRepeatingActivity(attempt)).id,91);
-    await persistRepeatingActivity(attempt); assert.equal(globalThis.repeatFixture.calls.length,1);
+    assert.equal((await persistRepeatingActivity(attempt,actor)).id,91);
+    await persistRepeatingActivity(attempt,actor); assert.equal(globalThis.repeatFixture.calls.length,1);
     const rejected={payload:second,uncertain:false};
     globalThis.repeatFixture={calls:[],result:{data:null,error:{code:'23514',message:'Synthetic constraint rejection'}}};
-    await assert.rejects(()=>persistRepeatingActivity(rejected),/constraint/); assert.equal(rejected.uncertain,false);
+    await assert.rejects(()=>persistRepeatingActivity(rejected,actor),/constraint/); assert.equal(rejected.uncertain,false);
     const uncertain={payload:first,uncertain:false};
-    globalThis.repeatFixture={calls:[],throw:true}; await assert.rejects(()=>persistRepeatingActivity(uncertain),/transport/); assert.equal(uncertain.uncertain,true);
+    globalThis.repeatFixture={calls:[],throw:true}; await assert.rejects(()=>persistRepeatingActivity(uncertain,actor),/transport/); assert.equal(uncertain.uncertain,true);
     globalThis.repeatFixture={calls:[],result:{data:null,error:null}};
-    await assert.rejects(()=>persistRepeatingActivity(uncertain),/not confirmed/);
+    await assert.rejects(()=>persistRepeatingActivity(uncertain,actor),/not confirmed/);
     assert.equal(globalThis.repeatFixture.calls[0].action,'read'); assert.deepEqual(globalThis.repeatFixture.calls[0].filters,[['uid',first.uid]]);
     globalThis.repeatFixture={calls:[],result:{data:{...first,id:92},error:null}};
-    assert.equal((await persistRepeatingActivity(uncertain)).id,92); assert.equal(globalThis.repeatFixture.calls[0].action,'read');
+    assert.equal((await persistRepeatingActivity(uncertain,actor)).id,92); assert.equal(globalThis.repeatFixture.calls[0].action,'read');
     const noRow={payload:first,uncertain:false}; globalThis.repeatFixture={calls:[],result:{data:[],error:null}};
-    await assert.rejects(()=>persistRepeatingActivity(noRow),/No confirmed/); assert.equal(noRow.uncertain,true);
+    await assert.rejects(()=>persistRepeatingActivity(noRow,actor),/No confirmed/); assert.equal(noRow.uncertain,true);
     console.log('PASS: typed repeating drafts, validation, OU capability, shared funding, independent identity/IPO/schedule dates, approval, immutable inputs, confirmed writes and read-only uncertain-save recovery. Synthetic clients only.');
 } finally { await server.close(); }

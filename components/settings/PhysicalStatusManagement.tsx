@@ -1,9 +1,11 @@
 // Author: 4K
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { 
     Subproject, Activity, OfficeRequirement, StaffingRequirement
 } from '../../constants';
-import { supabase } from '../../supabaseClient';
+import { useAuth } from '../../contexts/AuthContext';
+import { persistDcfMutation, type DcfEntityType, type DcfMutationRequest } from '../../lib/dcfMutation';
+import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { useLogAction } from '../../hooks/useLogAction';
 import { ConfirmDialog } from '../ui/enterprise';
 
@@ -30,6 +32,9 @@ type PendingChange = {
     field: string;
     value: string;
     originalValue: string;
+    base: Record<string, any>;
+    request: DcfMutationRequest;
+    reason?: string;
 };
 
 type ColumnFilters = {
@@ -68,6 +73,9 @@ const PhysicalStatusManagement: React.FC<PhysicalStatusManagementProps> = ({
     onSelectActivity
 }) => {
     const { logAction } = useLogAction();
+    const { currentUser, hasAccess } = useAuth();
+    const { getStatusDecision, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
+    const savingRef = useRef(false);
 
     // UI State
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['Subprojects', 'Activities & Trainings', 'Staffing Requirements', 'Office Requirements']));
@@ -149,12 +157,9 @@ const PhysicalStatusManagement: React.FC<PhysicalStatusManagementProps> = ({
             const originalValue = existing ? existing.originalValue : currentItem[field];
             return {
                 ...prev,
-                [key]: { table, id, field, value: newValue, originalValue }
+                [key]: { table, id, field, value: newValue, originalValue, base: existing?.base || currentItem, request: existing?.request || {} }
             };
         });
-
-        // Optimistic Update
-        setter(prev => prev.map(item => item.id === id ? { ...item, [field]: newValue } : item));
     };
 
     // Handler: Bulk Update (Local)
@@ -172,20 +177,18 @@ const PhysicalStatusManagement: React.FC<PhysicalStatusManagementProps> = ({
             confirmLabel: 'Apply Update',
             type: 'warning',
             onConfirm: () => {
-                const idsToUpdate = items.map(i => i.id);
-
                 setPendingChanges(prev => {
                     const updates = { ...prev };
                     items.forEach(item => {
                         const key = `${table}-${item.id}`;
                         const existing = updates[key];
                         const originalValue = existing ? existing.originalValue : item[field];
-                        updates[key] = { table, id: item.id, field, value: newValue, originalValue };
+                        const original = ({ subprojects, activities, office_requirements: officeReqs, staffing_requirements: staffingReqs } as Record<string, any[]>)[table]?.find(row => row.id === item.id) || item;
+                        updates[key] = { table, id: item.id, field, value: newValue, originalValue: existing?.originalValue ?? original[field], base: existing?.base || original, request: existing?.request || {} };
                     });
                     return updates;
                 });
 
-                setter(prev => prev.map(item => idsToUpdate.includes(item.id) ? { ...item, [field]: newValue } : item));
                 setNotice({ type: 'info', message: `${items.length} visible item(s) staged for update. Click Save Changes to write them to the database.` });
                 closeConfirmModal();
             },
@@ -193,66 +196,43 @@ const PhysicalStatusManagement: React.FC<PhysicalStatusManagementProps> = ({
     };
 
     const persistChanges = async (changes: PendingChange[]) => {
+        if (savingRef.current) return;
+        savingRef.current = true;
         setIsSaving(true);
+        let savedCount = 0;
         try {
-            if (supabase) {
-                const results = await Promise.all(changes.map(change =>
-                    supabase
-                        .from(change.table)
-                        .update({ [change.field]: change.value })
-                        .eq('id', change.id)
-                ));
-
-                const failed = results.find(result => result.error);
-                if (failed?.error) {
-                    throw failed.error;
-                }
-                
-                logAction('DCF Management', `Batch updated ${changes.length} physical status record(s).`);
-            } else {
-                throw new Error('Supabase client is not available.');
+            if (!currentUser || !['Super Admin', 'Administrator'].includes(currentUser.role)) throw new Error('DCF status administration is not permitted.');
+            const setters: Record<string, React.Dispatch<React.SetStateAction<any[]>>> = {
+                subprojects: setSubprojects, activities: setActivities, office_requirements: setOfficeReqs, staffing_requirements: setStaffingReqs,
+            };
+            for (const change of changes) {
+                const moduleKey = change.table as DcfEntityType;
+                const decision = getStatusDecision({ moduleKey, item: change.base, action: 'editDetails', hasModuleAccess: hasAccess(moduleKey === 'subprojects' ? 'Subprojects' : moduleKey === 'activities' ? 'Activities' : 'Program Management', 'edit') });
+                if (!await ensureDecisionAllowed(decision, { moduleKey, itemId: change.id, item: change.base, action: 'editDetails' })) throw new Error('Status change was not authorized or was cancelled.');
+                change.reason = getLastOverrideReason() || change.reason || '';
+                const result = await persistDcfMutation({ entityType: moduleKey, parentId: change.id, base: change.base, changes: { [change.field]: change.value }, actor: currentUser, request: change.request, source: 'physical-status', reason: change.reason });
+                // App supplies local-only setters here; the server already saved this row.
+                setters[change.table](rows => rows.map(row => row.id === change.id ? result.record : row));
+                setPendingChanges(previous => {
+                    const next = { ...previous };
+                    delete next[`${change.table}-${change.id}`];
+                    return next;
+                });
+                savedCount++;
             }
-
-            setPendingChanges({});
-            setNotice({ type: 'success', message: `${changes.length} change(s) saved successfully.` });
+            void logAction('DCF Management', `Batch updated ${savedCount} physical status record(s).`);
+            setNotice({ type: 'success', message: `${savedCount} change(s) saved successfully.` });
         } catch (error: any) {
             console.error("Save Error:", error);
-            setNotice({ type: 'error', message: `Failed to save changes: ${error.message || 'Unknown error'}` });
+            setNotice({ type: 'error', message: `${savedCount} change(s) saved. Remaining drafts kept: ${error.message || 'Unknown error'}` });
         } finally {
+            savingRef.current = false;
             setIsSaving(false);
             closeConfirmModal();
         }
     };
 
     const revertPendingChanges = () => {
-        const setters: Record<string, React.Dispatch<React.SetStateAction<any[]>>> = {
-            'subprojects': setSubprojects as any,
-            'activities': setActivities as any,
-            'staffing_requirements': setStaffingReqs as any,
-            'office_requirements': setOfficeReqs as any
-        };
-
-        const changes = Object.values(pendingChanges) as PendingChange[];
-        
-        const changesByTable: Record<string, PendingChange[]> = {};
-        changes.forEach(c => {
-            if (!changesByTable[c.table]) changesByTable[c.table] = [];
-            changesByTable[c.table].push(c);
-        });
-
-        Object.entries(changesByTable).forEach(([table, list]) => {
-            const setter = setters[table];
-            if (setter) {
-                setter(prev => prev.map(item => {
-                    const change = list.find(c => c.id === item.id);
-                    if (change) {
-                        return { ...item, [change.field]: change.originalValue };
-                    }
-                    return item;
-                }));
-            }
-        });
-
         setPendingChanges({});
         setNotice({ type: 'info', message: 'Unsaved changes were discarded.' });
         closeConfirmModal();
@@ -307,7 +287,10 @@ const PhysicalStatusManagement: React.FC<PhysicalStatusManagementProps> = ({
         const filters = columnFilters[table] || DEFAULT_COLUMN_FILTERS;
         const getYear = (item: any) => (item.fundingYear || item.fundYear || '').toString();
         const getText = (item: any, field: string) => (item[field] || '').toString();
-        const visibleItems = items.filter(item => {
+        const visibleItems = items.map(item => {
+            const draft = pendingChanges[`${table}-${item.id}`];
+            return draft ? { ...item, [draft.field]: draft.value } : item;
+        }).filter(item => {
             const searchValue = filters.search.trim().toLowerCase();
             if (searchValue) {
                 const haystack = [
@@ -438,8 +421,9 @@ const PhysicalStatusManagement: React.FC<PhysicalStatusManagementProps> = ({
                                                     {canClick ? (
                                                         <button 
                                                             onClick={() => {
-                                                                if (table === 'subprojects') onSelectSubproject(item);
-                                                                if (table === 'activities') onSelectActivity(item);
+                                                                const live = items.find(row => row.id === item.id) || item;
+                                                                if (table === 'subprojects') onSelectSubproject(live);
+                                                                if (table === 'activities') onSelectActivity(live);
                                                             }}
                                                             className="data-table-link"
                                                         >
@@ -465,6 +449,7 @@ const PhysicalStatusManagement: React.FC<PhysicalStatusManagementProps> = ({
                                                 <td className="data-table__cell--actions data-table__cell--nowrap">
                                                     <select 
                                                         value={item[statusField]} 
+                                                        disabled={isSaving}
                                                         onChange={(e) => handleStatusChange(table, item.id, e.target.value, statusField, setter, items)}
                                                         className={`status-select status-select--${item[statusField] === 'Completed' || item[statusField] === 'Filled' ? 'success' : item[statusField] === 'Ongoing' ? 'info' : item[statusField] === 'Cancelled' || item[statusField] === 'Unfilled' ? 'danger' : 'warning'}`}
                                                     >

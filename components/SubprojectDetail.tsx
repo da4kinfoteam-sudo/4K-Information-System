@@ -14,6 +14,8 @@ import { BudgetTargetPlanEditor, BudgetTargetSummary } from './ui/BudgetTargetPl
 import { BudgetTargetPlan, TARGET_PLAN_FIELDS, validateTargetPlan } from '../lib/budgetTargetSchedules';
 import { budgetTargetsChanged, getUacsOptions, groupBudgetSchedules, latestBudgetDeliveryDate, validateBudgetSchedule } from '../lib/subprojectBudgetSchedules';
 import { persistSubprojectDraft, rescheduleBudgetTargets } from '../lib/subprojectDraftPersistence';
+import { DcfRevisionHistory } from './shared/DcfRevisionHistory';
+import type { DcfMutationRequest } from '../lib/dcfMutation';
 import { buildSubprojectActualEdits, getSubprojectPhysicalChanges, hydrateSubprojectAccomplishment, readSubprojectAccomplishments, saveSubprojectAccomplishment, type SubprojectAccomplishmentSnapshot, type SubprojectAccomplishmentRequest, type SubprojectActualRemovals } from '../lib/subprojectAccomplishmentPersistence';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
@@ -41,8 +43,7 @@ import {
     isBudgetLineExcludedFromTargets,
     normalizeBudgetLineStatus,
     requestAdjustmentReason,
-    summarizeBudgetAdjustments,
-    writeBudgetItemAdjustmentHistory
+    summarizeBudgetAdjustments
 } from '../lib/budgetLineAdjustments';
 import {
     getActiveSubprojectBudget,
@@ -117,6 +118,7 @@ interface SubprojectDetailProps {
     ipos: IPO[];
     onEditModeChange?: (mode: 'none' | 'details' | 'commodity' | 'budget' | 'accomplishment') => void;
     onUpdateSubproject: (updatedSubproject: Subproject, options?: { persisted?: boolean }) => void;
+    onRevisionRestored?: (record: Subproject, financial?: unknown) => void;
     onAccomplishmentSaved?: (subproject: Subproject, snapshot?: SubprojectAccomplishmentSnapshot) => void;
     onBudgetTransferComplete?: (source: Subproject, destination: Subproject, status: BudgetItemTransferResult['status'], selectedItemIds: string[]) => void;
     particularTypes: { [key: string]: string[] };
@@ -240,7 +242,7 @@ const budgetItemFieldLabels: Record<string, string> = {
     numberOfUnits: 'Number of Units'
 };
 
-const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onEditModeChange, onUpdateSubproject, onAccomplishmentSaved, onBudgetTransferComplete, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock, fundSources }) => {
+const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onEditModeChange, onUpdateSubproject, onRevisionRestored, onAccomplishmentSaved, onBudgetTransferComplete, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock, fundSources }) => {
     const { currentUser, rolesConfigs, hasAccess, getVisibilityScope } = useAuth();
     const { canEdit } = useUserAccess('Subprojects');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
@@ -336,7 +338,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const [editingDetailIndex, setEditingDetailIndex] = useState<number | null>(null);
     const [confirmBudgetItemDate, setConfirmBudgetItemDate] = useState<{index?: number, field: 'deliveryDate' | 'obligationMonth', dateStr: string} | null>(null);
-    const [historyLimit, setHistoryLimit] = useState<number>(5);
+    const mutationRequest = useRef<DcfMutationRequest>({});
     const [missingFields, setMissingFields] = useState<string[]>([]);
     const [budgetItemErrorFields, setBudgetItemErrorFields] = useState<string[]>([]);
     const [budgetItemFormMessage, setBudgetItemFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -536,6 +538,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         if (sameDraftContext && editMode !== 'none' && !actualsLoadError) return;
         draftContextRef.current = { subprojectId: subproject.id, editMode, status: subproject.status };
         draftBaseRef.current = structuredClone(subproject);
+        mutationRequest.current = {};
         actualsBaseline.current = null; actualsRequest.current = {}; actualRemovals.current = {};
         setActualsLoadError('');
 
@@ -608,7 +611,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 .select('*')
                 .eq('source_type', 'subproject_detail')
                 .eq('parent_id', subproject.id)
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .limit(6);
 
             if (!isMounted) return;
             if (error) {
@@ -622,7 +626,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         return () => {
             isMounted = false;
         };
-    }, [subproject.id]);
+    }, [subproject.id, subproject.updated_at]);
 
     const loadDriveFiles = useCallback(async () => {
         if (!currentUser?.id || !subproject.id) return;
@@ -748,28 +752,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const adjustedBudgetVariance = adjustedBudget - originalApprovedBudget;
     const budgetOverage = Math.max(adjustedBudget, budgetAdjustmentSummary.actualObligated) - originalApprovedBudget;
 
-    const persistBudgetAdjustmentHistory = async (
+    const queueBudgetAdjustmentHistory = (
         action: BudgetItemAdjustmentHistory['action'],
         beforeSnapshot: any,
         afterSnapshot: any,
         reason: string
     ) => {
-        try {
-            const saved = await writeBudgetItemAdjustmentHistory({
-                sourceType: 'subproject_detail',
-                parentId: subproject.id,
-                itemId: afterSnapshot?.id || beforeSnapshot?.id,
-                action,
-                beforeSnapshot,
-                afterSnapshot,
-                sourceItemId: afterSnapshot?.sourceItemId || beforeSnapshot?.sourceItemId || null,
-                reason,
-                currentUser,
-            });
-            if (saved) setBudgetAdjustmentHistory(prev => [saved, ...prev]);
-        } catch {
-            // History failure should not block editing the nested budget line.
-        }
+        setPendingAdjustmentHistory(previous => [...previous, { action, beforeSnapshot, afterSnapshot, reason }]);
     };
 
     // Helper to get month index from YYYY-MM-DD string
@@ -1047,14 +1036,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     if (action === 'cancel' || action === 'restore') {
                         setPendingAdjustmentHistory(prev => [...prev, { action, beforeSnapshot: beforeItem, afterSnapshot, reason }]);
                     } else {
-                        await persistBudgetAdjustmentHistory(action, beforeItem, afterSnapshot, reason);
+                        queueBudgetAdjustmentHistory(action, beforeItem, afterSnapshot, reason);
                     }
                 }
                 setEditingDetailIndex(null);
             } else {
                 updatedDetailItems = [...detailItems, newItem];
                 if (subproject.status !== 'Proposed' && (newItem.isRealignment || newItem.isSavings)) {
-                    await persistBudgetAdjustmentHistory(
+                    queueBudgetAdjustmentHistory(
                         'create_adjustment_item',
                         null,
                         newItem,
@@ -1193,7 +1182,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         if (action === 'cancel' || action === 'restore') {
             setPendingAdjustmentHistory(prev => [...prev, { action, beforeSnapshot: item, afterSnapshot: afterItem, reason }]);
         } else {
-            await persistBudgetAdjustmentHistory(action, item, afterItem, reason);
+            queueBudgetAdjustmentHistory(action, item, afterItem, reason);
         }
     };
 
@@ -1850,7 +1839,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             }
         });
 
-        const confirmedSubproject = await persistSubprojectDraft(draftBaseRef.current, updatedSubprojectWithDetails, editMode, guardedBudgetStatus);
+        const confirmedSubproject = await persistSubprojectDraft(draftBaseRef.current, updatedSubprojectWithDetails, editMode, guardedBudgetStatus, currentUser,
+            { source: `subproject-detail-${editMode}`, reason: getLastOverrideReason?.() || '', request: mutationRequest.current });
         onUpdateSubproject(confirmedSubproject, { persisted: !!supabase });
 
 
@@ -1858,26 +1848,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         if (resolvedIpoId) addIpoHistory(resolvedIpoId, `${eventType}: ${confirmedSubproject.name}`);
 
 
-        if ((editMode === 'accomplishment' || editMode === 'budget') && pendingAdjustmentHistory.length > 0) {
-            for (const entry of pendingAdjustmentHistory) {
-                await persistBudgetAdjustmentHistory(
-                    entry.action,
-                    entry.beforeSnapshot,
-                    entry.afterSnapshot,
-                    entry.reason
-                );
-            }
-            setPendingAdjustmentHistory([]);
-        }
-
-        if (editMode === 'accomplishment' && accomplishmentRemarksChanged) {
-            await persistBudgetAdjustmentHistory(
-                'update_accomplishment_remarks',
-                { id: subproject.id, accomplishmentRemarks: subproject.accomplishmentRemarks || null },
-                { id: subproject.id, accomplishmentRemarks: nextAccomplishmentRemarks },
-                'Updated subproject accomplishment remarks.'
-            );
-        }
+        setPendingAdjustmentHistory([]);
 
         setEditMode('none');
     };
@@ -3359,40 +3330,16 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                         <p className="detail-note detail-note--multiline">{subproject.accomplishmentRemarks || 'No accomplishment remarks provided.'}</p>
                     </RecordPanel>
 
-                    <RecordPanel
-                        title="History"
-                        description="Recent activity"
-                        actions={subproject.history && subproject.history.length > 5 ? (
-                                <select
-                                    value={historyLimit}
-                                    onChange={(e) => setHistoryLimit(Number(e.target.value))}
-                                    className="form-control data-table-select"
-                                    aria-label="History items shown"
-                                >
-                                    <option value={5}>5</option>
-                                    <option value={10}>10</option>
-                                    <option value={20}>20</option>
-                                    <option value={subproject.history.length}>All</option>
-                                </select>
-                            ) : null}
-                    >
-                        {subproject.history && subproject.history.length > 0 ? (
-                            <div className="detail-timeline">
-                                <ul className="detail-timeline__list">
-                                    {subproject.history.slice(0, historyLimit).map((entry, index) => (
-                                        <li key={index} className="detail-timeline__item">
-                                            <span className="detail-timeline__marker"></span>
-                                            <time className="detail-timeline__time">{formatDate(entry.date)}</time>
-                                            <p className="detail-list-name">{entry.event}</p>
-                                            <p className="detail-timeline__byline">by {entry.user}</p>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        ) : (
-                            <p className="detail-empty">No historical data available.</p>
-                        )}
-                    </RecordPanel>
+                    <DcfRevisionHistory entityType="subprojects" parentId={subproject.id} currentUser={currentUser} currentVersionKey={subproject.updated_at}
+                        permissions={{ canView: hasAccess('Subprojects', 'view') && (getVisibilityScope('Subprojects') === 'All' || !!currentUser?.operatingUnit && currentUser.operatingUnit === subproject.operatingUnit),
+                            canRestore: getStatusDecision({ moduleKey: 'subprojects', item: subproject, action: 'restoreHistory', hasModuleAccess: canEdit }).allowed,
+                            authorizationKey: JSON.stringify(rolesConfigs) }}
+                        legacyHistory={subproject.history} onRestored={(value, financial?: unknown) => {
+                            const record = ('record' in value ? value.record : value) as unknown as Subproject;
+                            const confirmedFinancial = financial ?? ('record' in value ? value.financial : undefined);
+                            if (onRevisionRestored) onRevisionRestored(record, confirmedFinancial);
+                            else onUpdateSubproject(record, { persisted: true });
+                        }} />
                 </RecordDetailAside>
             </RecordDetailGrid>
             {/* Budget Item Date Confirmation Modal */}

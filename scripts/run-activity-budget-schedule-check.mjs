@@ -8,7 +8,14 @@ import * as XLSX from 'xlsx';
 const server = await createServer({ configFile: false, appType: 'custom', server: { middlewareMode: true }, optimizeDeps: { noDiscovery: true, entries: [] }, plugins: [{
     name: 'activity-schedules-offline', enforce: 'pre',
     resolveId(id) { if (id.endsWith('supabaseClient')) return '\0offline-client'; },
-    load(id) { if (id === '\0offline-client') return `export const supabase = { from(table) {
+    load(id) { if (id === '\0offline-client') return `export const supabase = { async rpc(name,args){
+        const f=globalThis.activityFixture;
+        if(name==='budget_target_schedule_capability')return {data:2,error:null};
+        if(name!=='commit_dcf_change')throw Error('Unexpected RPC '+name);
+        f.calls.push({action:args.p_parent_id===null?'insert':'write',payload:args.p_changes,args});
+        if(f.fail||f.conflict)return {data:null,error:{message:f.conflict?'This record changed while you were editing':'Synthetic failure'}};
+        return {data:{record:{...f.latest,...args.p_changes,id:args.p_parent_id??100},financial:{obligations:[],disbursements:[],stages:{}},revisionId:1},error:null};
+    }, from(table) {
         let action = 'read', payload; const filters = []; const q = { select() { return q; }, eq(key,value) { filters.push([key,value]); return q; }, is(key,value) { filters.push([key,value]); return q; }, maybeSingle() { return q; }, update(value) { action='write'; payload=value; return q; }, insert(value) { action='insert'; payload=value; return q; },
             then(resolve) { const f=globalThis.activityFixture; f.calls.push({table,action,payload,filters}); return Promise.resolve({data:f.fail?null:action==='read'?f.latest:action==='insert'?payload.map((row,index)=>({...row,id:100+index})):f.conflict?null:{...f.latest,...payload},error:f.fail?{message:'Synthetic failure'}:null}).then(resolve); }
         }; return q;
@@ -47,12 +54,13 @@ try {
     assert.deepEqual([...getChangedActivityActualIds([actual],[{...actual,obligations:[]}],'obligation')],['1']);
     const record={...grouped,expenses:[actual,...grouped.expenses.slice(1)]};
     globalThis.activityFixture={latest:{...record,activity_title:'Concurrent title',expenses:[latest,...record.expenses.slice(1)]},calls:[]};
-    const confirmed=await persistActivityDraft(record,{...record,expenses:[changed,...record.expenses.slice(1)]},'expenses');
+    const actor={id:1,role:'Super Admin',fullName:'Fixture',operatingUnit:'NPMO',password:'fixture-only'};
+    const confirmed=await persistActivityDraft(record,{...record,expenses:[changed,...record.expenses.slice(1)]},'expenses',actor);
     assert.equal(confirmed.status,'Completed'); assert.equal(confirmed.activity_title,'Concurrent title');
     assert.equal(globalThis.activityFixture.calls.length,2); assert.equal(globalThis.activityFixture.calls[1].payload.activity_title,undefined);
     assert.deepEqual(confirmed.expenses[0].obligations,actual.obligations);
-    globalThis.activityFixture.conflict=true; await assert.rejects(()=>persistActivityDraft(record,record,'expenses'),/changed while/);
-    globalThis.activityFixture={latest:{...record,status:'Cancelled'},calls:[]}; await assert.rejects(()=>persistActivityDraft(record,record,'expenses'),/changed while/);
+    globalThis.activityFixture.conflict=true; await assert.rejects(()=>persistActivityDraft(record,record,'expenses',actor),/changed while/);
+    globalThis.activityFixture={latest:{...record,status:'Cancelled'},calls:[]}; await assert.rejects(()=>persistActivityDraft(record,record,'expenses',actor),/changed while/);
     const sourceSnapshot=JSON.stringify(record);
     const first=buildActivityClonePayload(record,{createdAt:'2026-10-13T00:00:00Z',encodedBy:'Fixture',requiresApprover:false});
     const second=buildActivityClonePayload(record,{createdAt:'2026-10-13T00:00:00Z',encodedBy:'Fixture',requiresApprover:true});
@@ -89,7 +97,8 @@ try {
         const binary=XLSX.write(workbook,{type:'array',bookType:'xlsx'});
         globalThis.FileReader=class{readAsArrayBuffer(){globalThis.importPromise=this.onload({target:{result:binary}});}};
         globalThis.activityFixture={calls:[]};let records=[];
-        handleActivitiesUpload({target:{files:[{}]}},[],updater=>{records=updater(records);},[],()=>{},()=>{},references.uacsCodes,{fullName:'Fixture',operatingUnit:'NPMO'},[{uid:'FS-000001',label:'4K Fund',is_active:true}],rows=>{records=[...records,...rows];});
+        const journal=new Map();globalThis.localStorage={getItem:key=>journal.get(key)??null,setItem:(key,value)=>journal.set(key,value)};globalThis.prompt=()=> 'Disposable schedule import';
+        handleActivitiesUpload({target:{files:[{}]}},[],updater=>{records=updater(records);},[],()=>{},()=>{},references.uacsCodes,actor,[{uid:'FS-000001',label:'4K Fund',is_active:true}],rows=>{records=[...records,...rows];});
         await globalThis.importPromise;return records[0];
     };
     const imported=await importRows(true);

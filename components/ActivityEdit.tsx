@@ -1,7 +1,8 @@
-import { getActivityBudgetSummary, isOriginalActivityBudgetLocked, isSupplementalExpense, isActivityExpenseActualEligible } from '../lib/activitySupplementalBudget';
+import { getActivityBudgetSummary, getActivityEditableBudgetExpenses, hasWholeActivityFundingOrigin, isOriginalActivityBudgetLocked, isActivityExpenseActualEligible } from '../lib/activitySupplementalBudget';
 import { ActivityBudgetEditor } from './ui/ActivityBudgetEditor';
 import { rescheduleActivityTargets, validateActivitySchedule } from '../lib/activityBudgetSchedules';
 import { persistActivityDraft } from '../lib/activityDraftPersistence';
+import { dcfChangedFields, persistDcfMutation, type DcfMutationRequest } from '../lib/dcfMutation';
 import { requireIndependentTargetSupport } from '../lib/budgetTargetPersistence';
 import { buildActivityActualEdits, getActivityPhysicalChanges, hydrateActivityAccomplishment, readActivityAccomplishments, saveActivityAccomplishment, type ActivityAccomplishmentSnapshot, type ActivityAccomplishmentRequest, type ActivityActualRemovals } from '../lib/activityAccomplishmentPersistence';
 import { buildRepeatingActivityPayload, canChooseActivityOu, emptyRepeatingActivityEntry, hasRepeatingEntryDraft, normalizeRepeatingActivityEntry, validateRepeatingActivityEntry, type RepeatingActivityEntry } from '../lib/activityRepeatingEntries';
@@ -28,8 +29,7 @@ import {
     isBudgetLineExcludedFromTargets,
     normalizeBudgetLineStatus,
     requestAdjustmentReason,
-    summarizeBudgetAdjustments,
-    writeBudgetItemAdjustmentHistory
+    summarizeBudgetAdjustments
 } from '../lib/budgetLineAdjustments';
 import { getActualObligationValidationError, hasActualObligationRecords } from '../lib/financialObligationUtils';
 import { getFundSourceByUid, getNewFundSourceDefault, resolveFundSourceUidFromLegacyLabel } from '../lib/fundSources';
@@ -78,6 +78,8 @@ const defaultFormData: Activity = {
     fundType: 'Current',
     fundSource: null,
     fundSourceUid: null,
+    isSavings: false,
+    isRealignment: false,
     tier: 'Tier 1',
     operatingUnit: '',
     encodedBy: '',
@@ -111,6 +113,8 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     const [monthLockMessage, setMonthLockMessage] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const saveInFlight = useRef(false);
+    const mutationRequest = useRef<DcfMutationRequest>({});
+    const createIdentity = useRef<{ uid: string; created_at: string } | null>(null);
 
     const [activeTab, setActiveTab] = useState<'details' | 'expenses'>('details');
     const [selectedActivityType, setSelectedActivityType] = useState('');
@@ -123,6 +127,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     const [repeatingSaveIssue, setRepeatingSaveIssue] = useState('');
     const [uncertainRepeatingKeys, setUncertainRepeatingKeys] = useState<string[]>([]);
     const repeatingAttempts = useRef(new Map<string, RepeatingCreateAttempt>());
+    const repeatingBatchId = useRef<string | undefined>(undefined);
     const hasUnappliedRepeatingEntry = !!editingRepeatingKey || hasRepeatingEntryDraft(currentRepeatingEntry);
     
     // Filter state for IPO selection
@@ -158,6 +163,8 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     useEffect(() => {
         let cancelled = false;
+        mutationRequest.current = {};
+        createIdentity.current = null;
         if (activity) {
             accomplishmentBaseline.current = null;
             accomplishmentRequest.current = {};
@@ -378,14 +385,15 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 let attempt = repeatingAttempts.current.get(entry.key);
                 if (recoveryOnly && !attempt?.uncertain) continue;
                 if (!attempt) {
+                    repeatingBatchId.current ||= crypto.randomUUID();
                     attempt = { payload: buildRepeatingActivityPayload(shared, entry, ipos, {
                         userName: currentUser?.fullName || 'System', requiresApprover: !!currentUser?.requires_approver,
                         reservedExpenseIds,
-                    }), uncertain: false };
+                    }), uncertain: false, request: { correlationId: repeatingBatchId.current } };
                     repeatingAttempts.current.set(entry.key, attempt);
                 }
                 let saved: Activity;
-                try { saved = await persistRepeatingActivity(attempt); }
+                try { saved = await persistRepeatingActivity(attempt, currentUser); }
                 catch (error) {
                     if (!attempt.uncertain) repeatingAttempts.current.delete(entry.key);
                     throw error;
@@ -418,6 +426,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             return;
         }
         alert(`Saved ${confirmedKeys.size} activities.${warnings.length ? ` ${warnings.join(' ')} Refresh the activity list to verify follow-up information.` : ''}`);
+        repeatingBatchId.current = undefined;
         onBack();
     };
 
@@ -532,6 +541,10 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
         if (mode === 'create' && !hasAccess('Activities', 'edit')) {
             alert('You do not have permission to create activities.');
+            return;
+        }
+        if (mode === 'create' && formData.isSavings && formData.isRealignment) {
+            alert('Select either Savings or Realignment, not both.');
             return;
         }
         const effectiveOperatingUnit = canChooseOperatingUnit ? formData.operatingUnit : currentUser?.operatingUnit || '';
@@ -650,13 +663,13 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 await saveRepeatingEntries({ ...formData, operatingUnit: effectiveOperatingUnit, fundSourceUid: source.uid, fundSource: source.label });
                 return;
              } else {
+                 createIdentity.current ||= { uid: formData.uid || `${prefix}-${currentYear}-${crypto.randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`, created_at: new Date().toISOString() };
                  activitiesToSave = [{
                      ...formData,
-                     uid: `${prefix}-${currentYear}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
+                     ...createIdentity.current,
                      id: 0,
                      workflow_status,
-                     created_at: new Date().toISOString(),
-                     updated_at: new Date().toISOString(),
+                     updated_at: createIdentity.current.created_at,
                      history: [{ date: new Date().toISOString(), event: "Created", user: currentUser?.fullName || "System" }]
                  }];
              }
@@ -795,13 +808,12 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
                     if (mode === 'create') {
                          await requireIndependentTargetSupport(sanitizedPayload.expenses || []);
-                         const { data, error } = await supabase.from('activities').insert([sanitizedPayload]).select();
-                         if (error) throw error;
-                         if (!data?.length) throw new Error('No saved activity was returned. Reload before retrying.');
-                         if (data.length > 0) {
-                             const createdId = data[0].id;
-                             activitiesToSave[i] = data[0] as Activity;
-                             persisted.push(data[0] as Activity);
+                         const { record } = await persistDcfMutation<Activity>({ entityType: 'activities', changes: dcfChangedFields({}, sanitizedPayload),
+                             actor: currentUser, source: 'activity-edit-create', reason: getLastOverrideReason?.() || '', request: mutationRequest.current });
+                         if (record) {
+                             const createdId = record.id;
+                             activitiesToSave[i] = record as Activity;
+                             persisted.push(record as Activity);
                              logAction(`Created ${act.type}`, act.name, undefined, act.type, String(createdId));
                              
                              // Planned schedules have no central actual records to synchronize.
@@ -821,12 +833,14 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                              setInitialActivity(data);
                              actualRemovals.current = {};
                          } else if (mode === 'expenses') {
-                             data = await persistActivityDraft(budgetBaseline.current, { ...act, expenses: sanitizedPayload.expenses }, mode);
+                             data = await persistActivityDraft(budgetBaseline.current, { ...act, expenses: sanitizedPayload.expenses }, mode, currentUser,
+                                 { reason: getLastOverrideReason?.() || '', source: 'activity-edit-expenses', request: mutationRequest.current });
                          } else {
-                             const result = await supabase.from('activities').update(sanitizedPayload).eq('id', activity!.id).select().single();
-                             if (result.error) throw result.error;
-                             if (!result.data) throw new Error('No saved activity was returned. Reload before retrying.');
-                             data = result.data as Activity;
+                             const changes = dcfChangedFields(initialActivity, sanitizedPayload);
+                             delete changes.uid;
+                             const result = await persistDcfMutation<Activity>({ entityType: 'activities', parentId: activity!.id, base: initialActivity,
+                                 changes, actor: currentUser, source: 'activity-edit-details', reason: getLastOverrideReason?.() || '', request: mutationRequest.current });
+                             data = result.record as Activity;
                          }
                          activitiesToSave[i] = data;
                          persisted.push(data);
@@ -834,7 +848,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                          const metadata = mode === 'details' ? undefined : getMonetaryChanges(activity, sanitizedPayload, 'Activity');
                          logAction(`Updated ${act.type}`, act.name, undefined, act.type, String(activity!.id), metadata);
                          
-                         if (mode === 'expenses') await persistExpenseAdjustmentHistory(data);
                     }
                     
                     // IPO History Log
@@ -869,22 +882,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         } finally {
             saveInFlight.current = false;
             setIsSaving(false);
-        }
-    };
-
-    const persistExpenseAdjustmentHistory = async (saved: Activity) => {
-        for (const row of saved.expenses) {
-            const before = budgetBaseline.current.expenses.find(item => item.id === row.id);
-            const intended = formData.expenses.find(item => item.id === row.id);
-            if (!intended || JSON.stringify(before) === JSON.stringify(intended)) continue;
-            if (JSON.stringify(before) === JSON.stringify(row)) continue;
-            if (![before?.isCancelled, before?.isSavings, before?.isRealignment, row.isCancelled, row.isSavings, row.isRealignment].some(Boolean)) continue;
-            await writeBudgetItemAdjustmentHistory({
-                sourceType: 'activity_expense', parentId: saved.id, itemId: row.id,
-                action: !before ? 'create_adjustment_item' : row.isCancelled ? 'cancel' : row.isRealignment ? 'tag_realignment' : row.isSavings ? 'tag_savings' : before.isCancelled ? 'restore' : 'clear_tag',
-                beforeSnapshot: before || null, afterSnapshot: row,
-                reason: row.adjustmentReason || 'Updated expense adjustment.', currentUser,
-            });
         }
     };
 
@@ -1034,7 +1031,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                 </fieldset>
                             </>
                         )}
-                                <fieldset className="form-fieldset" disabled={isDetailsLocked || originalBudgetLocked || uncertainRepeatingKeys.length > 0}>
+                                <fieldset className="form-fieldset" disabled={isDetailsLocked || isSaving || originalBudgetLocked || uncertainRepeatingKeys.length > 0}>
                                     <legend className="form-legend">Funding</legend>
                                     <div className="form-grid form-grid--four">
                                         <div><label className="form-label">Fund Year</label><input type="number" name="fundingYear" value={formData.fundingYear} onChange={handleNumericChange} className={commonInputClasses} /></div>
@@ -1054,6 +1051,16 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                             disabled={isDetailsLocked}
                                             onChange={(fundSourceUid, fundSource) => setFormData(previous => ({ ...previous, fundSourceUid, fundSource }))}
                                         />
+                                        {mode === 'create' && <div className="form-field--full form-check-group">
+                                            <label className="form-check">
+                                                <input type="checkbox" name="isSavings" checked={!!formData.isSavings} onChange={event => setFormData(previous => ({ ...previous, isSavings: event.target.checked, isRealignment: event.target.checked ? false : previous.isRealignment }))} className="form-checkbox" />
+                                                <span>Savings</span>
+                                            </label>
+                                            <label className="form-check">
+                                                <input type="checkbox" name="isRealignment" checked={!!formData.isRealignment} onChange={event => setFormData(previous => ({ ...previous, isRealignment: event.target.checked, isSavings: event.target.checked ? false : previous.isSavings }))} className="form-checkbox" />
+                                                <span>Realignment</span>
+                                            </label>
+                                        </div>}
                                     </div>
                                 </fieldset>
                         
@@ -1117,7 +1124,8 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 {((mode === 'create' && activeTab === 'expenses') || mode === 'expenses') && (
                      <fieldset className="form-fieldset" disabled={isDetailsLocked}>
                         <legend className="form-legend">Expenses</legend>
-                        <ActivityBudgetEditor items={formData.expenses.filter(row => !isSupplementalExpense(row,formData))} parent={formData} uacsCodes={uacsCodes}
+                        <ActivityBudgetEditor items={getActivityEditableBudgetExpenses(formData, mode === 'create')} parent={formData} uacsCodes={uacsCodes}
+                            includeSupplementalAmounts={hasWholeActivityFundingOrigin(formData) && (mode === 'create' || !originalBudgetLocked)}
                             showAdjustmentTags={false} disabled={isDetailsLocked || isSaving || originalBudgetLocked || uncertainRepeatingKeys.length > 0} onApply={handleApplyExpenses} onRemove={handleRemoveExpense}
                             onDraftChange={setBudgetDraftPending} />
                         <div className="budget-adjustment-summary">

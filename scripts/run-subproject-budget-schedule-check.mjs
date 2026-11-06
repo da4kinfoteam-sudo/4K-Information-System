@@ -8,7 +8,14 @@ import * as XLSX from 'xlsx';
 const vite = await createServer({ configFile: false, appType: 'custom', server: { middlewareMode: true }, optimizeDeps: { noDiscovery: true, entries: [] }, plugins: [{
     name: 'schedule-check-no-production', enforce: 'pre',
     resolveId(id) { if (id.endsWith('supabaseClient')) return '\0schedule-client'; },
-    load(id) { if (id === '\0schedule-client') return `export const supabase = { from() {
+    load(id) { if (id === '\0schedule-client') return `export const supabase = { async rpc(name,args){
+        const f=globalThis.scheduleFixture;
+        if(name==='budget_target_schedule_capability')return {data:2,error:null};
+        if(name!=='commit_dcf_change')throw Error('Unexpected RPC '+name);
+        f.calls.push({action:args.p_parent_id===null?'insert':'write',payload:args.p_changes,args});
+        if(f.fail||f.conflict)return {data:null,error:{message:f.conflict?'This record changed while you were editing':'Synthetic failure'}};
+        return {data:{record:{...f.latest,...args.p_changes,id:args.p_parent_id??100},financial:{obligations:[],disbursements:[],stages:{}},revisionId:1},error:null};
+    }, from() {
         const fixture = globalThis.scheduleFixture; let action = 'read', payload; const filters = [];
         const q = { select() { return q; }, update(value) { action = 'write'; payload = value; return q; }, insert(value) { action = 'insert'; payload = value; return q; },
             eq(key, value) { filters.push([key, value]); return q; }, is(key, value) { filters.push([key, value]); return q; }, maybeSingle() { return q; },
@@ -94,12 +101,13 @@ try {
     assert.equal(deleted.details.length, 2);
     assert.throws(() => mergeSubprojectDraft(grouped, { ...grouped, details: grouped.details.slice(1) }, latest), /changed while/);
     globalThis.scheduleFixture = { latest, calls: [] };
-    const confirmed = await persistSubprojectDraft(grouped, draft, 'accomplishment');
+    const actor={id:1,role:'Super Admin',fullName:'Fixture',operatingUnit:'NPMO',password:'fixture-only'};
+    const confirmed = await persistSubprojectDraft(grouped, draft, 'accomplishment',undefined,actor);
     assert.equal(confirmed.details.length, 4);
     assert.equal(globalThis.scheduleFixture.calls.filter(call => call.action === 'write').length, 1);
-    assert.equal(globalThis.scheduleFixture.calls[1].filters.some(([key, value]) => key === 'updated_at' && value === 'newer'), true);
+    assert.equal(globalThis.scheduleFixture.calls[1].args.p_base.updated_at,'newer');
     globalThis.scheduleFixture.conflict = true;
-    await assert.rejects(() => persistSubprojectDraft(grouped, draft, 'accomplishment'), /changed while/);
+    await assert.rejects(() => persistSubprojectDraft(grouped, draft, 'accomplishment',undefined,actor), /changed while/);
     for (const [file, token] of [['components/reports/BEDSReport.tsx', 'item.targetObligationSchedules'], ['components/reports/BEDSReport.tsx', 'item.targetDisbursementSchedules'], ['components/reports/WFPReport.tsx', 'readTargetSchedules']]) assert.equal((await readFile(file, 'utf8')).includes(token), true);
     const transfer = await readFile('supabase/migrations/202610090001_activity_subproject_budget_item_transfers.sql', 'utf8');
     assert.match(transfer, /jsonb_agg\(source_line.value/);
@@ -123,7 +131,8 @@ try {
         const binary = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
         globalThis.FileReader = class { readAsArrayBuffer() { globalThis.importPromise = this.onload({ target: { result: binary } }); } };
         globalThis.scheduleFixture = { calls: [] }; let records = [];
-        handleSubprojectsUpload({ target: { files: [{}] } }, [], updater => { records = updater(records); }, [], () => {}, () => {}, references.uacsCodes, { fullName: 'Fixture', operatingUnit: 'NPMO' }, false, [{ uid: 'FS-000001', label: '4K Fund', is_active: true }], rows => { records = rows; });
+        const journal=new Map();globalThis.localStorage={getItem:key=>journal.get(key)??null,setItem:(key,value)=>journal.set(key,value)};globalThis.prompt=()=> 'Disposable schedule import';
+        handleSubprojectsUpload({ target: { files: [{}] } }, [], updater => { records = updater(records); }, [], () => {}, () => {}, references.uacsCodes, actor, false, [{ uid: 'FS-000001', label: '4K Fund', is_active: true }], rows => { records = rows; });
         await globalThis.importPromise; return records;
     };
     const imported = await importRows(true);

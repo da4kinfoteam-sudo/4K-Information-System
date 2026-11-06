@@ -1,6 +1,7 @@
+import { DcfRevisionHistory } from '../shared/DcfRevisionHistory';
 
 // Author: 4K 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents, RefFundSource } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
@@ -22,11 +23,10 @@ import {
     normalizeBudgetLineStatus,
     requestAdjustmentReason,
     summarizeBudgetAdjustments,
-    writeBudgetItemAdjustmentHistory
 } from '../../lib/budgetLineAdjustments';
 import { createStaffingExpenseId, normalizeStaffingExpenses } from '../../lib/staffingExpenseIdentity';
 import { getActualObligationValidationError, hasActualObligationRecords } from '../../lib/financialObligationUtils';
-import { replaceFinancialObligationRecords } from '../../lib/financialObligationSync';
+import { hydrateProgramManagementState, saveProgramManagementChange, useProgramManagementBaseline, type ProgramManagementState } from '../../lib/programManagementPersistence';
 import { FundSourceField } from '../ui/FundSourceField';
 import { getFundSourceByUid, getFundSourceLabel } from '../../lib/fundSources';
 
@@ -34,7 +34,7 @@ interface StaffingRequirementDetailProps {
     item: StaffingRequirement;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     fundSources: RefFundSource[];
-    onUpdate: (item: StaffingRequirement) => void;
+    onUpdate: (item: StaffingRequirement, financial?: ProgramManagementState['financial']) => void;
 }
 
 const commonInputClasses = "form-control";
@@ -81,10 +81,10 @@ const getHiringStatusBadge = (status: StaffingRequirement['hiringStatus']) => {
 }
 
 const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ item, uacsCodes, fundSources, onUpdate }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, rolesConfigs, hasAccess, getVisibilityScope } = useAuth();
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
-    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
     const detailsDecision = getStatusDecision({
         moduleKey: 'staffing_requirements',
         item,
@@ -155,6 +155,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<StaffingRequirement>(item);
     const [isSaving, setIsSaving] = useState(false);
+    const saveInFlight = useRef(false);
     const [monthLockMessage, setMonthLockMessage] = useState('');
     
     // Construct display expenses, handling legacy data where obligations array might be empty but actual fields exist
@@ -273,58 +274,14 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         };
     }, [item.id]);
 
-    // Initial load and whenever the item ID changes
+    const baseline = useProgramManagementBaseline('staffing_requirements', item, currentUser, editMode === 'none');
     useEffect(() => {
-        if (!item) return;
-
-        // Reset form data and expenses list
-        setFormData(item);
-        setExpensesList(displayExpenses);
-        setOriginalExpensesList(displayExpenses);
-
-        const fetchObligations = async () => {
-            if (!item?.id || !supabase) return;
-            
-            // Fetch from centralized table first
-            const { data, error } = await supabase
-                .from('financial_obligations')
-                .select('*')
-                .eq('entity_type', 'staffing_expense')
-                .eq('parent_id', item.id);
-
-            if (!error && data && data.length > 0) {
-                console.log("Fetched staffing obligations from centralized table:", data.length);
-                const obligationsByItem: { [key: string]: any[] } = {};
-                data.forEach(o => {
-                    const itemId = o.item_id;
-                    if (itemId) {
-                        if (!obligationsByItem[itemId]) obligationsByItem[itemId] = [];
-                        obligationsByItem[itemId].push({
-                            id: o.id,
-                            date: o.obligation_date,
-                            amount: o.amount,
-                            remarks: o.remarks
-                        });
-                    }
-                });
-
-                const applyFetchedObligations = (source: StaffingExpense[]) => source.map(exp => {
-                        const itemId = exp.id?.toString();
-                        if (itemId && obligationsByItem[itemId]) {
-                            const obs = obligationsByItem[itemId];
-                            const total = obs.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
-                            return { ...exp, obligations: obs, actualObligationAmount: total };
-                        }
-                        return exp;
-                    });
-                setExpensesList(prev => applyFetchedObligations(prev));
-                setOriginalExpensesList(prev => applyFetchedObligations(prev));
-            }
-        };
-
-        fetchObligations();
-    }, [item.id, supabase, displayExpenses]);
-
+        if (!baseline.state || editMode !== 'none') return;
+        const loaded = hydrateProgramManagementState(baseline.state, 'staffing_requirements');
+        setFormData(loaded);
+        setExpensesList(loaded.expenses || []);
+        setOriginalExpensesList(loaded.expenses || []);
+    }, [baseline.state, editMode]);
 
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
@@ -363,9 +320,10 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     // Reset form data and hydrate expenses list (including legacy fix) when item changes
     useEffect(() => {
         if (editMode === 'none') {
-            setFormData(item);
-            setExpensesList(displayExpenses);
-            setOriginalExpensesList(displayExpenses);
+            const loaded = baseline.state ? hydrateProgramManagementState(baseline.state, 'staffing_requirements') : item;
+            setFormData(loaded);
+            setExpensesList(loaded.expenses || []);
+            setOriginalExpensesList(loaded.expenses || []);
             setValidationErrors([]);
         }
     }, [editMode, item, displayExpenses]);
@@ -414,22 +372,9 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         }
     };
 
-    const persistExpenseAdjustmentHistory = async (action: any, beforeSnapshot: any, afterSnapshot: any, reason: string) => {
-        if (!item?.id) return;
-        try {
-            await writeBudgetItemAdjustmentHistory({
-                sourceType: 'staffing_expense',
-                parentId: item.id,
-                itemId: afterSnapshot?.id || beforeSnapshot?.id,
-                action,
-                beforeSnapshot,
-                afterSnapshot,
-                reason,
-                currentUser,
-            });
-        } catch {
-            // The parent staffing save remains the source of truth for nested expense updates.
-        }
+    const [adjustmentReason, setAdjustmentReason] = useState('');
+    const persistExpenseAdjustmentHistory = async (_action: any, _beforeSnapshot: any, _afterSnapshot: any, reason: string) => {
+        setAdjustmentReason(reason);
     };
 
     const handleAddExpense = async () => {
@@ -577,6 +522,14 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (saveInFlight.current) return;
+        saveInFlight.current = true;
+        try { await submitForm(e); } finally { saveInFlight.current = false; }
+    };
+
+    const submitForm = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (isSaving) return;
 
         if (editMode === 'accomplishment') {
             const obligationError = expensesList
@@ -713,60 +666,19 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         if (supabase) {
             try {
                 setIsSaving(true);
-                const { id, obligations, disbursements, ...payload } = updatedItem;
-                
-                console.log("Saving Staffing Requirement...", { id: item.id, payload });
-                const { error: updateError } = await supabase.from('staffing_requirements').update(payload).eq('id', item.id);
-                if (updateError) throw updateError;
-
-                // Sync obligations to centralized table
-                const entityType = 'staffing_expense';
-                const parentId = item.id;
-                
-                for (const expense of normalizedExpensesList) {
-                    await replaceFinancialObligationRecords({
-                        entityType,
-                        parentId,
-                        itemId: expense.id ?? null,
-                        records: expense.obligations || [],
-                    });
-                }
-
-                const disbursementSyncPayload: any[] = [];
-                normalizedExpensesList.forEach(exp => {
-                    createDisbursementsFromMonthlyFields(exp, formData.fundYear, 'Synced from staffing monthly matrix').forEach(disb => {
-                        disbursementSyncPayload.push({
-                            entity_type: entityType,
-                            parent_id: parentId,
-                            item_id: exp.id?.toString() || null,
-                            disbursement_date: disb.date,
-                            amount: Number(disb.amount) || 0,
-                            remarks: disb.remarks || ''
-                        });
-                    });
+                if (!baseline.state) throw new Error(baseline.error || 'Existing DCF state is unavailable. Reopen before saving.');
+                const confirmed = await saveProgramManagementChange({
+                    entityType: 'staffing_requirements', base: baseline.state,
+                    original: { ...hydrateProgramManagementState(baseline.state, 'staffing_requirements'), expenses: originalExpensesList }, proposed: updatedItem,
+                    financial: editMode === 'accomplishment', currentUser, source: 'program-management-detail', reason: adjustmentReason || getLastOverrideReason?.() || '', request: baseline.request.current,
                 });
-
-                const { error: disbursementDeleteError } = await supabase.from('financial_disbursements')
-                    .delete()
-                    .eq('entity_type', entityType)
-                    .eq('parent_id', parentId);
-
-                if (disbursementDeleteError) {
-                    console.error("Error deleting old disbursements:", disbursementDeleteError);
-                }
-
-                if (disbursementSyncPayload.length > 0) {
-                    const { error: disbursementInsertError } = await supabase.from('financial_disbursements').insert(disbursementSyncPayload);
-                    if (disbursementInsertError) {
-                        console.error("Critical RLS Error or Insert Error in financial_disbursements:", disbursementInsertError);
-                        throw new Error(`Failed to sync disbursements: ${disbursementInsertError.message}. This might be a database permission (RLS) issue.`);
-                    }
-                }
+                baseline.setState(confirmed);
+                const confirmedItem = hydrateProgramManagementState(confirmed, 'staffing_requirements');
 
                 const metadata = getMonetaryChanges(item, updatedItem, 'Staffing');
                 logAction('Updated Staffing Requirement', updatedItem.particulars || updatedItem.position, undefined, 'Staffing Requirement', String(item.id), metadata);
                 
-                onUpdate(updatedItem as StaffingRequirement);
+                onUpdate(confirmedItem as StaffingRequirement, confirmed.financial);
                 setEditMode('none');
             } catch (err: any) {
                 console.error("Error saving staffing requirement:", err);
@@ -1348,6 +1260,12 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 </div>
 
             </div>
+            <DcfRevisionHistory entityType="staffing_requirements" parentId={item.id} currentUser={currentUser} currentVersionKey={item.updated_at}
+                permissions={{ canView: hasAccess('Program Management', 'view') && (getVisibilityScope('Program Management') === 'All' || !!currentUser?.operatingUnit && currentUser.operatingUnit === item.operatingUnit),
+                    canRestore: getStatusDecision({ moduleKey: 'staffing_requirements', item, action: 'restoreHistory', hasModuleAccess: canEdit }).allowed,
+                    authorizationKey: JSON.stringify(rolesConfigs) }}
+                onRestored={confirmed => onUpdate(confirmed.record as unknown as StaffingRequirement, confirmed.financial)} />
+
         </div>
     );
 };

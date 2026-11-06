@@ -13,7 +13,7 @@ import { supabase } from '../supabaseClient';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
 import { isMonthTargetOverdue } from '../lib/dateStatus';
 import { ConfirmDialog } from './ui/enterprise';
-import { isBudgetLineExcludedFromTargets, isParentExcludedFromTargets, requestAdjustmentReason, writeBudgetItemAdjustmentHistory } from '../lib/budgetLineAdjustments';
+import { isBudgetLineExcludedFromTargets, isParentExcludedFromTargets, requestAdjustmentReason } from '../lib/budgetLineAdjustments';
 import {
     canEditSubprojectBudgetItem,
     getSubprojectBudgetItemRemovalAction,
@@ -24,6 +24,7 @@ import { getFundSourceByUid, getFundSourceLabel, getNewSubprojectDefaultFundSour
 import { SubprojectBudgetEditor } from './ui/SubprojectBudgetEditor';
 import { budgetTargetsChanged, latestBudgetDeliveryDate, validateBudgetSchedule } from '../lib/subprojectBudgetSchedules';
 import { persistSubprojectDraft, rescheduleBudgetTargets } from '../lib/subprojectDraftPersistence';
+import { dcfChangedFields, persistDcfMutation, type DcfMutationRequest } from '../lib/dcfMutation';
 import { requireIndependentTargetSupport } from '../lib/budgetTargetPersistence';
 
 interface SubprojectEditProps {
@@ -103,7 +104,9 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     const { currentUser, hasAccess, getVisibilityScope } = useAuth();
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
-    const { getStatusDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
+    const mutationRequest = useRef<DcfMutationRequest>({});
+    const createIdentity = useRef<{ uid: string; created_at: string } | null>(null);
     
     const [formData, setFormData] = useState<Subproject>(subproject || defaultFormData);
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget' | 'summary'>('details');
@@ -119,6 +122,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     const [proposedBudgetItemsChanged, setProposedBudgetItemsChanged] = useState(false);
     const initializedSubprojectIdRef = useRef<number | null>(null);
     const initialSubprojectStatusRef = useRef<Subproject['status'] | null>(subproject?.status || null);
+    const draftBaseRef = useRef<Subproject | null>(subproject ? structuredClone(subproject) : null);
 
     const [currentCommodity, setCurrentCommodity] = useState<SubprojectCommodity>({
         typeName: '', name: '', area: 0, averageYield: 0
@@ -171,6 +175,8 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         if (subproject) {
             if (initializedSubprojectIdRef.current === subproject.id) return;
             initializedSubprojectIdRef.current = subproject.id;
+            draftBaseRef.current = structuredClone(subproject);
+            mutationRequest.current = {};
             initialSubprojectStatusRef.current = subproject.status;
             setFormData(subproject);
             setProposedBudgetItemsChanged(false);
@@ -178,6 +184,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             if (linkedIpo) setSelectedRegion(linkedIpo.region);
         } else {
             initializedSubprojectIdRef.current = null;
+            draftBaseRef.current = null;
             initialSubprojectStatusRef.current = null;
             const defaultOu = currentUser?.operatingUnit || '';
             const defaultRegion = ouToRegionMap[defaultOu] || '';
@@ -571,8 +578,9 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         
         // Final guard: only allow submission from the intended tabs
         const isNew = !subproject;
-        const budgetChanged = !!subproject && (formData.details.length !== subproject.details.length || formData.details.some(row => {
-            const original = subproject.details.find(item => String(item.id) === String(row.id));
+        const baseline = draftBaseRef.current || subproject;
+        const budgetChanged = !!baseline && (formData.details.length !== baseline.details.length || formData.details.some(row => {
+            const original = baseline.details.find(item => String(item.id) === String(row.id));
             return !original || budgetTargetsChanged(original, row) || original.isCancelled !== row.isCancelled;
         }));
         if (isNew && activeTab !== 'summary') {
@@ -660,8 +668,8 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             updated_at: timestamp
         };
         if (!subproject) {
-            payload.created_at = timestamp;
-            payload.uid = formData.uid || `SP-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+            createIdentity.current ||= { uid: formData.uid || `SP-${new Date().getFullYear()}-${crypto.randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`, created_at: timestamp };
+            Object.assign(payload, createIdentity.current);
             payload.history = [historyEntry];
             
             // Phase 2: Workflow Logic
@@ -710,39 +718,22 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
 
             if (!subproject) {
                 await requireIndependentTargetSupport(dbPayload.details || []);
-                const { data, error } = await supabase.from('subprojects').insert([dbPayload]).select().single();
-                if (error) { alert("Error saving: " + error.message); return; }
+                const { record } = await persistDcfMutation<Subproject>({ entityType: 'subprojects', changes: dcfChangedFields({}, dbPayload), actor: currentUser,
+                    source: 'subproject-edit-create', reason: getLastOverrideReason?.() || '', request: mutationRequest.current });
+                const data = record as Subproject;
                 if (data) {
                     onUpdateSubproject(data, { persisted: true });
                     logAction('Created Subproject', data.name, data.indigenousPeopleOrganization, 'Subproject', String(data.id));
                     if (resolvedIpoId) addIpoHistory(resolvedIpoId, `Subproject Created: ${data.name}`);
                 }
             } else {
-                const data = await persistSubprojectDraft(subproject, payload, budgetChanged ? 'budget' : 'full', guardedBudgetStatus);
+                const data = await persistSubprojectDraft(baseline, payload, budgetChanged ? 'budget' : 'full', guardedBudgetStatus, currentUser,
+                    { source: 'subproject-edit', reason: getLastOverrideReason?.() || '', request: mutationRequest.current });
                 onUpdateSubproject(data, { persisted: true });
                 setProposedBudgetItemsChanged(false);
                 const metadata = getMonetaryChanges(subproject, data, 'Subproject');
                 logAction('Updated Subproject', data.name, data.indigenousPeopleOrganization, 'Subproject', String(data.id), metadata);
 
-                for (const entry of pendingBudgetCancellations) {
-                    const afterSnapshot = (data.details || []).find((item: SubprojectDetail) => String(item.id) === String(entry.itemId));
-                    if (!afterSnapshot) continue;
-                    try {
-                        await writeBudgetItemAdjustmentHistory({
-                            sourceType: 'subproject_detail',
-                            parentId: data.id,
-                            itemId: entry.itemId,
-                            action: 'cancel',
-                            beforeSnapshot: entry.beforeSnapshot,
-                            afterSnapshot,
-                            reason: entry.reason,
-                            currentUser,
-                        });
-                    } catch (historyError) {
-                        console.error('Subproject was saved, but its budget cancellation history could not be recorded:', historyError);
-                        alert('The subproject was saved, but a budget cancellation history entry could not be recorded. Contact an administrator before relying on that history.');
-                    }
-                }
                 setPendingBudgetCancellations([]);
             }
         } else {

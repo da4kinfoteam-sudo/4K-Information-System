@@ -4,7 +4,9 @@ import * as XLSX from 'xlsx';
 const server=await createServer({configFile:false,appType:'custom',server:{middlewareMode:true},optimizeDeps:{noDiscovery:true,entries:[]},plugins:[{
     name:'supplement-offline',enforce:'pre',
     resolveId(id){if(id.endsWith('supabaseClient'))return '\0offline';},
-    load(id){if(id==='\0offline')return `export const supabase={rpc:async(name,payload)=>{globalThis.fixture.calls.push({name,payload});return globalThis.fixture.result;},from(){let payload;const q={insert(rows){payload=rows;return q;},select(){return q;},then(resolve){globalThis.fixture.inserts.push(payload);return Promise.resolve({data:payload.map((row,index)=>({...row,id:100+index})),error:null}).then(resolve);}};return q;}};`;},
+    load(id){if(id==='\0offline')return `export const supabase={rpc:async(name,payload)=>{globalThis.fixture.calls.push({name,payload});
+        if(name==='commit_dcf_change'){globalThis.fixture.inserts.push([payload.p_changes]);return {data:{record:{...payload.p_changes,id:100},financial:{obligations:[],disbursements:[],stages:{}},revisionId:1},error:null};}
+        return globalThis.fixture.result;},from(){throw Error('No direct DCF import writes are permitted');}};`;},
 }]});
 try{
     const {getActivityBudgetSummary,isActivityExpenseActualEligible,isOriginalActivityBudgetLocked}=await server.ssrLoadModule('/lib/activitySupplementalBudget.ts');
@@ -59,7 +61,8 @@ try{
     const importRow=async extras=>{
         const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.json_to_sheet([{uid:'ACT-IMPORT',type:'Activity',component:'Program Management',name:'Fixture',date:'2026-10-14',expense_uacsCode:'502',expense_amount:2000,expense_obligationMonth:'2026-10-01',expense_disbursementMonth:'2026-11-01',expense_supplementalSource:'Savings',...extras}]),'Activities Data');
         const binary=XLSX.write(book,{type:'array',bookType:'xlsx'});globalThis.FileReader=class{readAsArrayBuffer(){globalThis.importPromise=this.onload({target:{result:binary}});}};
-        let records=[];handleActivitiesUpload({target:{files:[{}]}},[],updater=>{records=updater(records);},[],()=>{},()=>{},{MOOE:{Travel:{'502':'Travel'}}},{fullName:'Fixture',operatingUnit:'NPMO'},[{uid:'FS-000001',label:'4K Fund',is_active:true}],rows=>{records=[...records,...rows];});await globalThis.importPromise;return records;
+        const journal=new Map();globalThis.localStorage={getItem:key=>journal.get(key)??null,setItem:(key,value)=>journal.set(key,value)};globalThis.prompt=()=> 'Disposable supplemental import';
+        let records=[];handleActivitiesUpload({target:{files:[{}]}},[],updater=>{records=updater(records);},[],()=>{},()=>{},{MOOE:{Travel:{'502':'Travel'}}},{...actor,fullName:'Fixture',operatingUnit:'NPMO',role:'Super Admin'},[{uid:'FS-000001',label:'4K Fund',is_active:true}],rows=>{records=[...records,...rows];});await globalThis.importPromise;return records;
     };
     const imported=await importRow({});assert.equal(imported[0].expenses[0].fundingOrigin,'SupplementalDraft');assert.equal(getActivityBudgetSummary({...imported[0],status:'Proposed'}).current,0);
     const before=globalThis.fixture.inserts.length;await importRow({expense_supplementUid:'protected'});assert.equal(globalThis.fixture.inserts.length,before);assert.match(messages.at(-1),/cannot be imported/);

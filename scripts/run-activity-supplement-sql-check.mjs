@@ -39,6 +39,7 @@ try {
     const legacy = (await db.query(`insert into activities(name,status,"operatingUnit",expenses) values('Legacy','Ongoing','RFO I',$1) returning to_jsonb(activities) as row`,[JSON.stringify([expense(1)])])).rows[0].row;
     await db.exec(migration);
     await db.exec(migration);
+    await db.exec(await readFile('supabase/migrations/202611060001_restore_activity_creation_funding_origin.sql','utf8'));
     const after = (await db.query('select to_jsonb(a) as row from activities a where id=$1',[legacy.id])).rows[0].row;
     assert.equal(after.original_budget_snapshot,null); delete after.original_budget_snapshot; assert.deepEqual(after,legacy);
     const parent = async id => (await db.query('select to_jsonb(a) as row from activities a where id=$1',[id])).rows[0].row;
