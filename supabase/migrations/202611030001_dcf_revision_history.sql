@@ -5,8 +5,14 @@ set local statement_timeout='90s';
 
 create temporary table dcf_history_install_check(table_name text primary key,signature text) on commit drop;
 do $$ declare n text; begin
+  -- Trigger DDL needs this lock strength. Acquire it before reading rows so a
+  -- concurrent reader/writer cannot deadlock a later lock upgrade. Busy means retry.
+  for n in select unnest(array['activities','subprojects','office_requirements','staffing_requirements','other_program_expenses',
+    'financial_obligations','financial_disbursements','budget_item_transfers','activity_supplements','activity_drive_files',
+    'subproject_drive_files','activity_monitoring_reports','activity_monitoring_actions','subproject_accomplishments','budget_item_adjustment_history']) order by 1 loop
+    if to_regclass('public.'||n) is not null then execute format('lock table public.%I in access exclusive mode nowait',n); end if;
+  end loop;
   foreach n in array array['activities','subprojects','office_requirements','staffing_requirements','other_program_expenses','financial_obligations','financial_disbursements'] loop
-    execute format('lock table public.%I in share row exclusive mode',n);
     execute format('insert into dcf_history_install_check select %L,md5(coalesce(string_agg(md5(to_jsonb(r)::text),'''' order by id),'''')) from public.%I r',n,n);
   end loop;
 end $$;
