@@ -9,6 +9,7 @@ import { usePagination, useSelection, useUserAccess } from './mainfunctions/Tabl
 import { downloadSubprojectsReport, downloadSubprojectsTemplate, handleSubprojectsUpload } from './mainfunctions/ImportExportService';
 import useLocalStorageState from '../hooks/useLocalStorageState';
 import { supabase } from '../supabaseClient';
+import { dcfChangedFields, deleteDcfRecord, persistDcfMutation, type DcfMutationRequest } from '../lib/dcfMutation';
 import { requireIndependentTargetSupport } from '../lib/budgetTargetPersistence';
 import type { DataScope } from '../lib/scopedDataFetch';
 import { DcfScopeFilterPanel, matchesDcfScope, useDcfScopeFilters } from './ui/DcfScopeFilters';
@@ -82,7 +83,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     const tableStoragePrefix = `subprojects_${currentUser?.id || 'anonymous'}`;
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Subprojects');
-    const { getDeleteDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getDeleteDecision, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
     const canChooseOperatingUnit = currentUser?.role === 'Super Admin' || (canEdit && canViewAll);
 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -90,6 +91,15 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
     const [isCloning, setIsCloning] = useState(false);
     const cloneInFlight = useRef(false);
+    const deleteInFlight = useRef(false);
+    const workflowInFlight = useRef(new Set<number>());
+    const mutationRequests = useRef(new Map<string, DcfMutationRequest>());
+    const requestFor = (key: string) => {
+        if (!mutationRequests.current.has(key)) mutationRequests.current.set(key, {});
+        return mutationRequests.current.get(key)!;
+    };
+    const cloneAttempts = useRef(new Map<number, { payload: Omit<Subproject, 'id'>; request: DcfMutationRequest; confirmed?: Subproject }>());
+    const cloneBatchId = useRef<string | undefined>(undefined);
     
     // Use Shared Selection Hook
     const { 
@@ -345,6 +355,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     });
 
     const confirmMultiDelete = async () => {
+        if (deleteInFlight.current) return;
+        deleteInFlight.current = true;
+        try {
         const itemsToDelete = subprojects.filter(s => selectedIds.includes(s.id));
         const deletableItems = itemsToDelete.filter(item => canDeleteSubprojectByPolicy(item).allowed);
         const skippedCount = itemsToDelete.length - deletableItems.length;
@@ -353,38 +366,35 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             resetSelection();
             return;
         }
-        const deletableIds = deletableItems.map(item => item.id);
-        const deletedNames = deletableItems.map(s => s.name).join(', ');
-        logAction('Deleted Subprojects', `Bulk deleted ${deletableItems.length} subprojects: ${deletedNames}${skippedCount ? ` (${skippedCount} skipped by policy)` : ''}`);
 
         if (supabase) {
             try {
-                // Archive each item
-                const archivePayload = deletableItems.map(item => ({
-                    entity_type: 'subproject',
-                    original_id: item.id,
-                    data: item,
-                    deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
-                    deleted_at: new Date().toISOString()
-                }));
-
-                const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
-                if (archiveError) throw archiveError;
-
-                const { error: deleteError } = await supabase.from('subprojects').delete().in('id', deletableIds);
-                if (deleteError) throw deleteError;
-
-                setSubprojects(prev => prev.filter(s => !deletableIds.includes(s.id)));
+                if (!currentUser || !replaceSubprojects) throw new Error('Local synchronization is unavailable. Reload before deleting.');
+                const deletedIds = new Set<number>();
+                const correlationId = deletableItems.map(item => requestFor(`delete:${item.id}`).correlationId).find(Boolean) || crypto.randomUUID();
+                deletableItems.forEach(item => { requestFor(`delete:${item.id}`).correlationId ||= correlationId; });
+                try {
+                    for (const item of deletableItems) {
+                        if (!(await ensureDecisionAllowed(canDeleteSubprojectByPolicy(item), { moduleKey: 'subprojects', item, itemId: item.id, itemName: item.name, status: item.status, action: 'delete', entityType: 'subproject' }))) continue;
+                        await deleteDcfRecord({ entityType: 'subprojects', parentId: item.id, base: item, actor: currentUser,
+                            source: 'subprojects-bulk-delete', reason: getLastOverrideReason?.() || '', request: requestFor(`delete:${item.id}`) });
+                        deletedIds.add(item.id);
+                        mutationRequests.current.delete(`delete:${item.id}`);
+                    }
+                } finally {
+                    if (deletedIds.size) replaceSubprojects(subprojects.filter(item => !deletedIds.has(item.id)));
+                }
                 resetSelection();
             } catch (error: any) {
                 console.error("Error archiving/deleting:", error);
                 alert("Failed to delete selected items: " + error.message);
             }
         } else {
-            setSubprojects(prev => prev.filter(s => !deletableIds.includes(s.id)));
+            setSubprojects(prev => prev.filter(s => !deletableItems.some(item => item.id === s.id)));
             resetSelection();
         }
         if (skippedCount) alert(`${skippedCount} selected subproject${skippedCount === 1 ? ' was' : 's were'} skipped by DCF editing policy.`);
+        } finally { deleteInFlight.current = false; }
     };
 
     const handleClone = async () => {
@@ -402,21 +412,34 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 requiresApprover: !!currentUser.requires_approver,
             };
             const newItemsPayload = itemsToClone.map(item => {
+                if (cloneAttempts.current.has(item.id)) return cloneAttempts.current.get(item.id)!.payload;
                 const sourceUid = item.fundSourceUid || resolveFundSourceUidFromLegacyLabel(item.fundSource, fundSources);
                 const existingSource = getFundSourceByUid(sourceUid, fundSources);
                 const newSource = existingSource?.is_active ? existingSource : getNewSubprojectDefaultFundSource(fundSources);
-                return {
+                const payload = {
                     ...buildSubprojectClonePayload(item, context),
                     fundSourceUid: newSource?.uid || null,
                     fundSource: newSource?.label || null,
                 };
+                cloneBatchId.current ||= crypto.randomUUID();
+                cloneAttempts.current.set(item.id, { payload, request: { correlationId: cloneBatchId.current } });
+                return payload;
             });
             if (supabase) {
                 await requireIndependentTargetSupport(newItemsPayload.flatMap(item => item.details || []));
-                const { data, error } = await supabase.from('subprojects').insert(newItemsPayload).select();
-                if (error) throw error;
-                if (!data?.length) throw new Error('No created records were returned. Refresh before retrying.');
-                upsertSubprojectsLocally!(data as Subproject[]);
+                const data: Subproject[] = [];
+                for (const item of itemsToClone) {
+                    const attempt = cloneAttempts.current.get(item.id)!;
+                    if (!attempt.confirmed) {
+                        const result = await persistDcfMutation<Subproject>({ entityType: 'subprojects', base: { cloneSourceId: item.id }, changes: dcfChangedFields({}, attempt.payload), actor: currentUser,
+                            source: 'subprojects-clone', request: attempt.request });
+                        attempt.confirmed = result.record as Subproject;
+                    }
+                    upsertSubprojectsLocally!([attempt.confirmed]);
+                    data.push(attempt.confirmed);
+                }
+                cloneAttempts.current.clear();
+                cloneBatchId.current = undefined;
                 resetSelection();
                 alert(`Successfully cloned ${data.length} subprojects.`);
             } else {
@@ -458,6 +481,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     };
 
     const confirmDelete = async () => {
+        if (deleteInFlight.current) return;
+        deleteInFlight.current = true;
+        try {
         if (subprojectToDelete) {
             const allowed = await ensureDecisionAllowed(canDeleteSubprojectByPolicy(subprojectToDelete), {
                 moduleKey: 'subprojects',
@@ -469,26 +495,17 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 entityType: 'subproject',
             });
             if (!allowed) return;
-            logAction('Deleted Subproject', subprojectToDelete.name, subprojectToDelete.indigenousPeopleOrganization, 'Subproject', String(subprojectToDelete.id));
             
             if (supabase) {
                 try {
-                    const { error: archiveError } = await supabase.from('trash_bin').insert([{
-                        entity_type: 'subproject',
-                        original_id: subprojectToDelete.id,
-                        data: subprojectToDelete,
-                        deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
-                        deleted_at: new Date().toISOString()
-                    }]);
-                    if (archiveError) throw archiveError;
-
-                    const { error: deleteError } = await supabase.from('subprojects').delete().eq('id', subprojectToDelete.id);
-                    if (deleteError) throw deleteError;
-
-                    setSubprojects(prev => prev.filter(s => s.id !== subprojectToDelete.id));
+                    if (!currentUser || !replaceSubprojects) throw new Error('Local synchronization is unavailable. Reload before deleting.');
+                    await deleteDcfRecord({ entityType: 'subprojects', parentId: subprojectToDelete.id, base: subprojectToDelete, actor: currentUser,
+                        source: 'subprojects-delete', reason: getLastOverrideReason?.() || '', request: requestFor(`delete:${subprojectToDelete.id}`) });
+                    replaceSubprojects(subprojects.filter(item => item.id !== subprojectToDelete.id));
                 } catch (error: any) {
                     console.error("Error archiving/deleting:", error);
                     alert("Failed to delete subproject: " + error.message);
+                    return;
                 }
             } else {
                 setSubprojects(prev => prev.filter(s => s.id !== subprojectToDelete.id));
@@ -497,6 +514,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             setIsDeleteModalOpen(false);
             setSubprojectToDelete(null);
         }
+        } finally { deleteInFlight.current = false; }
     };
 
     // --- Render Helpers ---
@@ -545,7 +563,11 @@ const Subprojects: React.FC<SubprojectsProps> = ({
 
     const handleApprove = async (id: number, e: React.MouseEvent) => {
         e.stopPropagation();
+        if (workflowInFlight.current.has(id)) return;
+        workflowInFlight.current.add(id);
+        try {
         if (!window.confirm('Are you sure you want to approve this subproject?')) return;
+        if (supabase && !upsertSubprojectsLocally && !replaceSubprojects) throw new Error('Local synchronization is unavailable. Reload before approving.');
 
         const transferDestination = subprojects.find(item => item.id === id);
         if (transferDestination?.budgetItemTransferId) {
@@ -570,21 +592,26 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         }
         
         if (supabase) {
-            const { error } = await supabase.from('subprojects').update({ workflow_status: 'APPROVED' }).eq('id', id);
-            if (error) {
-                alert('Failed to approve: ' + error.message);
-            } else {
-                setSubprojects(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
-            }
+            if (!currentUser || !transferDestination) throw new Error('The current subproject or signed-in user is unavailable.');
+            const result = await persistDcfMutation({ entityType: 'subprojects', parentId: id, base: transferDestination,
+                changes: { workflow_status: 'APPROVED' }, actor: currentUser, source: 'subprojects-approve', request: requestFor(`approve:${id}`) });
+            if (upsertSubprojectsLocally) upsertSubprojectsLocally([result.record as Subproject]);
+            else replaceSubprojects!(subprojects.map(item => item.id === id ? result.record as Subproject : item));
         } else {
             setSubprojects(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
         }
+        } catch (error) { alert(`Failed to approve: ${error instanceof Error ? error.message : 'Unknown error'}`); }
+        finally { workflowInFlight.current.delete(id); }
     };
 
     const handleReject = async (id: number, e: React.MouseEvent) => {
         e.stopPropagation();
+        if (workflowInFlight.current.has(id)) return;
+        workflowInFlight.current.add(id);
+        try {
         const reason = window.prompt('Please provide a reason for rejection:');
         if (reason === null) return;
+        if (supabase && !upsertSubprojectsLocally && !replaceSubprojects) throw new Error('Local synchronization is unavailable. Reload before rejecting.');
 
         const transferDestination = subprojects.find(item => item.id === id);
         if (transferDestination?.budgetItemTransferId) {
@@ -613,18 +640,17 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         }
 
         if (supabase) {
-            const { error } = await supabase.from('subprojects').update({ 
-                workflow_status: 'REJECTED',
-                remarks: reason ? `REJECTED: ${reason}` : undefined
-            }).eq('id', id);
-            if (error) {
-                alert('Failed to reject: ' + error.message);
-            } else {
-                setSubprojects(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
-            }
+            if (!currentUser || !transferDestination) throw new Error('The current subproject or signed-in user is unavailable.');
+            const result = await persistDcfMutation({ entityType: 'subprojects', parentId: id, base: transferDestination,
+                changes: { workflow_status: 'REJECTED', ...(reason ? { remarks: `REJECTED: ${reason}` } : {}) }, actor: currentUser,
+                source: 'subprojects-reject', reason, request: requestFor(`reject:${id}`) });
+            if (upsertSubprojectsLocally) upsertSubprojectsLocally([result.record as Subproject]);
+            else replaceSubprojects!(subprojects.map(item => item.id === id ? result.record as Subproject : item));
         } else {
             setSubprojects(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
         }
+        } catch (error) { alert(`Failed to reject: ${error instanceof Error ? error.message : 'Unknown error'}`); }
+        finally { workflowInFlight.current.delete(id); }
     };
 
     const columnFilterFields = [

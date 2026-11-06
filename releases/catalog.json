@@ -1,8 +1,31 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "independent-budget-target-schedules-fix",
+  "currentReleaseId": "dcf-history-and-activity-funding-origin",
   "releases": [
+    {
+      "id": "dcf-history-and-activity-funding-origin",
+      "version": "1.5.0",
+      "kind": "feature",
+      "title": "DCF revision history and activity funding origin",
+      "releaseDate": "2026-11-06",
+      "pr": null,
+      "sections": {
+        "Added": [
+          "Saved revision history across all DCF forms, including changes made through accomplishment forms and connected workflows.",
+          "Compact History tables and read-only historical detail views using each form's familiar layout.",
+          "Permission-controlled restoration with an undo option for the immediately preceding restore."
+        ],
+        "Improved": [
+          "Confirmed transactional saves, retry handling and import reconciliation reduce duplicate submissions while preserving reported actuals.",
+          "Historical previews retain recorded details, budget schedules and accomplishments without exposing internal tracking fields."
+        ],
+        "Fixed": [
+          "Restored Savings and Realignment selection when creating Activities and Trainings, without adding them to planned targets or losing eligible accomplishments."
+        ],
+        "Affected Pages": ["Activities and Trainings", "Subprojects", "Program Management", "Physical Accomplishment", "Financial Accomplishment", "Archive Management", "User Control Center"]
+      }
+    },
     {
       "id": "independent-budget-target-schedules-fix",
       "version": "1.4.2",

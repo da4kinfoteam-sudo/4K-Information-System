@@ -105,7 +105,7 @@ try {
     const userSnapshot = await read(id, 3, 'financial');
     await save(userSnapshot, update(userSnapshot, entry(userSnapshot), 18005), { actor: 3, surface: 'financial', reason: '' });
     const current = await read(id);
-    await assert.rejects(() => save(current, adding, { actor: 3, surface: 'financial', reason: '', physical: { actualParticipantsMale: 99 } }), /Financial ACF cannot/);
+    await assert.rejects(() => save(current, [], { actor: 3, surface: 'financial', reason: '', physical: { actualParticipantsMale: 99 } }), /Financial ACF cannot/);
     await assert.rejects(() => save(current, [], { actor: 4, physical: { actualParticipantsMale: 1 } }), /Guest/);
     await assert.rejects(() => save(current, [], { physical: { status: 'Completed' } }), /Only explicit physical/);
     await assert.rejects(() => save(current, update(current, entry(current), 100), { reason: '' }), /override reason/);

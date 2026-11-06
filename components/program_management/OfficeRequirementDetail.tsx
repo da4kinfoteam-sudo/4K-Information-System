@@ -1,6 +1,7 @@
+import { DcfRevisionHistory } from '../shared/DcfRevisionHistory';
 
 // Author: 4K 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, ObjectType, RefFundSource } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
@@ -13,7 +14,7 @@ import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
 import { getActualObligationValidationError } from '../../lib/financialObligationUtils';
-import { replaceFinancialObligationRecords } from '../../lib/financialObligationSync';
+import { hydrateProgramManagementState, saveProgramManagementChange, useProgramManagementBaseline, type ProgramManagementState } from '../../lib/programManagementPersistence';
 import { FundSourceField } from '../ui/FundSourceField';
 import { getFundSourceByUid, getFundSourceLabel } from '../../lib/fundSources';
 
@@ -21,7 +22,7 @@ interface OfficeRequirementDetailProps {
     item: OfficeRequirement;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     fundSources: RefFundSource[];
-    onUpdate: (item: OfficeRequirement) => void;
+    onUpdate: (item: OfficeRequirement, financial?: ProgramManagementState['financial']) => void;
 }
 
 const MONTH_NAMES = [
@@ -49,10 +50,10 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 );
 
 const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item, uacsCodes, fundSources, onUpdate }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, rolesConfigs, hasAccess, getVisibilityScope } = useAuth();
     const { canEdit } = useUserAccess('Program Management');
     const { logAction } = useLogAction();
-    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
     const detailsDecision = getStatusDecision({
         moduleKey: 'office_requirements',
         item,
@@ -113,57 +114,16 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     const [formData, setFormData] = useState<OfficeRequirement>(item);
     const [originalFormData, setOriginalFormData] = useState<OfficeRequirement>(item);
     const [isSaving, setIsSaving] = useState(false);
+    const saveInFlight = useRef(false);
     const [monthLockMessage, setMonthLockMessage] = useState('');
     
-    // Initial load and whenever the item ID changes
+    const baseline = useProgramManagementBaseline('office_requirements', item, currentUser, editMode === 'none');
     useEffect(() => {
-        if (!item) return;
-
-        // Reset form data to current item
-        setFormData(item);
-        setOriginalFormData(item);
-
-        const fetchObligations = async () => {
-            if (!item?.id || !supabase) return;
-
-            const { data, error } = await supabase
-                .from('financial_obligations')
-                .select('*')
-                .eq('entity_type', 'office_requirement')
-                .eq('parent_id', item.id);
-
-            if (!error && data && data.length > 0) {
-                const mappedObligations = data.map(o => ({
-                    id: o.id,
-                    date: o.obligation_date,
-                    amount: o.amount,
-                    remarks: o.remarks
-                }));
-                const totalAmount = mappedObligations.reduce((sum, ob) => sum + (Number(ob.amount) || 0), 0);
-                setFormData(prev => ({ 
-                    ...prev, 
-                    obligations: mappedObligations,
-                    actualObligationAmount: totalAmount 
-                }));
-                setOriginalFormData(prev => ({
-                    ...prev,
-                    obligations: mappedObligations,
-                    actualObligationAmount: totalAmount
-                }));
-            } else if (item && (!item.obligations || item.obligations.length === 0) && Number(item.actualObligationAmount) !== 0) {
-                const virtualObligations = [{
-                    id: Date.now(),
-                    date: item.actualObligationDate || '',
-                    amount: item.actualObligationAmount || 0,
-                    remarks: 'Legacy Record'
-                }];
-                setFormData(prev => ({ ...prev, obligations: virtualObligations }));
-                setOriginalFormData(prev => ({ ...prev, obligations: virtualObligations }));
-            }
-        };
-
-        fetchObligations();
-    }, [item.id, supabase]);
+        if (!baseline.state || editMode !== 'none') return;
+        const loaded = hydrateProgramManagementState(baseline.state, 'office_requirements');
+        setFormData(loaded);
+        setOriginalFormData(loaded);
+    }, [baseline.state, editMode]);
 
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     
@@ -217,8 +177,9 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
             setSelectedObjectType(foundType); 
             setSelectedParticular(foundParticular);
         } else if (editMode === 'none') {
-            setFormData(item);
-            setOriginalFormData(item);
+            const loaded = baseline.state ? hydrateProgramManagementState(baseline.state, 'office_requirements') : item;
+            setFormData(loaded);
+            setOriginalFormData(loaded);
             setValidationErrors([]);
         }
     }, [editMode, item, uacsCodes]);
@@ -299,6 +260,14 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (saveInFlight.current) return;
+        saveInFlight.current = true;
+        try { await submitForm(e); } finally { saveInFlight.current = false; }
+    };
+
+    const submitForm = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (isSaving) return;
         setValidationErrors([]);
 
         if (editMode === 'accomplishment') {
@@ -383,24 +352,19 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
         if (supabase) {
             try {
                 setIsSaving(true);
-                // Exclude ID and obligations from update payload
-                const { id, obligations, disbursements, ...payload } = updatedItem;
-                
-                console.log("Saving Office Requirement...", { id: item.id, payload });
-                const { error: updateError } = await supabase.from('office_requirements').update(payload).eq('id', item.id);
-                if (updateError) throw updateError;
-
-                await replaceFinancialObligationRecords({
-                    entityType: 'office_requirement',
-                    parentId: item.id,
-                    itemId: null,
-                    records: obligations || [],
+                if (!baseline.state) throw new Error(baseline.error || 'Existing DCF state is unavailable. Reopen before saving.');
+                const confirmed = await saveProgramManagementChange({
+                    entityType: 'office_requirements', base: baseline.state,
+                    original: originalFormData, proposed: updatedItem,
+                    financial: editMode === 'accomplishment', currentUser, source: 'program-management-detail', reason: getLastOverrideReason?.() || '', request: baseline.request.current,
                 });
+                baseline.setState(confirmed);
+                const confirmedItem = hydrateProgramManagementState(confirmed, 'office_requirements');
 
                 const metadata = getMonetaryChanges(item, updatedItem, 'Office');
                 logAction('Updated Office Requirement', updatedItem.equipment, undefined, 'Office Requirement', String(item.id), metadata);
                 
-                onUpdate(updatedItem as OfficeRequirement);
+                onUpdate(confirmedItem as OfficeRequirement, confirmed.financial);
                 setEditMode('none');
             } catch (err: any) {
                 console.error("Error in OfficeRequirementDetail handleSubmit:", err);
@@ -738,6 +702,12 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 </div>
 
             </div>
+            <DcfRevisionHistory entityType="office_requirements" parentId={item.id} currentUser={currentUser} currentVersionKey={item.updated_at}
+                permissions={{ canView: hasAccess('Program Management', 'view') && (getVisibilityScope('Program Management') === 'All' || !!currentUser?.operatingUnit && currentUser.operatingUnit === item.operatingUnit),
+                    canRestore: getStatusDecision({ moduleKey: 'office_requirements', item, action: 'restoreHistory', hasModuleAccess: canEdit }).allowed,
+                    authorizationKey: JSON.stringify(rolesConfigs) }}
+                onRestored={confirmed => onUpdate(confirmed.record as unknown as OfficeRequirement, confirmed.financial)} />
+
         </div>
     );
 };

@@ -33,6 +33,7 @@ import { getActualDisbursementSummary, getActualObligationSummary } from '../lib
 import { getFundSourceLabel } from '../lib/fundSources';
 import { resolveActivityIpos } from '../lib/activityIpoLinks';
 import { supabase } from '../supabaseClient';
+import { DcfRevisionHistory } from './shared/DcfRevisionHistory';
 import {
     ActivityDriveFile,
     deleteActivityDriveFile,
@@ -73,6 +74,7 @@ interface ActivityDetailProps {
     ipos: IPO[];
     fundSources: RefFundSource[];
     onUpdateActivity: (updatedActivity: Activity) => void;
+    onRevisionRestored?: (record: Activity, financial?: unknown) => void;
     onBudgetTransferComplete?: (source: Activity, destination: Activity, status: BudgetItemTransferResult['status'], selectedItemIds: string[]) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     referenceActivities?: ReferenceActivity[];
@@ -127,8 +129,8 @@ const MonitoringPreviewLine: React.FC<{ label: string; value?: string | null }> 
     </div>
 );
 
-export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, fundSources, onUpdateActivity, onSelectIpo, onEdit, uacsCodes, referenceActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], onOpenMonitoringReport, onBudgetTransferComplete }) => {
-    const { currentUser, rolesConfigs, getVisibilityScope } = useAuth();
+export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, fundSources, onUpdateActivity, onRevisionRestored, onSelectIpo, onEdit, uacsCodes, referenceActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], onOpenMonitoringReport, onBudgetTransferComplete }) => {
+    const { currentUser, rolesConfigs, getVisibilityScope, hasAccess } = useAuth();
     const { canEdit } = useUserAccess('Activities');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
     const { canEdit: canEditPhysical } = useUserAccess('Accomplishment - Physical');
@@ -913,24 +915,16 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                         </div>
                     </RecordPanel>
 
-                    <RecordPanel title="History" description="Recent activity">
-                        {activity.history && activity.history.length > 0 ? (
-                            <div className="detail-timeline">
-                                <ul className="detail-timeline__list">
-                                    {activity.history.map((entry, index) => (
-                                        <li key={index} className="detail-timeline__item">
-                                            <span className="detail-timeline__marker"></span>
-                                            <time className="detail-timeline__time">{formatDate(entry.date)}</time>
-                                            <p className="detail-list-name">{entry.event}</p>
-                                            <p className="detail-timeline__byline">by {entry.user}</p>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        ) : (
-                            <p className="detail-empty">No historical data available.</p>
-                        )}
-                    </RecordPanel>
+                    <DcfRevisionHistory entityType="activities" parentId={activity.id} currentUser={currentUser} currentVersionKey={activity.updated_at}
+                        permissions={{ canView: hasAccess('Activities', 'view') && (getVisibilityScope('Activities') === 'All' || !!currentUser?.operatingUnit && currentUser.operatingUnit === activity.operatingUnit),
+                            canRestore: getStatusDecision({ moduleKey: 'activities', item: activity, action: 'restoreHistory', hasModuleAccess: canEdit }).allowed,
+                            authorizationKey: JSON.stringify(rolesConfigs) }}
+                        legacyHistory={activity.history} onRestored={(value, financial?: unknown) => {
+                            const record = ('record' in value ? value.record : value) as unknown as Activity;
+                            const confirmedFinancial = financial ?? ('record' in value ? value.financial : undefined);
+                            if (onRevisionRestored) onRevisionRestored(record, confirmedFinancial);
+                            else onUpdateActivity(record);
+                        }} />
                 </RecordDetailAside>
             </RecordDetailGrid>
         </RecordDetailPage>

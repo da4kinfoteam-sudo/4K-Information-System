@@ -298,6 +298,42 @@ export const clearUserCache = async (userId: string | number): Promise<void> => 
   await tx.done;
 };
 
+export async function updateCachedDcfVersion(userId: string | number, entityType: string, record: any, financial?: { obligations: any[]; disbursements: any[] }) {
+  const names: Record<string, [ScopedCacheTable, string]> = {
+    activities: ['activities', 'activity_expense'], subprojects: ['subprojects', 'subproject_detail'],
+    office_requirements: ['officeReqs', 'office_requirement'], staffing_requirements: ['staffingReqs', 'staffing_expense'],
+    other_program_expenses: ['otherProgramExpenses', 'other_program_expense'],
+  };
+  const identity = names[entityType];
+  if (!identity || !record?.id) throw new Error('Invalid confirmed DCF cache identity.');
+  const db = await getDb();
+  if (!db) return;
+  const tx = db.transaction(['scope_meta', 'records'], 'readwrite');
+  const saved = await tx.objectStore('records').index('tableName').getAll(identity[0]);
+  for (const cached of saved) {
+    if (cached.userId !== String(userId) || Number(cached.value.id) !== Number(record.id)) continue;
+    const scopeChanged = ['operatingUnit', 'fundingYear', 'fundYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'workflow_status', 'type'].some(key => cached.value[key] !== record[key]);
+    if (scopeChanged) { await tx.objectStore('scope_meta').delete(cached.scopeKey); continue; }
+    await tx.objectStore('records').put({ ...cached, value: record });
+    if (!financial) continue;
+    const all = await tx.objectStore('records').index('scopeKey').getAll(cached.scopeKey);
+    const meta = await tx.objectStore('scope_meta').get(cached.scopeKey);
+    for (const [tableName, entries] of [['financialObligations', financial.obligations], ['financialDisbursements', financial.disbursements]] as const) {
+      const previous = all.filter(row => row.tableName === tableName);
+      const touched = previous.filter(row => row.value.entity_type === identity[1] && Number(row.value.parent_id) === Number(record.id));
+      for (const row of touched) await tx.objectStore('records').delete(row.key);
+      const confirmed = entries.filter(row => row.entity_type === identity[1] && Number(row.parent_id) === Number(record.id));
+      for (const value of confirmed) {
+        const recordId = String(value.id);
+        await tx.objectStore('records').put({ key: makeRecordKey(cached.scopeKey, tableName, recordId), scopeKey: cached.scopeKey, userId: String(userId), tableName, recordId, value });
+      }
+      if (meta) meta.rowCounts[tableName] = previous.length - touched.length + confirmed.length;
+    }
+    if (meta) await tx.objectStore('scope_meta').put(meta);
+  }
+  await tx.done;
+}
+
 export const clearAllCache = async (): Promise<void> => {
   const db = await getDb();
   if (!db) return;

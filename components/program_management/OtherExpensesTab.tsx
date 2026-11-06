@@ -1,3 +1,5 @@
+import { useProgramManagementWriter } from '../../lib/programManagementPersistence';
+import { claimDcfImportUpload, dcfImportFileIdentity, dcfImportRowUid, persistDcfImportRows } from '../../lib/dcfImportPersistence';
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
@@ -74,10 +76,13 @@ interface OtherExpensesTabProps {
 
 export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setItems, uacsCodes, fundSources, onSelect }) => {
     const { currentUser } = useAuth();
+    const writer = useProgramManagementWriter('other_program_expenses', currentUser, record => {
+        setItems(previous => [record, ...previous.filter(row => row.id !== record.id)]);
+    });
     const tableStoragePrefix = `programManagement_other_${currentUser?.id || 'anonymous'}`;
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
-    const { getDeleteDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getDeleteDecision, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
     
     // Local State
     const [view, setView] = useState<'list' | 'form'>('list');
@@ -429,20 +434,12 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         submissionData.uid = formData.uid || `OE-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
         submissionData.created_at = new Date().toISOString();
 
-        if (supabase) {
-            const { data, error } = await supabase.from('other_program_expenses').insert([submissionData]).select().single();
-            if (error) { 
-                console.error("Create error:", error); 
-                alert(`Failed to create: ${error.message}`); 
-                return; 
-            }
-            if (data) {
-                setItems(prev => [data, ...prev]);
-                logAction('Created Other Program Expense', data.particulars || data.uid, undefined, 'Other Program Expense', String(data.id));
-            }
-        } else {
-            const newItem = { ...submissionData, id: Date.now() } as OtherProgramExpense;
-            setItems(prev => [newItem, ...prev]);
+        try {
+            const [record] = await writer.createMany([submissionData], 'program-management-create');
+            logAction('Created Other Program Expense', record.particulars || record.equipment || record.uid, undefined, 'Other Program Expense', String(record.id));
+        } catch (error) {
+            alert('Failed to create: ' + (error instanceof Error ? error.message : 'Unknown error'));
+            return;
         }
         setView('list'); setEditingItem(null);
     };
@@ -466,17 +463,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         if (!allowed) return;
         if (supabase) {
             try {
-                const { error: archiveError } = await supabase.from('trash_bin').insert([{
-                    entity_type: 'other_program_expense',
-                    original_id: itemToDelete.id,
-                    data: itemToDelete,
-                    deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
-                    deleted_at: new Date().toISOString()
-                }]);
-                if (archiveError) throw archiveError;
-
-                const { error: deleteError } = await supabase.from('other_program_expenses').delete().eq('id', itemToDelete.id);
-                if (deleteError) throw deleteError;
+                await writer.remove([itemToDelete], 'program-management-delete', getLastOverrideReason(), removed => setItems(previous => previous.filter(row => row.id !== removed.id)));
 
                 logAction('Deleted Other Program Expense', itemToDelete.particulars || itemToDelete.uid, undefined, 'Other Program Expense', String(itemToDelete.id));
                 setItems(prev => prev.filter(i => i.id !== itemToDelete.id));
@@ -510,19 +497,9 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
         if (supabase) {
             try {
-                const archivePayload = deletableItems.map(item => ({
-                    entity_type: 'other_program_expense',
-                    original_id: item.id,
-                    data: item,
-                    deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
-                    deleted_at: new Date().toISOString()
-                }));
-
-                const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
-                if (archiveError) throw archiveError;
-
-                const { error: deleteError } = await supabase.from('other_program_expenses').delete().in('id', deletableIds);
-                if (deleteError) throw deleteError;
+                const first = deletableItems[0];
+                if (!(await ensureDecisionAllowed(getDeleteDecision({ moduleKey: 'other_program_expenses', item: first, hasModuleAccess: canEdit }), { moduleKey: 'other_program_expenses', item: first, itemId: first.id, action: 'delete', entityType: 'other_program_expense' }))) return;
+                await writer.remove(deletableItems, 'program-management-bulk-delete', getLastOverrideReason(), removed => setItems(previous => previous.filter(row => row.id !== removed.id)));
 
                 setItems(prev => prev.filter(i => !deletableIds.includes(i.id)));
             } catch (error: any) {
@@ -573,21 +550,9 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             };
         });
 
-        if (supabase) {
-            const { data, error } = await supabase.from('other_program_expenses').insert(newItemsPayload).select();
-            if (error) {
-                alert('Failed to clone items: ' + error.message);
-            } else if (data) {
-                setItems(prev => [...data, ...prev]);
-                resetSelection();
-                alert(`Successfully cloned ${data.length} items.`);
-            }
-        } else {
-            const newLocalItems = newItemsPayload.map((item, idx) => ({ ...item, id: Date.now() + idx }));
-            setItems(prev => [...newLocalItems, ...prev]);
-            resetSelection();
-            alert(`Successfully cloned ${newLocalItems.length} items (Local).`);
-        }
+        const data = await writer.createMany(newItemsPayload, 'program-management-clone', itemsToClone.map(item => item.id));
+        resetSelection();
+        alert(`Successfully cloned ${data.length} items.`);
     };
 
     const handleClone = async () => {
@@ -650,16 +615,10 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         e.stopPropagation();
         if (!window.confirm('Are you sure you want to approve this expense?')) return;
         
-        if (supabase) {
-            const { error } = await supabase.from('other_program_expenses').update({ workflow_status: 'APPROVED' }).eq('id', id);
-            if (error) {
-                alert('Failed to approve: ' + error.message);
-            } else {
-                setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
-                logAction('Approved Other Program Expense', String(id), undefined, 'Other Program Expense', String(id));
-            }
-        } else {
-            setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+        try {
+            await writer.update(id, { workflow_status: 'APPROVED' }, 'program-management-approve');
+        } catch (error) {
+            alert('Failed to approve: ' + (error instanceof Error ? error.message : 'Unknown error'));
         }
     };
 
@@ -668,18 +627,10 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         const reason = window.prompt('Please provide a reason for rejection:');
         if (reason === null) return;
 
-        if (supabase) {
-            const { error } = await supabase.from('other_program_expenses').update({ 
-                workflow_status: 'REJECTED',
-                remarks: reason ? `REJECTED: ${reason}` : undefined
-            }).eq('id', id);
-            if (error) {
-                alert('Failed to reject: ' + error.message);
-            } else {
-                setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
-            }
-        } else {
-            setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+        try {
+            await writer.update(id, { workflow_status: 'REJECTED' }, 'program-management-reject', reason || '');
+        } catch (error) {
+            alert('Failed to reject: ' + (error instanceof Error ? error.message : 'Unknown error'));
         }
     };
 
@@ -699,18 +650,23 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]; if (!file) return; setIsUploading(true);
+        const file = e.target.files?.[0]; if (!file) return;
+        const release = claimDcfImportUpload('other_program_expenses', currentUser?.id);
+        if (!release) return;
+        setIsUploading(true);
         const reader = new FileReader();
         reader.onload = async (event) => {
             try {
                 const data = event.target?.result; const workbook = XLSX.read(data, { type: 'array' });
+                if (!currentUser || !(data instanceof ArrayBuffer)) throw new Error('The signed-in user or import file is unavailable.');
+                const fileIdentity = await dcfImportFileIdentity(data);
                 const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]) as any[];
                 const currentTimestamp = new Date().toISOString();
                 const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
 
                 const newItems = jsonData.map((row: any, index: number) => {
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();
-                    const uid = `OE-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
+                    const uid = dcfImportRowUid('other_program_expenses', currentUser.id, fileIdentity, index, `OE-${fundYear}-${Date.now().toString().slice(-4)}${index}`);
                     const resolvedOU = row.operatingUnit ? resolveOperatingUnit(row.operatingUnit) : 'NPMO';
                     const sourceUid = String(row.fundSourceUid ?? row['Fund Source UID'] ?? row.fund_source_uid ?? '').trim();
                     const sourceLabel = String(row.fundSource ?? row['Fund Source'] ?? row.fund_source ?? '').trim();
@@ -733,13 +689,15 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                         updated_at: currentTimestamp
                     });
                 });
-                if (supabase) {
-                    const { error } = await supabase.from('other_program_expenses').insert(newItems); if (error) throw error;
-                    const { data } = await supabase.from('other_program_expenses').select('*').order('id', { ascending: true }); if (data) setItems(data as OtherProgramExpense[]);
-                } else { setItems(prev => [...newItems.map((i, idx) => ({ ...i, id: Date.now() + idx })), ...prev]); }
+                const reason = window.prompt('Reason for importing these records:');
+                if (!reason?.trim()) return;
+                await persistDcfImportRows<OtherProgramExpense>({ entityType: 'other_program_expenses', fileIdentity, rows: newItems, actor: currentUser, reason,
+                    onConfirmed: record => setItems(previous => [record, ...previous.filter(row => row.id !== record.id)]) });
                 alert(`${newItems.length} items imported.`);
-            } catch (err: any) { alert(`Import failed: ${err.message}`); } finally { setIsUploading(false); if(e.target) e.target.value = ''; }
+            } catch (err: any) { alert(`Import failed: ${err.message}`); } finally { release(); setIsUploading(false); if(e.target) e.target.value = ''; }
         };
+        reader.onerror = () => { release(); setIsUploading(false); alert('The import file could not be read. No records were sent.'); };
+        reader.onabort = () => { release(); setIsUploading(false); };
         reader.readAsArrayBuffer(file);
     };
 

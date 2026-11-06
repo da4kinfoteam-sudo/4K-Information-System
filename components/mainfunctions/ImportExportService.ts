@@ -18,6 +18,7 @@ import { DEFAULT_FUND_SOURCE_UID, getFundSourceByUid, getFundSourceLabel, getNew
 import { exportTargetRows, importedBudgetItemId, importedOptionalBudgetAmount, targetWorkbookImporter, TARGET_SHEET_HEADERS, TARGET_SHEET_NAMES } from '../../lib/budgetTargetExcel';
 import type { TargetPlanOwner } from '../../lib/budgetTargetSchedules';
 import { requireIndependentTargetSupport } from '../../lib/budgetTargetPersistence';
+import { claimDcfImportUpload, dcfImportFileIdentity, hasDcfImportAttempt, persistDcfImportRows } from '../../lib/dcfImportPersistence';
 
 declare const XLSX: any;
 
@@ -28,6 +29,15 @@ const appendTargetSheets = (workbook: any, owners: Array<{ uid?: string; line: T
 const targetImporter = (workbook: any) => targetWorkbookImporter(Object.fromEntries(
     (['obligation', 'disbursement'] as const).map(stage => [stage, workbook.Sheets[TARGET_SHEET_NAMES[stage]] ? XLSX.utils.sheet_to_json(workbook.Sheets[TARGET_SHEET_NAMES[stage]]) : []]),
 ) as Parameters<typeof targetWorkbookImporter>[0]);
+
+const importedBeneficiaryCount = (value: unknown, rowNumber: number): number | null => {
+    if (value === '' || value == null) return null;
+    const count = Number(value);
+    if (typeof value === 'boolean' || !Number.isFinite(count) || count < 0 || !Number.isInteger(count)) {
+        throw new Error(`Row ${rowNumber}: Actual beneficiary counts must be nonnegative whole numbers.`);
+    }
+    return count;
+};
 
 // Helper to map short codes/numbers to full Region names
 export const resolveRegion = (input: string | number | undefined): string => {
@@ -301,9 +311,18 @@ export const handleSubprojectsUpload = (
 ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const release = claimDcfImportUpload('subprojects', currentUser?.id);
+    if (!release) return;
 
     setIsUploading(true);
     const reader = new FileReader();
+    const finishUpload = () => {
+        release();
+        setIsUploading(false);
+        if (e.target) e.target.value = '';
+    };
+    reader.onerror = () => { alert('Failed to read the Subproject file. Select the same file to retry.'); finishUpload(); };
+    reader.onabort = finishUpload;
     reader.onload = async (event) => {
         try {
             const data = event.target?.result;
@@ -312,6 +331,7 @@ export const handleSubprojectsUpload = (
             const worksheet = workbook.Sheets[sheetName];
             const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
             const targets = targetImporter(workbook);
+            const fileIdentity = supabase ? await dcfImportFileIdentity(data as ArrayBuffer) : '';
 
             const groupedData = new Map<string, any>();
             let maxId = subprojects.reduce((max, s) => Math.max(max, s.id), 0);
@@ -337,7 +357,7 @@ export const handleSubprojectsUpload = (
                 }
                 
                 // Skip rows that belong to already existing subprojects
-                if (existingUids.has(uid)) {
+                if (existingUids.has(uid) && (!supabase || !hasDcfImportAttempt('subprojects', currentUser?.id, fileIdentity, uid))) {
                     // Only increment count if we haven't seen this UID in this loop yet
                     // (since multiple rows can have same UID)
                     if (!groupedData.has(uid)) skippedCount++;
@@ -346,6 +366,8 @@ export const handleSubprojectsUpload = (
 
                 if (!groupedData.has(uid)) {
                     maxId++;
+                    const actualCompletionDate = row.actualCompletionDate ? parseMonthToDate(row.actualCompletionDate) : undefined;
+                    if (row.actualCompletionDate && !actualCompletionDate) throw new Error(`Row ${index + 2}: Invalid actual completion date.`);
                     
                     // Lookup IPO for Location
                     const ipoName = String(row.indigenousPeopleOrganization || '').trim();
@@ -369,10 +391,10 @@ export const handleSubprojectsUpload = (
                         packageType: row.packageType,
                         startDate: `${row.fundingYear || new Date().getFullYear()}-01-01`, // Default since start date is removed
                         estimatedCompletionDate: parseMonthToDate(row.estimatedCompletionDate),
-                        actualCompletionDate: row.actualCompletionDate ? parseMonthToDate(row.actualCompletionDate) : undefined,
-                        actualMaleBeneficiaries: row.actualMaleBeneficiaries === '' || row.actualMaleBeneficiaries == null ? null : Math.max(0, Math.trunc(Number(row.actualMaleBeneficiaries))),
-                        actualFemaleBeneficiaries: row.actualFemaleBeneficiaries === '' || row.actualFemaleBeneficiaries == null ? null : Math.max(0, Math.trunc(Number(row.actualFemaleBeneficiaries))),
-                        actualFourPsBeneficiaries: row.actualFourPsBeneficiaries === '' || row.actualFourPsBeneficiaries == null ? null : Math.max(0, Math.trunc(Number(row.actualFourPsBeneficiaries))),
+                        actualCompletionDate,
+                        actualMaleBeneficiaries: importedBeneficiaryCount(row.actualMaleBeneficiaries, index + 2),
+                        actualFemaleBeneficiaries: importedBeneficiaryCount(row.actualFemaleBeneficiaries, index + 2),
+                        actualFourPsBeneficiaries: importedBeneficiaryCount(row.actualFourPsBeneficiaries, index + 2),
                         fundingYear: Number(row.fundingYear),
                         fundType: row.fundType,
                         fundSourceUid: fundSource?.uid || null,
@@ -452,22 +474,19 @@ export const handleSubprojectsUpload = (
                 if (supabase) {
                     if (!replaceSubprojects) throw new Error('Local synchronization is unavailable. Reload before importing.');
                     await requireIndependentTargetSupport(newSubprojects.flatMap(parent => parent.details || []));
-                    // Explicit insert to prevent doubling and ID issues
-                    // Remove ID so Postgres auto-generates it based on sequence
-                    const payload = newSubprojects.map(({ id, ...rest }) => rest);
-                    const { data, error } = await supabase.from('subprojects').insert(payload).select();
-                    
-                    if (error) {
-                        console.error("Error inserting subprojects:", error);
-                        alert(`Error inserting data: ${error.message}`);
-                    } else if (data) {
-                        logAction('Imported Subprojects', `Imported ${data.length} subprojects from Excel`);
-                        // Confirmed rows reconcile locally; never send them through a database-writing setter.
-                        if (replaceSubprojects) replaceSubprojects([...subprojects, ...(data as Subproject[])]);
-                        let msg = `${data.length} subprojects imported successfully!`;
-                        if (skippedCount > 0) msg += ` (${skippedCount} duplicates skipped)`;
-                        alert(msg);
-                    }
+                    const reason = prompt('Reason for importing these Subprojects (including any intentional accomplishments or policy override):');
+                    if (!reason?.trim()) return;
+                    const localRows = new Map(subprojects.map(row => [row.id, row]));
+                    const saved = await persistDcfImportRows<Subproject>({ entityType: 'subprojects',
+                        fileIdentity, rows: newSubprojects,
+                        actor: currentUser, reason, onConfirmed: row => {
+                            localRows.set(row.id, row);
+                            replaceSubprojects(Array.from(localRows.values()));
+                        } });
+                    logAction('Imported Subprojects', `Confirmed ${saved.length} subprojects from Excel`);
+                    let msg = `${saved.length} subprojects confirmed successfully!`;
+                    if (skippedCount > 0) msg += ` (${skippedCount} duplicates skipped)`;
+                    alert(msg);
                 } else {
                     if (replaceSubprojects) replaceSubprojects([...subprojects, ...(newSubprojects as Subproject[])]);
                     else setSubprojects(prev => [...prev, ...newSubprojects]);
@@ -485,11 +504,11 @@ export const handleSubprojectsUpload = (
             console.error("Error processing XLSX file:", error);
             alert(`Failed to import file. ${error.message}`);
         } finally {
-            setIsUploading(false);
-            if(e.target) e.target.value = '';
+            finishUpload();
         }
     };
-    reader.readAsArrayBuffer(file);
+    try { reader.readAsArrayBuffer(file); }
+    catch { alert('Failed to read the Subproject file. Select the same file to retry.'); finishUpload(); }
 };
 
 
@@ -625,9 +644,18 @@ export const handleActivitiesUpload = (
 ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const release = claimDcfImportUpload('activities', currentUser?.id);
+    if (!release) return;
 
     setIsUploading(true);
     const reader = new FileReader();
+    const finishUpload = () => {
+        release();
+        setIsUploading(false);
+        if (e.target) e.target.value = '';
+    };
+    reader.onerror = () => { alert('Failed to read the Activity file. Select the same file to retry.'); finishUpload(); };
+    reader.onabort = finishUpload;
     reader.onload = async (event) => {
         try {
             const data = event.target?.result;
@@ -636,6 +664,7 @@ export const handleActivitiesUpload = (
             const worksheet = workbook.Sheets[sheetName];
             const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
             const targets = targetImporter(workbook);
+            const fileIdentity = supabase ? await dcfImportFileIdentity(data as ArrayBuffer) : '';
             const existingUids = new Set(activities.map(activity => activity.uid));
 
             let currentId = activities.reduce((max, a) => Math.max(max, a.id), 0);
@@ -647,7 +676,7 @@ export const handleActivitiesUpload = (
                 const rowNum = index + 2;
                 const uid = String(row.uid || '').trim();
                 if (!uid) return; // Skip empty rows
-                if (existingUids.has(uid)) return;
+                if (existingUids.has(uid) && (!supabase || !hasDcfImportAttempt('activities', currentUser?.id, fileIdentity, uid))) return;
                 if (row.expense_supplementUid || row.supplementUid || row['Supplement UID'] || row.expense_supplementStatus || row.supplementStatus || row['Supplement Approval']) {
                     throw new Error(`Row ${rowNum}: Supplemental approval and ledger identities cannot be imported.`);
                 }
@@ -793,6 +822,7 @@ export const handleActivitiesUpload = (
             groupedData.forEach((group) => {
                 newActivities.push({
                     ...group.common,
+                    participating_ipo_ids: group.common.participatingIpos.map((name: string) => ipos.find(ipo => ipo.name === name)!.id),
                     expenses: group.expenses,
                 });
             });
@@ -801,16 +831,13 @@ export const handleActivitiesUpload = (
                 if (supabase) {
                     if (!upsertActivitiesLocally) throw new Error('Local synchronization is unavailable. Reload before importing.');
                     await requireIndependentTargetSupport(newActivities.flatMap(parent => parent.expenses || []));
-                    // Explicit insert to generate proper IDs
-                    const { data, error } = await supabase.from('activities').insert(newActivities).select();
-                    if (error) {
-                        console.error("Error inserting activities:", error);
-                        alert(`Error inserting data: ${error.message}`);
-                    } else if (data) {
-                        upsertActivitiesLocally(data as Activity[]);
-                        logAction('Imported Activities', `Imported ${data.length} activities from Excel`);
-                        alert(`${data.length} activities imported successfully!`);
-                    }
+                    const reason = prompt('Reason for importing these Activities (including any intentional accomplishments or policy override):');
+                    if (!reason?.trim()) return;
+                    const saved = await persistDcfImportRows<Activity>({ entityType: 'activities',
+                        fileIdentity, rows: newActivities,
+                        actor: currentUser, reason, onConfirmed: row => upsertActivitiesLocally([row]) });
+                    logAction('Imported Activities', `Confirmed ${saved.length} activities from Excel`);
+                    alert(`${saved.length} activities confirmed successfully!`);
                 } else {
                     const localActivities = newActivities.map((act, i) => ({ id: currentId + i + 1, ...act }));
                     setActivities(prev => [...prev, ...localActivities]);
@@ -822,11 +849,11 @@ export const handleActivitiesUpload = (
             console.error("Error processing XLSX file:", error);
             alert(`Failed to import file. ${error.message}`);
         } finally {
-            setIsUploading(false);
-            if(e.target) e.target.value = '';
+            finishUpload();
         }
     };
-    reader.readAsArrayBuffer(file);
+    try { reader.readAsArrayBuffer(file); }
+    catch { alert('Failed to read the Activity file. Select the same file to retry.'); finishUpload(); }
 };
 
 

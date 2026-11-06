@@ -6,11 +6,16 @@ let captured;
 globalThis.XLSX = { ...XLSX, writeFile: workbook => { captured = workbook; } };
 globalThis.window = { XLSX: globalThis.XLSX };
 globalThis.alert = message => globalThis.excelFixture.alerts.push(message);
+globalThis.prompt = () => 'Disposable independent schedule import';
 globalThis.FileReader = class { readAsArrayBuffer(file) { globalThis.importPromise = this.onload({ target: { result: file.buffer } }); } };
 const server = await createServer({ configFile: false, appType: 'custom', server: { middlewareMode: true, hmr: false }, optimizeDeps: { noDiscovery: true, entries: [] }, plugins: [{
     name: 'target-excel-offline', enforce: 'pre', resolveId(id) { if (id.endsWith('supabaseClient')) return '\0target-excel-client'; },
     load(id) {
-        if (id === '\0target-excel-client') return `export const supabase={async rpc(name){const f=globalThis.excelFixture;f.capabilityCalls++;return {data:f.unsupported?null:2,error:f.unsupported?{message:'Missing migration'}:null};},from(table){const q={insert(rows){const f=globalThis.excelFixture;f.inserts.push({table,rows});q.rows=rows;return q;},select(){return q;},then(resolve){return Promise.resolve({data:q.rows.map((row,index)=>({...row,id:100+index})),error:null}).then(resolve);}};return q;}};`;
+        if (id === '\0target-excel-client') return `export const supabase={async rpc(name,args){const f=globalThis.excelFixture;
+            if(name==='budget_target_schedule_capability'){f.capabilityCalls++;return {data:f.unsupported?null:2,error:f.unsupported?{message:'Missing migration'}:null};}
+            if(name!=='commit_dcf_change')throw Error('Unexpected RPC '+name);
+            f.inserts.push({table:args.p_entity_type,rows:[args.p_changes]});return {data:{record:{...args.p_changes,id:100},financial:{obligations:[],disbursements:[],stages:{}},revisionId:1},error:null};
+        },from(){throw Error('No direct DCF import writes are permitted');}};`;
     },
 }] });
 const refs = [{ uid: 'FS-000001', label: '4K Fund', is_active: true }];
@@ -21,7 +26,7 @@ const first = { id: 10, budgetItemGroupId: 'group', objectType: 'MOOE', expenseP
     targetDisbursementSchedules: [{ id: 'd1', month: '2026-02-01', amount: 20 }, { id: 'd2', month: '2026-04-01', amount: 30 }, { id: 'd3', month: '2026-06-01', amount: 50 }],
     obligations: [{ id: 71, date: '2026-02-20', amount: 25 }], disbursements: [{ id: 72, date: '2026-03-20', amount: 20 }], actualNumberOfUnits: 2, actualDeliveryDate: '2026-06-01' };
 const second = { ...first, id: 12, amount: 160, targetObligationSchedules: [], targetDisbursementSchedules: [{ id: 'd4', month: '2027-01-01', amount: 50 }] };
-const fresh = options => { globalThis.excelFixture = { alerts: [], inserts: [], setters: 0, reconciles: 0, capabilityCalls: 0, ...options }; };
+const fresh = options => { globalThis.excelFixture = { alerts: [], inserts: [], setters: 0, reconciles: 0, capabilityCalls: 0, ...options }; const journal=new Map();globalThis.localStorage={getItem:key=>journal.get(key)??null,setItem:(key,value)=>journal.set(key,value)}; };
 try {
     const helpers = await server.ssrLoadModule('/lib/budgetTargetExcel.ts');
     const service = await server.ssrLoadModule('/components/mainfunctions/ImportExportService.ts');
@@ -34,8 +39,9 @@ try {
         const event = { target: { files: [{ buffer: XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) }] } };
         const setter = () => { globalThis.excelFixture.setters++; throw new Error('A database-writing setter must not receive confirmed imports.'); };
         const reconcile = rows => { globalThis.excelFixture.reconciles++; records = rows; };
-        if (kind === 'activity') service.handleActivitiesUpload(event, [], setter, [], () => {}, () => {}, uacs, { fullName: 'Fixture', operatingUnit: 'NPMO' }, refs, reconcile);
-        else service.handleSubprojectsUpload(event, [], setter, [{ id: 1, name: 'IPO', location: 'Fixture location' }], () => {}, () => {}, uacs, { fullName: 'Fixture', operatingUnit: 'NPMO' }, false, refs, reconcile);
+        const actor={id:1,fullName:'Fixture',operatingUnit:'NPMO',role:'Super Admin',password:'fixture-only'};
+        if (kind === 'activity') service.handleActivitiesUpload(event, [], setter, [], () => {}, () => {}, uacs, actor, refs, reconcile);
+        else service.handleSubprojectsUpload(event, [], setter, [{ id: 1, name: 'IPO', location: 'Fixture location' }], () => {}, () => {}, uacs, actor, false, refs, reconcile);
         await globalThis.importPromise;
         return { records, ...globalThis.excelFixture };
     };

@@ -14,7 +14,17 @@ const artifacts = await mkdtemp(path.join(tmpdir(), '4kis-activity-repeating-ui-
 assert.match(await readFile('App.tsx','utf8'), /activity=\{effectiveEditMode === 'create' \? undefined : routeActivity \|\| undefined\}/, 'Creation must not receive the selected activity after a confirmed row callback');
 // All client/auth/location/history dependencies are replaced; no production session or network data.
 const mocks = {
-    supabaseClient: `export const supabase = { async rpc(name){if(name==='budget_target_schedule_capability')return{data:2,error:null};throw Error('Unexpected RPC '+name);}, from(table) {
+    supabaseClient: `export const supabase = { async rpc(name,args){
+        if(name==='budget_target_schedule_capability')return{data:2,error:null};
+        if(name!=='commit_dcf_change')throw Error('Unexpected RPC '+name);
+        const f=window.fixture,payload=args.p_changes;f.calls.push({table:'activities',action:'insert',payload,filters:[],args});
+        await new Promise(resolve=>setTimeout(resolve,f.delay||0));f.insertCount++;
+        if(f.failureOn===f.insertCount)return {data:null,error:{code:'23514',message:'Synthetic rejected insert'}};
+        const row={...payload,id:500+f.insertCount};
+        if(f.uncertainOn!==f.insertCount||f.uncertainCommit)f.rows.push(row);
+        if(f.uncertainOn===f.insertCount)return {data:null,error:{message:'Synthetic network timeout'}};
+        return {data:f.noRow?null:{record:row,financial:{obligations:[],disbursements:[],stages:{}},revisionId:f.insertCount},error:null};
+    }, from(table) {
         let action='read',payload; const filters=[];
         const query={select(){return query;},eq(key,value){filters.push([key,value]);return query;},maybeSingle(){return query;},single(){return query;},
             insert(value){action='insert';payload=value[0];return query;},

@@ -12,8 +12,21 @@ const screenshots = await mkdtemp(path.join(tmpdir(), '4kis-budget-schedule-ui-'
 const servePreview = process.argv.includes('--serve');
 const previewPort = Number(process.env.PORT || 3014);
 const mocks = {
-    'supabaseClient': `export const supabase = { async rpc(name){if(name==='budget_target_schedule_capability')return {data:2,error:null};throw Error('Unexpected RPC '+name);}, from(table) { let action = 'read', payload; const q = {
-        select() { return q; }, eq() { return q; }, is() { return q; }, order() { return q; }, maybeSingle() { return q; }, single() { return q; },
+    'supabaseClient': `const confirmed=record=>({record,financial:{obligations:[],disbursements:[],stages:Object.fromEntries((record.details||[]).map(row=>[String(row.id),Object.fromEntries(['obligation','disbursement'].map(stage=>[stage,{source:'central',entries:row[stage==='obligation'?'obligations':'disbursements']||[]}]))]))},revisionId:1});
+    export const supabase = { async rpc(name,args){
+        if(name==='budget_target_schedule_capability')return {data:2,error:null};
+        const f=window.fixture;
+        if(name==='read_dcf_state')return {data:confirmed(f.latest||f.stored||f.source),error:null};
+        if(name==='commit_dcf_change'){
+            f.writes.push({action:args.p_parent_id===null?'insert':'update',payload:args.p_changes});
+            await new Promise(resolve=>setTimeout(resolve,f.delay||0));
+            if(f.fail)return {data:null,error:{message:'Synthetic save failure'}};
+            if(args.p_financial.length)throw Error('Budget fixture must not write financial actuals');
+            f.stored={...(f.latest||f.stored||f.source),...args.p_changes,id:f.source.id,serverConfirmed:true};return {data:confirmed(f.stored),error:null};
+        }
+        throw Error('Unexpected RPC '+name);
+    }, from(table) { let action = 'read', payload; const q = {
+        select() { return q; }, eq() { return q; }, is() { return q; }, order() { return q; }, limit() { return q; }, maybeSingle() { return q; }, single() { return q; },
         insert(value) { action = 'insert'; payload = value; return q; }, update(value) { action = 'update'; payload = value; return q; }, delete() { action = 'delete'; return q; },
         then(resolve) { return new Promise(done => setTimeout(() => {
             const f = window.fixture;

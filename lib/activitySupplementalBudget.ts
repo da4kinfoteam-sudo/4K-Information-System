@@ -28,6 +28,11 @@ export const isSupplementalExpense = (line: ActivityExpense, parent?: Partial<Ac
 export const isActivityExpenseActualEligible = (line: { fundingOrigin?: string; supplementUid?: string | null; supplementStatus?: string }) =>
     !isNewSupplementalExpense(line) || (line.fundingOrigin !== 'SupplementalDraft' && !!line.supplementUid && line.supplementStatus === 'APPROVED');
 export const isOriginalActivityBudgetLocked = (parent: Partial<Activity>) => parent.status !== 'Proposed' || !!parent.original_budget_snapshot;
+export const hasWholeActivityFundingOrigin = (parent: Partial<Activity>) => !!parent.isSavings || !!parent.isRealignment;
+export const getActivityEditableBudgetExpenses = (parent: Partial<Activity>, creating = false) => {
+    const wholeOriginEditable = hasWholeActivityFundingOrigin(parent) && (creating || !isOriginalActivityBudgetLocked(parent));
+    return (parent.expenses || []).filter(row => wholeOriginEditable ? !isNewSupplementalExpense(row) : !isSupplementalExpense(row, parent));
+};
 export const hasProtectedActivityBudgetHistory = (parent: Partial<Activity>) => !!parent.original_budget_snapshot
     || (parent.expenses || []).some(row => !!row.supplementUid)
     || (parent.history || []).some(entry => entry.event?.startsWith('Supplemental funding '));

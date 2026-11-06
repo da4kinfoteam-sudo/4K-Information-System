@@ -1,3 +1,5 @@
+import { useProgramManagementWriter } from '../../lib/programManagementPersistence';
+import { claimDcfImportUpload, dcfImportFileIdentity, dcfImportRowUid, persistDcfImportRows } from '../../lib/dcfImportPersistence';
 
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -77,10 +79,13 @@ interface OfficeRequirementsTabProps {
 export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ items, setItems, uacsCodes, fundSources, onSelect }) => {
     const { locale } = useAuth(); // Assume it exists or just use default
     const { currentUser } = useAuth();
+    const writer = useProgramManagementWriter('office_requirements', currentUser, record => {
+        setItems(previous => [record, ...previous.filter(row => row.id !== record.id)]);
+    });
     const tableStoragePrefix = `programManagement_office_${currentUser?.id || 'anonymous'}`;
     const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
-    const { getDeleteDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getDeleteDecision, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
     
     // Local State
     const [view, setView] = useState<'list' | 'form'>('list');
@@ -379,23 +384,13 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         submissionData.uid = formData.uid || `OR-${year}-${sequence}`;
         submissionData.created_at = new Date().toISOString();
 
-        if (supabase) {
-            const { data, error } = await supabase.from('office_requirements').insert([submissionData]).select().single();
-            if (error) { 
-                console.error("Create error:", error); 
-                alert(`Failed to create: ${error.message}`); 
-                return; 
-            }
-            if (data) {
-                setItems(prev => [data, ...prev]);
-                logAction('Created Office Requirement', data.particulars || data.equipment || data.uid, undefined, 'Office Requirement', String(data.id));
-            }
-        } else {
-            // Offline
-            const newItem = { ...submissionData, id: Date.now() };
-            setItems(prev => [newItem, ...prev]);
+        try {
+            const [record] = await writer.createMany([submissionData], 'program-management-create');
+            logAction('Created Office Requirement', record.particulars || record.equipment || record.uid, undefined, 'Office Requirement', String(record.id));
+        } catch (error) {
+            alert('Failed to create: ' + (error instanceof Error ? error.message : 'Unknown error'));
+            return;
         }
-        
         setView('list');
     };
 
@@ -419,17 +414,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
         if (supabase) {
             try {
-                const { error: archiveError } = await supabase.from('trash_bin').insert([{
-                    entity_type: 'office_requirement',
-                    original_id: itemToDelete.id,
-                    data: itemToDelete,
-                    deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
-                    deleted_at: new Date().toISOString()
-                }]);
-                if (archiveError) throw archiveError;
-
-                const { error: deleteError } = await supabase.from('office_requirements').delete().eq('id', itemToDelete.id);
-                if (deleteError) throw deleteError;
+                await writer.remove([itemToDelete], 'program-management-delete', getLastOverrideReason(), removed => setItems(previous => previous.filter(row => row.id !== removed.id)));
 
                 setItems(prev => prev.filter(i => i.id !== itemToDelete.id));
             } catch (error: any) {
@@ -461,19 +446,9 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
         if (supabase) {
             try {
-                const archivePayload = deletableItems.map(item => ({
-                    entity_type: 'office_requirement',
-                    original_id: item.id,
-                    data: item,
-                    deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
-                    deleted_at: new Date().toISOString()
-                }));
-
-                const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
-                if (archiveError) throw archiveError;
-
-                const { error: deleteError } = await supabase.from('office_requirements').delete().in('id', deletableIds);
-                if (deleteError) throw deleteError;
+                const first = deletableItems[0];
+                if (!(await ensureDecisionAllowed(getDeleteDecision({ moduleKey: 'office_requirements', item: first, hasModuleAccess: canEdit }), { moduleKey: 'office_requirements', item: first, itemId: first.id, action: 'delete', entityType: 'office_requirement' }))) return;
+                await writer.remove(deletableItems, 'program-management-bulk-delete', getLastOverrideReason(), removed => setItems(previous => previous.filter(row => row.id !== removed.id)));
 
                 logAction('Deleted Office Requirements', `${deletableIds.length} items deleted`, undefined, 'Office Requirement');
                 setItems(prev => prev.filter(i => !deletableIds.includes(i.id)));
@@ -525,21 +500,9 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             };
         });
 
-        if (supabase) {
-            const { data, error } = await supabase.from('office_requirements').insert(newItemsPayload).select();
-            if (error) {
-                alert('Failed to clone items: ' + error.message);
-            } else if (data) {
-                setItems(prev => [...data, ...prev]);
-                resetSelection();
-                alert(`Successfully cloned ${data.length} items.`);
-            }
-        } else {
-            const newLocalItems = newItemsPayload.map((item, idx) => ({ ...item, id: Date.now() + idx }));
-            setItems(prev => [...newLocalItems, ...prev]);
-            resetSelection();
-            alert(`Successfully cloned ${newLocalItems.length} items (Local).`);
-        }
+        const data = await writer.createMany(newItemsPayload, 'program-management-clone', itemsToClone.map(item => item.id));
+        resetSelection();
+        alert(`Successfully cloned ${data.length} items.`);
     };
 
     const handleClone = async () => {
@@ -602,16 +565,10 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         e.stopPropagation();
         if (!window.confirm('Are you sure you want to approve this requirement?')) return;
         
-        if (supabase) {
-            const { error } = await supabase.from('office_requirements').update({ workflow_status: 'APPROVED' }).eq('id', id);
-            if (error) {
-                alert('Failed to approve: ' + error.message);
-            } else {
-                setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
-                logAction('Approved Office Requirement', String(id), undefined, 'Office Requirement', String(id));
-            }
-        } else {
-            setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+        try {
+            await writer.update(id, { workflow_status: 'APPROVED' }, 'program-management-approve');
+        } catch (error) {
+            alert('Failed to approve: ' + (error instanceof Error ? error.message : 'Unknown error'));
         }
     };
 
@@ -620,18 +577,10 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         const reason = window.prompt('Please provide a reason for rejection:');
         if (reason === null) return;
 
-        if (supabase) {
-            const { error } = await supabase.from('office_requirements').update({ 
-                workflow_status: 'REJECTED',
-                remarks: reason ? `REJECTED: ${reason}` : undefined
-            }).eq('id', id);
-            if (error) {
-                alert('Failed to reject: ' + error.message);
-            } else {
-                setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
-            }
-        } else {
-            setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+        try {
+            await writer.update(id, { workflow_status: 'REJECTED' }, 'program-management-reject', reason || '');
+        } catch (error) {
+            alert('Failed to reject: ' + (error instanceof Error ? error.message : 'Unknown error'));
         }
     };
 
@@ -677,11 +626,15 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        const release = claimDcfImportUpload('office_requirements', currentUser?.id);
+        if (!release) return;
         setIsUploading(true);
         const reader = new FileReader();
         reader.onload = async (event) => {
             try {
                 const data = event.target?.result;
+                if (!currentUser || !(data instanceof ArrayBuffer)) throw new Error('The signed-in user or import file is unavailable.');
+                const fileIdentity = await dcfImportFileIdentity(data);
                 const workbook = XLSX.read(data, { type: 'array' });
                 const sheetName = workbook.SheetNames[0];
                 const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) as any[];
@@ -697,7 +650,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                     );
                     if (!importedFundSource) throw new Error(`Row ${index + 2}: Fund Source is unknown, inactive, ambiguous, or has no active 4K Fund default.`);
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();
-                    const uid = `OR-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
+                    const uid = dcfImportRowUid('office_requirements', currentUser.id, fileIdentity, index, `OR-${fundYear}-${Date.now().toString().slice(-4)}${index}`);
                     const resolvedOU = row.operatingUnit ? resolveOperatingUnit(row.operatingUnit) : 'NPMO';
 
                     return parseOfficeRequirementRow(row, {
@@ -719,22 +672,21 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                     });
                 });
 
-                if (supabase) {
-                    const { error } = await supabase.from('office_requirements').insert(newItems);
-                    if (error) throw error;
-                    const { data } = await supabase.from('office_requirements').select('*').order('id', { ascending: true });
-                    if (data) setItems(data as OfficeRequirement[]);
-                } else {
-                    setItems(prev => [...newItems.map((i, idx) => ({ ...i, id: Date.now() + idx })), ...prev]);
-                }
+                const reason = window.prompt('Reason for importing these records:');
+                if (!reason?.trim()) return;
+                await persistDcfImportRows<OfficeRequirement>({ entityType: 'office_requirements', fileIdentity, rows: newItems, actor: currentUser, reason,
+                    onConfirmed: record => setItems(previous => [record, ...previous.filter(row => row.id !== record.id)]) });
                 alert(`${newItems.length} items imported.`);
             } catch (err: any) {
                 alert(`Import failed: ${err.message}`);
             } finally {
+                release();
                 setIsUploading(false);
                 if(e.target) e.target.value = '';
             }
         };
+        reader.onerror = () => { release(); setIsUploading(false); alert('The import file could not be read. No records were sent.'); };
+        reader.onabort = () => { release(); setIsUploading(false); };
         reader.readAsArrayBuffer(file);
     };
 

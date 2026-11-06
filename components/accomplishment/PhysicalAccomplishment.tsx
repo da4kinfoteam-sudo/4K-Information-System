@@ -1,3 +1,4 @@
+import { readProgramManagementState, saveProgramManagementChange, type ProgramManagementState, type ProgramManagementRequest, type ProgramManagementEntity } from '../../lib/programManagementPersistence';
 // Author: 4K 
 import { getActivityDisplayTitle } from '../../lib/activityTitles';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
@@ -23,10 +24,13 @@ interface Props {
     onSubprojectSaved?: (subproject: Subproject, snapshot?: SubprojectAccomplishmentSnapshot) => void;
     activities: Activity[];
     setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
+    onActivitySaved?: (activity: Activity, financial?: ProgramManagementState['financial']) => void;
     officeReqs: OfficeRequirement[];
     setOfficeReqs: React.Dispatch<React.SetStateAction<OfficeRequirement[]>>;
+    onOfficeSaved?: (item: OfficeRequirement, financial?: ProgramManagementState['financial']) => void;
     staffingReqs: StaffingRequirement[];
     setStaffingReqs: React.Dispatch<React.SetStateAction<StaffingRequirement[]>>;
+    onStaffingSaved?: (item: StaffingRequirement, financial?: ProgramManagementState['financial']) => void;
     onSelectSubproject: (subproject: Subproject) => void;
     onSelectActivity: (activity: Activity) => void;
     onSelectOfficeReq: (item: OfficeRequirement) => void;
@@ -127,9 +131,9 @@ const isPhysicalRecordExcludedFromTargets = (record?: { status?: string; isReali
 
 const PhysicalAccomplishment: React.FC<Props> = ({
     subprojects, onSubprojectSaved,
-    activities, setActivities,
-    officeReqs, setOfficeReqs,
-    staffingReqs, setStaffingReqs,
+    activities, setActivities, onActivitySaved,
+    officeReqs, setOfficeReqs, onOfficeSaved,
+    staffingReqs, setStaffingReqs, onStaffingSaved,
     onSelectSubproject, onSelectActivity,
     onSelectOfficeReq, onSelectStaffingReq,
     onDataScopeChange
@@ -173,6 +177,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     const [changedItems, setChangedItems] = useState<Map<string, Partial<PhysicalItem>>>(new Map());
     const physicalDraftRef = useRef({ items, originalItems, changedItems });
     physicalDraftRef.current = { items, originalItems, changedItems };
+    const directBaselines = useRef(new Map<string, ProgramManagementState>());
+    const directRequests = useRef(new Map<string, ProgramManagementRequest>());
     const subprojectBaselines = useRef(new Map<number, SubprojectAccomplishmentSnapshot>());
     const subprojectRequests = useRef(new Map<number, SubprojectAccomplishmentRequest>());
     const skipNextPhysicalReload = useRef(false);
@@ -321,10 +327,22 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         const load = async () => { try {
             const snapshots = await readSubprojectAccomplishments((subprojects || []).filter(matchesSelectedFilters).map(row => row.id), currentUser, 'physical');
             if (cancelled) return;
+            const directSnapshots = new Map<string, ProgramManagementState>();
+            for (const [sourceType, entityType, records] of [['Activity', 'activities', activities], ['Staffing', 'staffing_requirements', staffingReqs], ['Office', 'office_requirements', officeReqs]] as const) {
+                for (const row of (records || []).filter(matchesSelectedFilters)) {
+                    directSnapshots.set(`${sourceType}:${row.id}`, await readProgramManagementState({ entityType, parentId: row.id, currentUser }));
+                }
+            }
+            if (cancelled) return;
             const previous = physicalDraftRef.current;
             const pendingParents = new Map(previous.items.filter(row => row.sourceType === 'Subproject' && (previous.changedItems.has(row.uniqueId) || row.children?.some(child => previous.changedItems.has(child.uniqueId)))).map(row => [row.sourceId, row]));
             const oldBaselines = subprojectBaselines.current;
             subprojectBaselines.current = new Map(snapshots.map(snapshot => [snapshot.subproject.id, pendingParents.has(snapshot.subproject.id) ? oldBaselines.get(snapshot.subproject.id) || snapshot : snapshot]));
+            const allPrevious = previous.items.flatMap(row => [row, ...(row.children || [])]);
+            const pendingDirect = new Map<string, PhysicalItem>(allPrevious.filter(row => row.sourceType !== 'Subproject' && previous.changedItems.has(row.uniqueId)).map(row => [row.uniqueId, row]));
+            const oldDirect = directBaselines.current;
+            directBaselines.current = new Map([...directSnapshots].map(([key, snapshot]) => [key,
+                [...pendingDirect.values()].some(row => `${row.sourceType}:${row.sourceId}` === key) && oldDirect.has(key) ? oldDirect.get(key)! : snapshot]));
             const loadedItems: PhysicalItem[] = [];
 
             // A. Subprojects (Parent + Children)
@@ -385,7 +403,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             });
 
             // B. Activities (Flat)
-            (activities || []).filter(matchesSelectedFilters).forEach(act => {
+            [...directSnapshots].filter(([key]) => key.startsWith('Activity:')).map(([, state]) => state.record as Activity).forEach(act => {
                 const recordTag = getPhysicalRecordTag(act);
                 const targetExcluded = isPhysicalRecordExcludedFromTargets(act) || !!act.isTransferTargetExcluded;
                 const activityDue = getPhysicalDueStatus(act.endDate || act.date, !!act.actualDate || act.status === 'Completed');
@@ -419,7 +437,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 
             // C. Staffing (Grouped by Position)
             const staffingGroups: { [key: string]: StaffingRequirement[] } = {};
-            (staffingReqs || []).filter(matchesSelectedFilters).forEach(s => {
+            [...directSnapshots].filter(([key]) => key.startsWith('Staffing:')).map(([, state]) => state.record as StaffingRequirement).forEach(s => {
                 if (!staffingGroups[s.personnelPosition]) staffingGroups[s.personnelPosition] = [];
                 staffingGroups[s.personnelPosition].push(s);
             });
@@ -470,7 +488,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             });
 
             // D. Office Requirements (Flat)
-            (officeReqs || []).filter(matchesSelectedFilters).forEach(off => {
+            [...directSnapshots].filter(([key]) => key.startsWith('Office:')).map(([, state]) => state.record as OfficeRequirement).forEach(off => {
                 const recordTag = getPhysicalRecordTag(off);
                 const targetExcluded = isPhysicalRecordExcludedFromTargets(off);
                 loadedItems.push({
@@ -493,9 +511,11 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 });
             });
 
-            setItems(loadedItems.map(row => row.sourceType === 'Subproject' && pendingParents.has(row.sourceId) ? pendingParents.get(row.sourceId)! : row));
-            setOriginalItems(structuredClone(loadedItems.map(row => row.sourceType === 'Subproject' && pendingParents.has(row.sourceId) ? previous.originalItems.find(old => old.uniqueId === row.uniqueId) || row : row)));
-            setChangedItems(new Map([...previous.changedItems].filter(([key]) => loadedItems.some(row => row.sourceType === 'Subproject' && pendingParents.has(row.sourceId) && (row.uniqueId === key || row.children?.some(child => child.uniqueId === key))))));
+            const preserveDirect = (row: PhysicalItem): PhysicalItem => pendingDirect.get(row.uniqueId) || { ...row, children: row.children?.map(preserveDirect) };
+            const preserveOriginal = (row: PhysicalItem): PhysicalItem => pendingDirect.has(row.uniqueId) ? previous.originalItems.flatMap(parent => [parent, ...(parent.children || [])]).find(old => old.uniqueId === row.uniqueId) || row : { ...row, children: row.children?.map(preserveOriginal) };
+            setItems(loadedItems.map(row => row.sourceType === 'Subproject' && pendingParents.has(row.sourceId) ? pendingParents.get(row.sourceId)! : preserveDirect(row)));
+            setOriginalItems(structuredClone(loadedItems.map(row => row.sourceType === 'Subproject' && pendingParents.has(row.sourceId) ? previous.originalItems.find(old => old.uniqueId === row.uniqueId) || row : preserveOriginal(row))));
+            setChangedItems(new Map([...previous.changedItems].filter(([key]) => pendingDirect.has(key) || loadedItems.some(row => row.sourceType === 'Subproject' && pendingParents.has(row.sourceId) && (row.uniqueId === key || row.children?.some(child => child.uniqueId === key))))));
         } catch (error) { if (!cancelled) setLoadError(error.message || 'Physical data could not be loaded completely. Reload before editing.'); }
           finally { if (!cancelled) setIsLoading(false); } };
         void load();
@@ -677,81 +697,43 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 onSubprojectSaved(confirmed.subproject, confirmed);
                 return confirmed.subproject;
 
-            } else if (item.sourceType === 'Activity') {
-                const act = activities.find(a => a.id === item.sourceId);
-                if (!act) throw new Error("Activity not found");
-
-                const newStatus: Activity['status'] = item.actualDateStart ? 'Completed' : 'Ongoing';
-                const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
-                    hasPhysicalAccomplishment: !!item.actualDateStart,
-                    hasChanged: valuesDiffer(act.actualDate, item.actualDateStart)
-                        || valuesDiffer(act.actualEndDate, item.actualDateEnd)
-                        || valuesDiffer(act.actualParticipantsMale, item.actualMale)
-                        || valuesDiffer(act.actualParticipantsFemale, item.actualFemale)
-                        || valuesDiffer(act.catchUpPlanRemarks, item.catchUpPlanRemarks),
-                    previousSubmittedAt: act.physical_accomplishment_submitted_at,
-                    submittedAt
-                });
-                const payload = {
-                    actualDate: item.actualDateStart,
-                    actualEndDate: item.actualDateEnd || item.actualDateStart || null,
-                    actualParticipantsMale: item.actualMale,
-                    actualParticipantsFemale: item.actualFemale,
-                    catchUpPlanRemarks: item.catchUpPlanRemarks || null,
-                    date: item.targetDateStart,
-                    endDate: item.targetDateEnd || item.targetDateStart,
-                    participantsMale: item.targetMale,
-                    participantsFemale: item.targetFemale,
-                    status: newStatus,
-                    physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
-                    updated_at: submittedAt
+            } else {
+                const entityType: ProgramManagementEntity = item.sourceType === 'Activity' ? 'activities' : item.sourceType === 'Office' ? 'office_requirements' : 'staffing_requirements';
+                const key = `${item.sourceType}:${item.sourceId}`;
+                const base = directBaselines.current.get(key);
+                const original = findOriginalItem(item.uniqueId);
+                if (!base || !original || loadError) throw new Error('Existing DCF state is unavailable. Your draft was not saved.');
+                const proposed = { ...base.record };
+                const fields: string[] = [];
+                const set = (field: string, before: unknown, after: unknown, value: unknown = after) => {
+                    if (valuesDiffer(before, after)) { proposed[field] = value; fields.push(field); }
                 };
-
-                if (supabase) {
-                    await supabase.from('activities').update(payload).eq('id', act.id);
+                if (item.sourceType === 'Activity') {
+                    set('actualDate', original.actualDateStart, item.actualDateStart, item.actualDateStart || null);
+                    set('actualEndDate', original.actualDateEnd, item.actualDateEnd, item.actualDateEnd || item.actualDateStart || null);
+                    set('actualParticipantsMale', original.actualMale, item.actualMale);
+                    set('actualParticipantsFemale', original.actualFemale, item.actualFemale);
+                    set('catchUpPlanRemarks', original.catchUpPlanRemarks, item.catchUpPlanRemarks, item.catchUpPlanRemarks || null);
+                    set('date', original.targetDateStart, item.targetDateStart);
+                    set('endDate', original.targetDateEnd, item.targetDateEnd, item.targetDateEnd || item.targetDateStart);
+                    set('participantsMale', original.targetMale, item.targetMale);
+                    set('participantsFemale', original.targetFemale, item.targetFemale);
+                    if (fields.includes('actualDate')) { proposed.status = item.actualDateStart ? 'Completed' : 'Ongoing'; fields.push('status'); }
+                } else {
+                    set('actualObligationDate', original.actualDateStart, item.actualDateStart, item.actualDateStart || null);
+                    set('obligationDate', original.targetDateStart, item.targetDateStart);
+                    if (item.sourceType === 'Office') set('numberOfUnits', original.targetQty, item.targetQty);
                 }
-                setActivities(prev => prev.map(a => a.id === act.id ? { ...a, ...payload } : a));
-
-            } else if (item.sourceType === 'Staffing') {
-                 const existing = staffingReqs.find(s => s.id === item.sourceId);
-                 const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
-                    hasPhysicalAccomplishment: !!item.actualDateStart,
-                    hasChanged: valuesDiffer(existing?.actualObligationDate, item.actualDateStart),
-                    previousSubmittedAt: existing?.physical_accomplishment_submitted_at,
-                    submittedAt
-                 });
-                 // Update Date Hired and Target Date
-                 const payload = { 
-                     actualObligationDate: item.actualDateStart,
-                     obligationDate: item.targetDateStart,
-                     physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
-                     updated_at: submittedAt
-                  };
-                 if (supabase) {
-                    await supabase.from('staffing_requirements').update(payload).eq('id', item.sourceId);
-                 }
-                 setStaffingReqs(prev => prev.map(s => s.id === item.sourceId ? { ...s, ...payload } : s));
-
-            } else if (item.sourceType === 'Office') {
-                const existing = officeReqs.find(o => o.id === item.sourceId);
-                const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
-                    hasPhysicalAccomplishment: !!item.actualDateStart,
-                    hasChanged: valuesDiffer(existing?.actualObligationDate, item.actualDateStart),
-                    previousSubmittedAt: existing?.physical_accomplishment_submitted_at,
-                    submittedAt
-                });
-                // Update Actual Date and Target Date
-                const payload = { 
-                    actualObligationDate: item.actualDateStart,
-                    obligationDate: item.targetDateStart,
-                    numberOfUnits: item.targetQty,
-                    physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
-                    updated_at: submittedAt
-                }; 
-                if (supabase) {
-                    await supabase.from('office_requirements').update(payload).eq('id', item.sourceId);
-                }
-                setOfficeReqs(prev => prev.map(o => o.id === item.sourceId ? { ...o, ...payload } : o));
+                const request = directRequests.current.get(key) || {};
+                directRequests.current.set(key, request);
+                const confirmed = await saveProgramManagementChange({ entityType, base, original: base.record, proposed, fields,
+                    currentUser, source: 'physical-accomplishment', reason: getLastOverrideReason(), request });
+                directBaselines.current.set(key, confirmed);
+                skipNextPhysicalReload.current = true;
+                if (item.sourceType === 'Activity' && onActivitySaved) onActivitySaved(confirmed.record, confirmed.financial);
+                else if (item.sourceType === 'Office' && onOfficeSaved) onOfficeSaved(confirmed.record, confirmed.financial);
+                else if (item.sourceType === 'Staffing' && onStaffingSaved) onStaffingSaved(confirmed.record, confirmed.financial);
+                else throw new Error('The record was saved, but local-only reconciliation is unavailable. Reopen the record; do not submit again.');
             }
 
             updateLocalItem(item.uniqueId, { isLocked: false });

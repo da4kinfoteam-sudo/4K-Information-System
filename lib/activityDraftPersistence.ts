@@ -1,4 +1,5 @@
-import type { Activity, ActivityExpense } from '../constants';
+import type { Activity, ActivityExpense, User } from '../constants';
+import { dcfChangedFields, persistDcfMutation, type DcfMutationRequest } from './dcfMutation';
 import { supabase } from '../supabaseClient';
 import { sameActivityActualValue } from './activityAccomplishmentPersistence';
 import { requireIndependentTargetSupport } from './budgetTargetPersistence';
@@ -49,10 +50,11 @@ export function getChangedActivityActualIds(base: ActivityExpense[], draft: Acti
     }).map(row => String(row.id)));
 }
 
-export async function persistActivityDraft(base: Activity, draft: Activity, mode: 'expenses'): Promise<Activity> {
+export async function persistActivityDraft(base: Activity, draft: Activity, mode: 'expenses', actor?: User, options: { reason?: string; source?: string; request?: DcfMutationRequest } = {}): Promise<Activity> {
     if (mode !== 'expenses') throw new Error('Accomplishments must use the transactional financial save operation.');
     await requireIndependentTargetSupport(draft.expenses || []);
     if (!supabase) return draft;
+    if (!actor?.id) throw new Error('A signed-in user is required. Your draft was not saved.');
     const { data, error: readError } = await supabase.from('activities').select('*').eq('id', base.id).maybeSingle();
     if (readError) throw readError;
     if (!data) throw new Error('The activity is no longer available. No changes were saved.');
@@ -61,13 +63,8 @@ export async function persistActivityDraft(base: Activity, draft: Activity, mode
         || !equal(latest.operatingUnit, base.operatingUnit) || latest.type !== base.type) throw conflict();
     const payload: Record<string, unknown> = {
         expenses: mergeActivityExpenses(base.expenses || [], draft.expenses || [], latest.expenses || [], true),
-        history: [...(latest.history || []), ...(draft.history || []).slice((base.history || []).length)],
-        updated_at: new Date().toISOString(),
     };
-    let query = supabase.from('activities').update(payload).eq('id', base.id).eq('status', latest.status);
-    query = latest.updated_at ? query.eq('updated_at', latest.updated_at) : query.is('updated_at', null);
-    const { data: confirmed, error } = await query.select('*').maybeSingle();
-    if (error) throw error;
-    if (!confirmed) throw conflict();
-    return confirmed as Activity;
+    const confirmed = await persistDcfMutation({ entityType: 'activities', parentId: base.id, base: latest,
+        changes: dcfChangedFields(latest, payload), actor, source: options.source || 'activity-edit-expenses', reason: options.reason || '', request: options.request });
+    return confirmed.record as Activity;
 }

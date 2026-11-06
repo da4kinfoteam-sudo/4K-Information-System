@@ -443,10 +443,4 @@ export const deleteActivityDriveFile = async (currentUser: User | null, fileRowI
     return (await readFunctionResult(data, error)).file;
 };
 
-export const formatFileSize = (size?: number | null) => {
-    const bytes = Number(size || 0);
-    if (!bytes) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-    return `${(bytes / Math.pow(1024, index)).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-};
+export { formatFileSize } from './driveFilePresentation';

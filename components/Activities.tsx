@@ -7,6 +7,7 @@ import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react'
 import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, RefFundSource, philippineRegions, operatingUnits, ouToRegionMap, filterYears } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
+import { dcfChangedFields, deleteDcfRecord, persistDcfMutation, type DcfMutationRequest } from '../lib/dcfMutation';
 import { requireIndependentTargetSupport } from '../lib/budgetTargetPersistence';
 import { useLogAction } from '../hooks/useLogAction';
 import { usePagination, useSelection, useUserAccess } from './mainfunctions/TableHooks';
@@ -35,6 +36,7 @@ interface ActivitiesProps {
     ipos: IPO[];
     activities: Activity[];
     setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
+    replaceActivities?: (records: Activity[]) => void;
     upsertActivitiesLocally?: (records: Activity[]) => void;
     onTransferResolved?: (result: BudgetItemTransferResult) => void;
     onSelectIpo: (ipo: IPO) => void;
@@ -75,7 +77,7 @@ const getStatusBadge = (status: Activity['status']) => {
 }
 
 export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
-    ipos, activities, setActivities, upsertActivitiesLocally, onTransferResolved, onSelectIpo, onSelectActivity,
+    ipos, activities, setActivities, replaceActivities, upsertActivitiesLocally, onTransferResolved, onSelectIpo, onSelectActivity,
     onCreateActivity, uacsCodes, referenceActivities = [], forcedType,
     fundSources = [],
     externalFilters, onClearExternalFilters,
@@ -85,7 +87,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     const tableStoragePrefix = `activities_${currentUser?.id || 'anonymous'}`;
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
-    const { getDeleteDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getDeleteDecision, ensureDecisionAllowed, getLastOverrideReason } = useDcfPolicyGuard();
 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<Activity | null>(null);
@@ -93,6 +95,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
     const [isCloning, setIsCloning] = useState(false);
     const cloneInFlight = useRef(false);
+    const deleteInFlight = useRef(false);
+    const workflowInFlight = useRef(new Set<number>());
+    const mutationRequests = useRef(new Map<string, DcfMutationRequest>());
+    const requestFor = (key: string) => {
+        if (!mutationRequests.current.has(key)) mutationRequests.current.set(key, {});
+        return mutationRequests.current.get(key)!;
+    };
+    const cloneAttempts = useRef(new Map<number, { payload: Omit<Activity, 'id'>; request: DcfMutationRequest; confirmed?: Activity }>());
+    const cloneBatchId = useRef<string | undefined>(undefined);
 
     // Shared Hooks
     const { canEdit, canViewAll } = useUserAccess('Activities');
@@ -338,6 +349,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
 
     // ... (Deletion, Cloning, formatDate handlers remain the same)
     const confirmMultiDelete = async () => {
+        if (deleteInFlight.current) return;
+        deleteInFlight.current = true;
+        try {
         if (selectedIds.length > 0) {
             const itemsToDelete = activities.filter(a => selectedIds.includes(a.id));
             const deletableItems = itemsToDelete.filter(item => canDeleteActivityByPolicy(item).allowed);
@@ -347,38 +361,35 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                 resetSelection();
                 return;
             }
-            const deletableIds = deletableItems.map(item => item.id);
-            const deletedItems = deletableItems.map(getActivityDisplayTitle).join(', ');
-            logAction('Deleted Activities', `Bulk deleted ${deletableItems.length} items: ${deletedItems}${skippedCount ? ` (${skippedCount} skipped by policy)` : ''}`);
 
             if (supabase) {
                 try {
-                    // Archive each item
-                    const archivePayload = deletableItems.map(item => ({
-                        entity_type: 'activity',
-                        original_id: item.id,
-                        data: item,
-                        deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
-                        deleted_at: new Date().toISOString()
-                    }));
-
-                    const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
-                    if (archiveError) throw archiveError;
-
-                    const { error: deleteError } = await supabase.from('activities').delete().in('id', deletableIds);
-                    if (deleteError) throw deleteError;
-
-                    setActivities(prev => prev.filter(a => !deletableIds.includes(a.id)));
+                    if (!currentUser || !replaceActivities) throw new Error('Local synchronization is unavailable. Reload before deleting.');
+                    const deletedIds = new Set<number>();
+                    const correlationId = deletableItems.map(item => requestFor(`delete:${item.id}`).correlationId).find(Boolean) || crypto.randomUUID();
+                    deletableItems.forEach(item => { requestFor(`delete:${item.id}`).correlationId ||= correlationId; });
+                    try {
+                        for (const item of deletableItems) {
+                            if (!(await ensureDecisionAllowed(canDeleteActivityByPolicy(item), { moduleKey: 'activities', item, itemId: item.id, itemName: item.name, status: item.status, action: 'delete', entityType: 'activity' }))) continue;
+                            await deleteDcfRecord({ entityType: 'activities', parentId: item.id, base: item, actor: currentUser,
+                                source: 'activities-bulk-delete', reason: getLastOverrideReason?.() || '', request: requestFor(`delete:${item.id}`) });
+                            deletedIds.add(item.id);
+                            mutationRequests.current.delete(`delete:${item.id}`);
+                        }
+                    } finally {
+                        if (deletedIds.size) replaceActivities(activities.filter(item => !deletedIds.has(item.id)));
+                    }
                 } catch (error: any) {
                     console.error("Error archiving/deleting:", error);
                     alert("Failed to delete selected items: " + error.message);
                 }
             } else {
-                setActivities(prev => prev.filter(a => !deletableIds.includes(a.id)));
+                setActivities(prev => prev.filter(a => !deletableItems.some(item => item.id === a.id)));
             }
             if (skippedCount) alert(`${skippedCount} selected activit${skippedCount === 1 ? 'y was' : 'ies were'} skipped by DCF editing policy.`);
         }
         resetSelection();
+        } finally { deleteInFlight.current = false; }
     };
 
     const handleClone = async () => {
@@ -395,13 +406,26 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                 encodedBy: currentUser.fullName || 'System Clone',
                 requiresApprover: !!currentUser.requires_approver,
             };
-            const newActivitiesPayload = itemsToClone.map(item => buildActivityClonePayload(item, context));
+            const newActivitiesPayload = itemsToClone.map(item => {
+                cloneBatchId.current ||= crypto.randomUUID();
+                if (!cloneAttempts.current.has(item.id)) cloneAttempts.current.set(item.id, { payload: buildActivityClonePayload(item, context), request: { correlationId: cloneBatchId.current } });
+                return cloneAttempts.current.get(item.id)!.payload;
+            });
             if (supabase) {
                 await requireIndependentTargetSupport(newActivitiesPayload.flatMap(item => item.expenses || []));
-                const { data, error } = await supabase.from('activities').insert(newActivitiesPayload).select();
-                if (error) throw error;
-                if (!data?.length) throw new Error('No created records were returned. Refresh before retrying.');
-                upsertActivitiesLocally!(data as Activity[]);
+                const data: Activity[] = [];
+                for (const item of itemsToClone) {
+                    const attempt = cloneAttempts.current.get(item.id)!;
+                    if (!attempt.confirmed) {
+                        const result = await persistDcfMutation<Activity>({ entityType: 'activities', base: { cloneSourceId: item.id }, changes: dcfChangedFields({}, attempt.payload), actor: currentUser,
+                            source: 'activities-clone', request: attempt.request });
+                        attempt.confirmed = result.record as Activity;
+                    }
+                    upsertActivitiesLocally!([attempt.confirmed]);
+                    data.push(attempt.confirmed);
+                }
+                cloneAttempts.current.clear();
+                cloneBatchId.current = undefined;
                 resetSelection();
                 alert(`Successfully cloned ${data.length} activities.`);
             } else {
@@ -442,6 +466,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     };
 
     const confirmDelete = async () => {
+        if (deleteInFlight.current) return;
+        deleteInFlight.current = true;
+        try {
         if (itemToDelete) {
             const allowed = await ensureDecisionAllowed(canDeleteActivityByPolicy(itemToDelete), {
                 moduleKey: 'activities',
@@ -453,33 +480,16 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                 entityType: 'activity',
             });
             if (!allowed) return;
-            logAction(`Deleted ${itemToDelete.type}`, itemToDelete.name, itemToDelete.participatingIpos.join(', '), itemToDelete.type, String(itemToDelete.id));
-
-             for (const ipoName of itemToDelete.participatingIpos) {
-                const ipo = ipos.find(i => i.name === ipoName);
-                if (ipo) {
-                    await addIpoHistory(ipo.id, `${itemToDelete.type} Deleted: ${itemToDelete.name}`);
-                }
-            }
-
             if (supabase) {
                 try {
-                    const { error: archiveError } = await supabase.from('trash_bin').insert([{
-                        entity_type: 'activity',
-                        original_id: itemToDelete.id,
-                        data: itemToDelete,
-                        deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
-                        deleted_at: new Date().toISOString()
-                    }]);
-                    if (archiveError) throw archiveError;
-
-                    const { error: deleteError } = await supabase.from('activities').delete().eq('id', itemToDelete.id);
-                    if (deleteError) throw deleteError;
-
-                    setActivities(prev => prev.filter(p => p.id !== itemToDelete.id));
+                    if (!currentUser || !replaceActivities) throw new Error('Local synchronization is unavailable. Reload before deleting.');
+                    await deleteDcfRecord({ entityType: 'activities', parentId: itemToDelete.id, base: itemToDelete, actor: currentUser,
+                        source: 'activities-delete', reason: getLastOverrideReason?.() || '', request: requestFor(`delete:${itemToDelete.id}`) });
+                    replaceActivities(activities.filter(item => item.id !== itemToDelete.id));
                 } catch (error: any) {
                     console.error("Error archiving/deleting activity:", error);
                     alert("Failed to delete activity: " + error.message);
+                    return;
                 }
             } else {
                 setActivities(prev => prev.filter(p => p.id !== itemToDelete.id));
@@ -487,6 +497,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             setIsDeleteModalOpen(false);
             setItemToDelete(null);
         }
+        } finally { deleteInFlight.current = false; }
     };
 
     const formatDate = (dateString?: string) => {
@@ -511,7 +522,11 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
 
     const handleApprove = async (id: number, e: React.MouseEvent) => {
         e.stopPropagation();
+        if (workflowInFlight.current.has(id)) return;
+        workflowInFlight.current.add(id);
+        try {
         if (!window.confirm('Are you sure you want to approve this activity?')) return;
+        if (supabase && !upsertActivitiesLocally) throw new Error('Local synchronization is unavailable. Reload before approving.');
 
         const transferDestination = activities.find(item => item.id === id);
         if (transferDestination?.budgetItemTransferId) {
@@ -532,21 +547,25 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         }
 
         if (supabase) {
-            const { error } = await supabase.from('activities').update({ workflow_status: 'APPROVED' }).eq('id', id);
-            if (error) {
-                alert('Failed to approve: ' + error.message);
-            } else {
-                setActivities(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
-            }
+            if (!currentUser || !transferDestination) throw new Error('The current activity or signed-in user is unavailable.');
+            const result = await persistDcfMutation({ entityType: 'activities', parentId: id, base: transferDestination,
+                changes: { workflow_status: 'APPROVED' }, actor: currentUser, source: 'activities-approve', request: requestFor(`approve:${id}`) });
+            upsertActivitiesLocally!([result.record as Activity]);
         } else {
             setActivities(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
         }
+        } catch (error) { alert(`Failed to approve: ${error instanceof Error ? error.message : 'Unknown error'}`); }
+        finally { workflowInFlight.current.delete(id); }
     };
 
     const handleReject = async (id: number, e: React.MouseEvent) => {
         e.stopPropagation();
+        if (workflowInFlight.current.has(id)) return;
+        workflowInFlight.current.add(id);
+        try {
         const reason = window.prompt('Please provide a reason for rejection:');
         if (reason === null) return;
+        if (supabase && !upsertActivitiesLocally) throw new Error('Local synchronization is unavailable. Reload before rejecting.');
 
         const transferDestination = activities.find(item => item.id === id);
         if (transferDestination?.budgetItemTransferId) {
@@ -571,18 +590,16 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         }
 
         if (supabase) {
-            const { error } = await supabase.from('activities').update({
-                workflow_status: 'REJECTED',
-                remarks: reason ? `REJECTED: ${reason}` : undefined
-            }).eq('id', id);
-            if (error) {
-                alert('Failed to reject: ' + error.message);
-            } else {
-                setActivities(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
-            }
+            if (!currentUser || !transferDestination) throw new Error('The current activity or signed-in user is unavailable.');
+            const result = await persistDcfMutation({ entityType: 'activities', parentId: id, base: transferDestination,
+                changes: { workflow_status: 'REJECTED' }, actor: currentUser,
+                source: 'activities-reject', reason, request: requestFor(`reject:${id}`) });
+            upsertActivitiesLocally!([result.record as Activity]);
         } else {
             setActivities(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
         }
+        } catch (error) { alert(`Failed to reject: ${error instanceof Error ? error.message : 'Unknown error'}`); }
+        finally { workflowInFlight.current.delete(id); }
     };
 
     const columnFilterFields = [

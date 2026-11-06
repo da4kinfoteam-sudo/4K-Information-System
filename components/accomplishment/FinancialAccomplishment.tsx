@@ -1,3 +1,4 @@
+import { hydrateProgramManagementState, readProgramManagementState, saveProgramManagementChange, type ProgramManagementState, type ProgramManagementRequest, type ProgramManagementEntity } from '../../lib/programManagementPersistence';
 import { isActivityExpenseActualEligible } from '../../lib/activitySupplementalBudget';
 import { isOriginalActivityBudgetLocked, isSupplementalExpense } from '../../lib/activitySupplementalBudget';
 import { BudgetTargetPlan, TargetPlanOwner, TARGET_PLAN_FIELDS, readTargetSchedules, targetScheduleTotal, validateTargetPlan } from '../../lib/budgetTargetSchedules';
@@ -27,10 +28,6 @@ import { DcfScopeFilterPanel, type DcfScopeFilterValue, useDcfScopeFilters } fro
 import { FinancialAmountCell, FinancialMonthCell, formatFinancialMonth, normalizeFinancialMonthValue } from './FinancialInlineEditors';
 import { FinancialActualsDialog } from './FinancialActualsDialog';
 import { getActualObligationValidationError, hasActualObligationRecords } from '../../lib/financialObligationUtils';
-import {
- replaceFinancialObligationRecords,
- type FinancialObligationEntityType,
-} from '../../lib/financialObligationSync';
 
 interface Props {
  subprojects: Subproject[];
@@ -41,10 +38,13 @@ interface Props {
  onActivitySaved?: (activity: Activity) => void;
  officeReqs: OfficeRequirement[];
  setOfficeReqs: React.Dispatch<React.SetStateAction<OfficeRequirement[]>>;
+ onOfficeSaved?: (item: OfficeRequirement, financial?: ProgramManagementState['financial']) => void;
  staffingReqs: StaffingRequirement[];
  setStaffingReqs: React.Dispatch<React.SetStateAction<StaffingRequirement[]>>;
+ onStaffingSaved?: (item: StaffingRequirement, financial?: ProgramManagementState['financial']) => void;
  otherProgramExpenses: OtherProgramExpense[];
  setOtherProgramExpenses: React.Dispatch<React.SetStateAction<OtherProgramExpense[]>>;
+ onOtherExpenseSaved?: (item: OtherProgramExpense, financial?: ProgramManagementState['financial']) => void;
  budgetCeilings?: Array<{ operating_unit: string; year: number; amount: number }>;
  uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
  onSelectSubproject: (subproject: Subproject) => void;
@@ -247,9 +247,9 @@ const readLegacyFinancialScope = (): Partial<DcfScopeFilterValue> => {
 const FinancialAccomplishment: React.FC<Props> = ({
  subprojects, onSubprojectSaved,
  activities, onActivitySaved,
- officeReqs, setOfficeReqs,
- staffingReqs, setStaffingReqs,
- otherProgramExpenses, setOtherProgramExpenses,
+ officeReqs, setOfficeReqs, onOfficeSaved,
+ staffingReqs, setStaffingReqs, onStaffingSaved,
+ otherProgramExpenses, setOtherProgramExpenses, onOtherExpenseSaved,
  budgetCeilings = [],
  uacsCodes,
  onSelectSubproject, onSelectActivity,
@@ -295,6 +295,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
  actualsDialogRef.current = actualsDialog;
  itemsRef.current = items;
  const skipNextFinancialReloadRef = useRef(false);
+ const programManagementBaselines = useRef(new Map<string, ProgramManagementState>());
+ const programManagementRequests = useRef(new Map<string, ProgramManagementRequest>());
  const activityBaselines = useRef(new Map<string, ActivityAccomplishmentSnapshot>());
  const activityRequests = useRef(new Map<string, ActivityAccomplishmentRequest>());
  const subprojectBaselines = useRef(new Map<string, SubprojectAccomplishmentSnapshot>());
@@ -466,49 +468,17 @@ const FinancialAccomplishment: React.FC<Props> = ({
  const uniqueIds = (values: unknown[]) =>
  Array.from(new Set(values.map(Number).filter(Number.isFinite)));
 
- const financialGroups = [
- { entityType: 'office_requirement', ids: uniqueIds(filteredOfficeReqs.map(item => item.id)) },
- { entityType: 'staffing_expense', ids: uniqueIds(filteredStaffingReqs.map(item => item.id)) },
- { entityType: 'other_program_expense', ids: uniqueIds(filteredOtherProgramExpenses.map(item => item.id)) },
- ];
-
- const fetchFinancialRows = async (
- tableName: 'financial_obligations' | 'financial_disbursements',
- groups: Array<{ entityType: string; ids: number[] }>
- ) => {
- if (!supabase) return [];
- const chunkSize = 100;
- const queries = groups.flatMap(group => {
- const chunks: number[][] = [];
- for (let index = 0; index < group.ids.length; index += chunkSize) {
- chunks.push(group.ids.slice(index, index + chunkSize));
+ const pmSnapshots: Array<{ entityType: ProgramManagementEntity; state: ProgramManagementState }> = [];
+ for (const [entityType, records] of [['office_requirements', filteredOfficeReqs], ['staffing_requirements', filteredStaffingReqs], ['other_program_expenses', filteredOtherProgramExpenses]] as const) {
+   for (const record of records) pmSnapshots.push({ entityType, state: await readProgramManagementState({ entityType, parentId: record.id, currentUser }) });
  }
- return chunks.map(chunk =>
- supabase
- .from(tableName)
- .select('*')
- .eq('entity_type', group.entityType)
- .in('parent_id', chunk)
- );
- });
-
- if (queries.length === 0) return [];
- const responses = await Promise.all(queries);
- const error = responses.find(response => response.error)?.error;
- if (error) throw error;
- return responses.flatMap(response => response.data || []);
- };
-
- const [obliRes, disbRes, activitySnapshots, subprojectSnapshots] = await Promise.all([
- fetchFinancialRows('financial_obligations', financialGroups),
- fetchFinancialRows('financial_disbursements', financialGroups),
+ const [activitySnapshots, subprojectSnapshots] = await Promise.all([
  readActivityAccomplishments(uniqueIds(filteredActivities.map(item => item.id)), currentUser, 'financial'),
  readSubprojectAccomplishments(uniqueIds(filteredSubprojects.map(item => item.id)), currentUser, 'financial'),
  ]);
  if (cancelled) return;
-
- const centralizedObligations = obliRes || [];
- const centralizedDisbursements = disbRes || [];
+ const centralizedObligations = pmSnapshots.flatMap(row => row.state.financial.obligations);
+ const centralizedDisbursements = pmSnapshots.flatMap(row => row.state.financial.disbursements);
 
  // Helper to get obligations for a specific item
  const matchesCentralItemId = (sourceType: string, rowItemId: string | number | null | undefined, detailId?: number) => {
@@ -800,13 +770,6 @@ const FinancialAccomplishment: React.FC<Props> = ({
  });
  });
 
- if (staffingNormalizationUpdates.length > 0) {
- setStaffingReqs(prev => prev.map(req => {
- const update = staffingNormalizationUpdates.find(item => item.id === req.id);
- return update ? { ...req, expenses: update.expenses } : req;
- }));
- }
-
  if (cancelled) return;
  const snapshotsById = new Map(activitySnapshots.map(snapshot => [snapshot.activity.id, snapshot]));
  const subprojectSnapshotsById = new Map(subprojectSnapshots.map(snapshot => [snapshot.subproject.id, snapshot]));
@@ -817,9 +780,26 @@ const FinancialAccomplishment: React.FC<Props> = ({
    (pending.has(item.uniqueId) || actualsDialogRef.current?.itemId === item.uniqueId || targetDialogRef.current === item.uniqueId) && oldSubprojectBaselines.has(item.uniqueId) ? oldSubprojectBaselines.get(item.uniqueId)! : subprojectSnapshotsById.get(item.sourceId)!]));
  activityBaselines.current = new Map(loadedItems.filter(item => item.sourceType === 'Activity').map(item => [item.uniqueId,
    (pending.has(item.uniqueId) || targetDialogRef.current === item.uniqueId) && oldBaselines.has(item.uniqueId) ? oldBaselines.get(item.uniqueId)! : snapshotsById.get(item.sourceId)!]));
+ const oldPmBaselines = programManagementBaselines.current;
+ programManagementBaselines.current = new Map(loadedItems.filter(row => !['Activity', 'Subproject'].includes(row.sourceType)).map(row => {
+   const entityType = row.sourceType === 'Office' ? 'office_requirements' : row.sourceType === 'Staffing' ? 'staffing_requirements' : 'other_program_expenses';
+   const loaded = pmSnapshots.find(snapshot => snapshot.entityType === entityType && Number(snapshot.state.record.id) === Number(row.sourceId))?.state;
+   if (!loaded) throw new Error('An authoritative financial baseline is missing.');
+   const pinned = pending.has(row.uniqueId) || actualsDialogRef.current?.itemId === row.uniqueId || targetDialogRef.current === row.uniqueId;
+   return [row.uniqueId, pinned && oldPmBaselines.has(row.uniqueId) ? oldPmBaselines.get(row.uniqueId)! : loaded];
+ }));
+ loadedItems.forEach((row, index) => {
+   const snapshot = programManagementBaselines.current.get(row.uniqueId);
+   if (!snapshot) return;
+   const entityType = row.sourceType === 'Office' ? 'office_requirements' : row.sourceType === 'Staffing' ? 'staffing_requirements' : 'other_program_expenses';
+   const parent = hydrateProgramManagementState(snapshot, entityType);
+   const line = row.sourceType === 'Staffing' && row.detailId != null ? parent.expenses?.find(expense => String(expense.id) === String(row.detailId)) : parent;
+   if (!line) throw new Error('The financial item identity is unavailable.');
+   loadedItems[index] = mergeActualRecords(mergeActualRecords(row, 'obligation', line.obligations || []), 'disbursement', line.disbursements || []);
+ });
  const oldOriginals = new Map(originalItemsRef.current.map(item => [item.uniqueId, item]));
- setItems(loadedItems.map(item => targetDialogRef.current === item.uniqueId || (item.sourceType === 'Subproject' && actualsDialogRef.current?.itemId === item.uniqueId) ? itemsRef.current.find(old => old.uniqueId === item.uniqueId) || item : ['Activity', 'Subproject'].includes(item.sourceType) && pending.has(item.uniqueId) ? pending.get(item.uniqueId)! : item));
- setOriginalItems(loadedItems.map(item => (['Activity', 'Subproject'].includes(item.sourceType) && pending.has(item.uniqueId)) || targetDialogRef.current === item.uniqueId || (item.sourceType === 'Subproject' && actualsDialogRef.current?.itemId === item.uniqueId) ? oldOriginals.get(item.uniqueId) || item : item));
+ setItems(loadedItems.map(item => targetDialogRef.current === item.uniqueId || (actualsDialogRef.current?.itemId === item.uniqueId) ? itemsRef.current.find(old => old.uniqueId === item.uniqueId) || item : pending.has(item.uniqueId) ? pending.get(item.uniqueId)! : item));
+ setOriginalItems(loadedItems.map(item => (pending.has(item.uniqueId)) || targetDialogRef.current === item.uniqueId || (actualsDialogRef.current?.itemId === item.uniqueId) ? oldOriginals.get(item.uniqueId) || item : item));
  } catch (error) {
  console.error("Error loading data:", error);
  if (!cancelled) setLoadError('Financial data could not be loaded completely. Reload before editing.');
@@ -1191,74 +1171,6 @@ const FinancialAccomplishment: React.FC<Props> = ({
  }
  };
 
- const syncObligationsToCentralTable = async (item: FinancialItem) => {
- const entityType: FinancialObligationEntityType = item.sourceType === 'Subproject' ? 'subproject_detail' :
- item.sourceType === 'Activity' ? 'activity_expense' :
- item.sourceType === 'Staffing' ? 'staffing_expense' :
- item.sourceType === 'Office' ? 'office_requirement' : 'other_program_expense';
-
- const parentId = item.sourceId;
- const itemId = item.sourceType === 'Staffing'
- ? staffingExpenseItemId(item.detailId)
- : item.detailId?.toString() || null;
-
- await replaceFinancialObligationRecords({
- entityType,
- parentId,
- itemId,
- records: item.obligations || [],
- });
- };
-
- const syncDisbursementsToCentralTable = async (item: FinancialItem) => {
- if (!supabase) return;
-
- const entityType = item.sourceType === 'Subproject' ? 'subproject_detail' :
- item.sourceType === 'Activity' ? 'activity_expense' :
- item.sourceType === 'Staffing' ? 'staffing_expense' :
- item.sourceType === 'Office' ? 'office_requirement' : 'other_program_expense';
-
- const parentId = item.sourceId;
- const itemId = item.sourceType === 'Staffing'
- ? staffingExpenseItemId(item.detailId)
- : item.detailId?.toString() || null;
-
- let deleteQuery = supabase.from('financial_disbursements')
- .delete()
- .eq('entity_type', entityType)
- .eq('parent_id', parentId);
-
- if (itemId === null) {
- deleteQuery = deleteQuery.is('item_id', null);
- } else {
- deleteQuery = deleteQuery.eq('item_id', itemId);
- }
-
- const { error: deleteError } = await deleteQuery;
-
- if (deleteError) {
- console.error("Error deleting old disbursements:", deleteError);
- throw deleteError;
- }
-
- if (!item.disbursements || item.disbursements.length === 0) return;
-
- const payload = item.disbursements.map(d => ({
- entity_type: entityType,
- parent_id: parentId,
- item_id: itemId,
- disbursement_date: d.date,
- amount: toFiniteNumber(d.amount),
- remarks: d.remarks || ''
- }));
-
- const { error: insertError } = await supabase.from('financial_disbursements').insert(payload);
- if (insertError) {
- console.error("Error inserting disbursements:", insertError);
- throw insertError;
- }
- };
-
  const saveItemToDB = async (
  item: FinancialItem,
  options: { includeTargets?: boolean; sync?: 'both' | 'obligation' | 'disbursement'; removedIds?: string[] } = {}
@@ -1370,165 +1282,52 @@ const FinancialAccomplishment: React.FC<Props> = ({
    onSubprojectSaved(saved, confirmed);
    return confirmedItem;
  }
- const submittedAt = new Date().toISOString();
- let commitSourceState = () => {};
- if (item.sourceType === 'Staffing') {
- const s = staffingReqs.find(req => req.id === item.sourceId);
- if (!s) throw new Error("Staffing Requirement not found");
-
- let payload: any = {};
- let updatedExpenses = normalizeStaffingExpenses(s.expenses || []);
-
- if (staffingExpenseItemId(item.detailId)) {
- updatedExpenses = updatedExpenses.map(e => {
- if (e.id === item.detailId) {
- const disbursementSummary = summarizeDisbursements(item.disbursements || [], item.fundYear);
- const updatedExpense: any = {
- ...e,
- actualObligationDate: item.actualObligationMonth,
- actualObligationAmount: item.actualObligationAmount,
- actualDisbursementDate: disbursementSummary.latestDate || item.actualDisbursementMonth,
- actualDisbursementAmount: disbursementSummary.total,
- obligations: item.obligations || [],
- disbursements: item.disbursements || []
- };
- SHORT_MONTHS.forEach(m => {
- updatedExpense[`actualDisbursement${m}`] = disbursementSummary.monthlyFields[`actualDisbursement${m}`];
+ const entityType = item.sourceType === 'Office' ? 'office_requirements' : item.sourceType === 'Staffing' ? 'staffing_requirements' : 'other_program_expenses';
+ const base = programManagementBaselines.current.get(item.uniqueId);
+ if (!base) throw new Error('Existing financial state is unavailable. Your draft was not saved.');
+ const original = hydrateProgramManagementState(base, entityType);
+ const draft = structuredClone(original);
+ const line = item.sourceType === 'Staffing' && item.detailId != null ? draft.expenses?.find(row => String(row.id) === String(item.detailId)) : draft;
+ if (!line) throw new Error('The financial item is no longer available.');
+ if (sync === 'both' || sync === 'obligation') line.obligations = item.obligations;
+ if (sync === 'both' || sync === 'disbursement') line.disbursements = item.disbursements;
+ const previous = originalItems.find(row => row.uniqueId === item.uniqueId);
+ if (includeTargets && item.status === 'Proposed' && previous) {
+   if (item.targetObligationMonth !== previous.targetObligationMonth) line.obligationDate = item.targetObligationMonth;
+   if (item.targetDisbursementMonth !== previous.targetDisbursementMonth && item.sourceType !== 'Staffing') line.disbursementDate = item.targetDisbursementMonth;
+   if (item.targetObligationAmount !== previous.targetObligationAmount) {
+     if (item.sourceType === 'Office') line.pricePerUnit = item.targetObligationAmount / (Number(line.numberOfUnits) || 1);
+     else if (item.sourceType === 'Staffing' && item.detailId == null) line.annualSalary = item.targetObligationAmount;
+     else line.amount = item.targetObligationAmount;
+   }
+ }
+ const request = programManagementRequests.current.get(item.uniqueId) || {};
+ programManagementRequests.current.set(item.uniqueId, request);
+ const confirmed = await saveProgramManagementChange({ entityType, base, original, proposed: draft, financial: true,
+   onlyItem: item.sourceType === 'Staffing' && item.detailId != null ? String(item.detailId) : null,
+   onlyStage: sync === 'both' ? undefined : sync, removedIds: sync === 'both' ? [] : options.removedIds || [],
+   currentUser, source: 'financial-accomplishment', request, reason: getLastOverrideReason?.() || '',
  });
- // Update targets if Proposed
- if (includeTargets && item.status === 'Proposed') {
- updatedExpense.obligationDate = item.targetObligationMonth;
- updatedExpense.amount = item.targetObligationAmount;
+ const saved = hydrateProgramManagementState(confirmed, entityType);
+ const savedLine = item.sourceType === 'Staffing' && item.detailId != null ? saved.expenses?.find(row => String(row.id) === String(item.detailId)) : saved;
+ if (!savedLine) throw new Error('The confirmed financial item is unavailable. Reopen before retrying.');
+ const confirmedItem = mergeActualRecords(mergeActualRecords(item, 'obligation', savedLine.obligations || []), 'disbursement', savedLine.disbursements || []);
+ // A different open stage retains its own baseline and draft.
+ if (sync === 'both') programManagementBaselines.current.set(item.uniqueId, confirmed);
+ else {
+   const key = item.sourceType === 'Staffing' && item.detailId != null ? String(item.detailId) : Object.keys(base.financial.stages).find(key => ['null', '', '$parent'].includes(key));
+   if (key == null) throw new Error('The financial stage identity is unavailable.');
+   programManagementBaselines.current.set(item.uniqueId, { ...base, record: includeTargets ? confirmed.record : base.record,
+     financial: { ...base.financial, stages: { ...base.financial.stages, [key]: { ...base.financial.stages[key], [sync]: confirmed.financial.stages[key][sync] } } } });
  }
- return updatedExpense;
- }
- return e;
- });
-
- // Aggregate totals for the root
- let totalActualObli = 0;
- let totalActualDisb = 0;
- const monthlyTotals: any = {};
- SHORT_MONTHS.forEach(m => monthlyTotals[`actualDisbursement${m}`] = 0);
-
- updatedExpenses.forEach(e => {
- totalActualObli += toFiniteNumber(e.actualObligationAmount);
- totalActualDisb += toFiniteNumber(e.actualDisbursementAmount);
- SHORT_MONTHS.forEach(m => {
- monthlyTotals[`actualDisbursement${m}`] += toFiniteNumber((e as any)[`actualDisbursement${m}`]);
- });
- });
-
- payload = {
- expenses: updatedExpenses,
- actualObligationAmount: totalActualObli,
- actualDisbursementAmount: totalActualDisb,
- actualObligationDate: item.actualObligationMonth || s.actualObligationDate,
- actualDisbursementDate: item.actualDisbursementMonth || s.actualDisbursementDate,
- ...monthlyTotals
- };
-
- if (includeTargets && item.status === 'Proposed') {
- payload.obligationDate = item.targetObligationMonth;
- payload.annualSalary = item.targetObligationAmount;
- }
-
- } else {
- const disbursementSummary = summarizeDisbursements(item.disbursements || [], item.fundYear);
- payload = {
- actualObligationDate: item.actualObligationMonth,
- actualObligationAmount: item.actualObligationAmount,
- actualDisbursementDate: disbursementSummary.latestDate || item.actualDisbursementMonth,
- actualDisbursementAmount: disbursementSummary.total
- };
- SHORT_MONTHS.forEach(m => {
- payload[`actualDisbursement${m}`] = disbursementSummary.monthlyFields[`actualDisbursement${m}`];
- });
- if (includeTargets && item.status === 'Proposed') {
- payload.obligationDate = item.targetObligationMonth;
- payload.annualSalary = item.targetObligationAmount;
- }
- }
-
- const actualDateBasis = getProgramManagementPhysicalDateBasis(payload);
- const previousActualDateBasis = getProgramManagementPhysicalDateBasis(s);
- payload.physical_accomplishment_submitted_at = resolvePhysicalAccomplishmentSubmittedAt({
- hasPhysicalAccomplishment: !!actualDateBasis,
- hasChanged: valuesDiffer(previousActualDateBasis, actualDateBasis),
- previousSubmittedAt: s.physical_accomplishment_submitted_at,
- submittedAt
- });
-
- if (supabase) {
- const { error: updateError } = await supabase.from('staffing_requirements').update(payload).eq('id', item.sourceId);
- if (updateError) throw updateError;
- }
- commitSourceState = () => setStaffingReqs(prev => prev.map(req => req.id === item.sourceId ? { ...req, ...payload } : req));
-
- } else if (item.sourceType === 'Other') {
- const disbursementSummary = summarizeDisbursements(item.disbursements || [], item.fundYear);
- const payload: any = {
- actualObligationDate: item.actualObligationMonth,
- actualObligationAmount: item.actualObligationAmount,
- actualDisbursementDate: disbursementSummary.latestDate || item.actualDisbursementMonth,
- actualDisbursementAmount: disbursementSummary.total
- };
-
- SHORT_MONTHS.forEach(m => {
- payload[`actualDisbursement${m}`] = disbursementSummary.monthlyFields[`actualDisbursement${m}`];
- });
-
- if (includeTargets && item.status === 'Proposed') {
- payload.obligationDate = item.targetObligationMonth;
- payload.disbursementDate = item.targetDisbursementMonth;
- payload.amount = item.targetObligationAmount;
- }
-
- if (supabase) {
- const { error: updateError } = await supabase.from('other_program_expenses').update(payload).eq('id', item.sourceId);
- if (updateError) throw updateError;
- }
- commitSourceState = () => setOtherProgramExpenses(prev => prev.map(o => o.id === item.sourceId ? {
- ...o,
- ...payload,
- obligations: item.obligations || [],
- disbursements: item.disbursements || [],
- } : o));
- } else if (item.sourceType === 'Office') {
- const payload: any = {
- actualObligationDate: item.actualObligationMonth,
- actualObligationAmount: item.actualObligationAmount,
- actualDisbursementDate: item.actualDisbursementMonth,
- actualDisbursementAmount: item.actualDisbursementAmount,
- obligations: item.obligations,
- disbursements: item.disbursements
- };
- if (includeTargets && item.status === 'Proposed') {
- payload.obligationDate = item.targetObligationMonth;
- payload.disbursementDate = item.targetDisbursementMonth;
- payload.pricePerUnit = item.targetObligationAmount;
- payload.numberOfUnits = 1;
- }
- const o = officeReqs.find(req => req.id === item.sourceId);
- const actualDateBasis = getProgramManagementPhysicalDateBasis(payload);
- const previousActualDateBasis = getProgramManagementPhysicalDateBasis(o || {});
- payload.physical_accomplishment_submitted_at = resolvePhysicalAccomplishmentSubmittedAt({
- hasPhysicalAccomplishment: !!actualDateBasis,
- hasChanged: valuesDiffer(previousActualDateBasis, actualDateBasis),
- previousSubmittedAt: o?.physical_accomplishment_submitted_at,
- submittedAt
- });
- if (supabase) {
- const { error: updateError } = await supabase.from('office_requirements').update(payload).eq('id', item.sourceId);
- if (updateError) throw updateError;
- }
- commitSourceState = () => setOfficeReqs(prev => prev.map(o => o.id === item.sourceId ? { ...o, ...payload } : o));
- }
-
- // Sync with centralized obligations table
- if (sync === 'both' || sync === 'obligation') await syncObligationsToCentralTable(item);
- if (sync === 'both' || sync === 'disbursement') await syncDisbursementsToCentralTable(item);
- commitSourceState();
+ setItems(rows => rows.map(row => row.uniqueId === item.uniqueId ? sync === 'both' ? confirmedItem : mergeActualRecords(row, sync, savedLine[sync === 'obligation' ? 'obligations' : 'disbursements'] || []) : row));
+ setOriginalItems(rows => rows.map(row => row.uniqueId === item.uniqueId ? sync === 'both' ? confirmedItem : mergeActualRecords(row, sync, savedLine[sync === 'obligation' ? 'obligations' : 'disbursements'] || []) : row));
+ skipNextFinancialReloadRef.current = true;
+ if (item.sourceType === 'Office' && onOfficeSaved) onOfficeSaved(saved, confirmed.financial);
+ else if (item.sourceType === 'Staffing' && onStaffingSaved) onStaffingSaved(saved, confirmed.financial);
+ else if (item.sourceType === 'Other' && onOtherExpenseSaved) onOtherExpenseSaved(saved, confirmed.financial);
+ else throw new Error('The record was saved, but local-only reconciliation is unavailable. Reopen the record; do not submit again.');
+ return confirmedItem;
  };
 
  const undoLocalItem = (uniqueId: string) => {
