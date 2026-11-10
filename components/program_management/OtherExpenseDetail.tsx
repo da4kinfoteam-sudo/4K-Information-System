@@ -1,4 +1,6 @@
 import { DcfRevisionHistory } from '../shared/DcfRevisionHistory';
+import { FundYearField } from '../ui/FundYearField';
+import { validateDcfForm } from '../../lib/dcfFormDrafts';
 // Author: 4K
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
@@ -248,6 +250,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!(await validateDcfForm(e.currentTarget))) return;
         if (saveInFlight.current) return;
         saveInFlight.current = true;
         try { await submitForm(e); } finally { saveInFlight.current = false; }
@@ -310,7 +313,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
 
         const updatedItem: any = {
             ...formData,
-            fundYear: Number(formData.fundYear),
+            fundYear: formData.fundYear ? Number(formData.fundYear) : formData.fundYear,
             amount: Number(formData.amount),
             obligatedAmount: Number(formData.amount), // Sync obligatedAmount with amount
             actualAmount: Number(formData.actualAmount),
@@ -406,8 +409,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
                             <div className="space-y-6">
                                 <div className="form-grid">
                                     <div>
-                                        <label className="form-label">Fund Year <span className="form-required">*</span></label>
-                                        <input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} />
+                                        <FundYearField key={item.id} name="fundYear" value={formData.fundYear} className={getInputClasses('fundYear')} onChange={year => setFormData(previous => ({ ...previous, fundYear: year }))} />
                                     </div>
                                     <div>
                                         <label className="form-label">Fund Type <span className="form-required">*</span></label>
@@ -495,7 +497,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, uacsCodes
                                     <div>
                                         <label className="form-label">Obligation Date <span className="form-required">*</span></label>
                                         <MonthYearPicker
-                                            value={formData.obligationDate}
+                                            value={formData.obligationDate} defaultYear={formData.fundYear}
                                             onChange={(val) => {
                                                 setFormData(prev => ({...prev, obligationDate: val}));
                                                 if (validationErrors.includes('obligationDate')) {

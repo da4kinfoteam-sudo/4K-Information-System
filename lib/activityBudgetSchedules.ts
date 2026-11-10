@@ -1,4 +1,5 @@
 import type { ActivityExpense } from '../constants';
+import { shiftFundYearDate } from './fundYear';
 import { isValidTargetMonth } from './subprojectBudgetSchedules';
 import { cloneTargetPlan, hasStructuredTargets, rescheduleTargetPlan, validateTargetPlan } from './budgetTargetSchedules';
 
@@ -37,7 +38,7 @@ export function remapActivityExpenseGroups(items: ActivityExpense[]) {
     });
 }
 
-export function rescheduleActivityTargets(items: ActivityExpense[], year: number) {
-    const change = (date: string) => isValidTargetMonth(date) ? `${year}-${date.slice(5, 7)}-01` : date;
-    return items.map(row => ({ ...rescheduleTargetPlan(row, year), obligationMonth: change(row.obligationMonth), disbursementMonth: change(row.disbursementMonth) }));
+export function rescheduleActivityTargets(items: ActivityExpense[], year: number, previousYear?: number) {
+    const change = (date: string) => isValidTargetMonth(date) ? shiftFundYearDate(date, year, previousYear) : date;
+    return items.map(row => ({ ...rescheduleTargetPlan(row, year, previousYear), obligationMonth: change(row.obligationMonth), disbursementMonth: change(row.disbursementMonth) }));
 }

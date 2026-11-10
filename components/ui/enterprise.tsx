@@ -309,6 +309,8 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({
 };
 
 interface ConfirmDialogProps {
+    secondaryAction?: { label: string; compactLabel?: string; onClick: () => void };
+    compactConfirmLabel?: string;
     title: React.ReactNode;
     description: React.ReactNode;
     confirmLabel?: React.ReactNode;
@@ -319,6 +321,8 @@ interface ConfirmDialogProps {
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+    secondaryAction,
+    compactConfirmLabel,
     title,
     description,
     confirmLabel = 'Confirm',
@@ -382,7 +386,12 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 </div>
                 <footer className="modal-card__footer confirm-dialog__actions">
                     <button ref={cancelRef} type="button" className="btn btn-secondary" onClick={onCancel}>{cancelLabel}</button>
-                    <button type="button" className={cn('btn', tone === 'danger' ? 'btn-danger' : 'btn-primary')} onClick={onConfirm}>{confirmLabel}</button>
+                    {secondaryAction && <button type="button" className="btn btn-secondary" onClick={secondaryAction.onClick} aria-label={secondaryAction.compactLabel ? secondaryAction.label : undefined} title={secondaryAction.compactLabel ? secondaryAction.label : undefined}>
+                        {secondaryAction.compactLabel ? <><span className="confirm-dialog__label-full">{secondaryAction.label}</span><span className="confirm-dialog__label-compact" aria-hidden="true">{secondaryAction.compactLabel}</span></> : secondaryAction.label}
+                    </button>}
+                    <button type="button" className={cn('btn', tone === 'danger' ? 'btn-danger' : 'btn-primary')} onClick={onConfirm} aria-label={compactConfirmLabel && typeof confirmLabel === 'string' ? confirmLabel : undefined} title={compactConfirmLabel && typeof confirmLabel === 'string' ? confirmLabel : undefined}>
+                        {compactConfirmLabel ? <><span className="confirm-dialog__label-full">{confirmLabel}</span><span className="confirm-dialog__label-compact" aria-hidden="true">{compactConfirmLabel}</span></> : confirmLabel}
+                    </button>
                 </footer>
             </section>
         </div>

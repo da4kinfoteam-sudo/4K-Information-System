@@ -1,3 +1,5 @@
+import { shiftFundYearDate } from './fundYear';
+
 export type TargetStage = 'obligation' | 'disbursement';
 
 export interface BudgetTargetEntry {
@@ -90,9 +92,9 @@ export function cloneTargetPlan<T extends BudgetTargetPlan>(line: T): T {
     };
 }
 
-export function rescheduleTargetPlan<T extends BudgetTargetPlan>(line: T, year: number): T {
+export function rescheduleTargetPlan<T extends BudgetTargetPlan>(line: T, year: number, previousYear?: number): T {
     if (!hasStructuredTargets(line)) return { ...line };
-    const change = (entries: BudgetTargetEntry[]) => entries.map(entry => ({ ...entry, month: `${year}-${entry.month.slice(5, 7)}-01` }));
+    const change = (entries: BudgetTargetEntry[]) => entries.map(entry => ({ ...entry, month: shiftFundYearDate(entry.month, year, previousYear) }));
     return { ...line, targetObligationSchedules: change(line.targetObligationSchedules!), targetDisbursementSchedules: change(line.targetDisbursementSchedules!) };
 }
 

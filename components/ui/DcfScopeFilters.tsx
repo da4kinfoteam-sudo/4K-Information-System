@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { filterYears, fundTypes, operatingUnits, tiers } from '../../constants';
+import { getFundYearOptions } from '../../lib/fundYear';
+import { fundTypes, operatingUnits, tiers } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import type { DataScope } from '../../lib/scopedDataFetch';
 
@@ -203,7 +204,7 @@ export const DcfScopeFilterPanel: React.FC<DcfScopeFilterPanelProps> = ({ idPref
                 <label htmlFor={`${idPrefix}-year-filter`} className="form-label">Fund Year</label>
                 <select id={`${idPrefix}-year-filter`} value={filters.selectedYear} onChange={(event) => filters.setSelectedYear(event.target.value)} className="form-control">
                     <option value="All">All Fund Years</option>
-                    {filterYears.map(year => <option key={year} value={year}>{year}</option>)}
+                    {getFundYearOptions(filters.selectedYear).map(year => <option key={year} value={year}>{year}</option>)}
                 </select>
             </div>
         </div>

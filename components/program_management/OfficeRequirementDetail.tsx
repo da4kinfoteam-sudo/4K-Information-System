@@ -1,4 +1,6 @@
 import { DcfRevisionHistory } from '../shared/DcfRevisionHistory';
+import { FundYearField } from '../ui/FundYearField';
+import { validateDcfForm } from '../../lib/dcfFormDrafts';
 
 // Author: 4K 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -245,9 +247,6 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                     setSelectedParticular(foundParticular);
                 }
             }
-        } else if (name === 'fundYear') {
-            const newYear = parseInt(value) || new Date().getFullYear();
-            setFormData(prev => ({ ...prev, [name]: newYear }));
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
@@ -260,6 +259,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!(await validateDcfForm(e.currentTarget))) return;
         if (saveInFlight.current) return;
         saveInFlight.current = true;
         try { await submitForm(e); } finally { saveInFlight.current = false; }
@@ -308,7 +308,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 { field: 'pricePerUnit', label: 'Price per Unit' }
             ];
 
-            const missingFields = requiredFields.filter(f => !formData[f.field as keyof OfficeRequirement]);
+            const missingFields = requiredFields.filter(f => !(f.field === 'fundYear' && !item.fundYear && !formData.fundYear) && !formData[f.field as keyof OfficeRequirement]);
             if (missingFields.length > 0) {
                 setValidationErrors(missingFields.map(f => f.field));
                 alert(`Please fill up the following required fields:\n- ${missingFields.map(f => f.label).join('\n- ')}`);
@@ -330,7 +330,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
             ...formData,
             numberOfUnits: Number(formData.numberOfUnits),
             pricePerUnit: Number(formData.pricePerUnit),
-            fundYear: Number(formData.fundYear),
+            fundYear: formData.fundYear ? Number(formData.fundYear) : formData.fundYear,
             actualAmount: Number(formData.actualAmount) || 0,
             actualObligationAmount: (formData.obligations && formData.obligations.length === 0) ? null : Number(formData.actualObligationAmount) || 0,
             actualObligationDate: nextActualObligationDate,
@@ -413,7 +413,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                             <legend className="form-legend">Funding & Classification</legend>
                             <div className="space-y-4">
                                 <div className="form-grid">
-                                    <div><label className="form-label">Fund Year <span className="form-required">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
+                                    <FundYearField key={item.id} name="fundYear" value={formData.fundYear} className={getInputClasses('fundYear')} onChange={year => setFormData(previous => ({ ...previous, fundYear: year }))} />
                                     <div><label className="form-label">Fund Type <span className="form-required">*</span></label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                     <div><label className="form-label">Tier <span className="form-required">*</span></label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                     <FundSourceField uid={formData.fundSourceUid} label={formData.fundSource} references={fundSources} onChange={(fundSourceUid, fundSource) => setFormData(previous => ({ ...previous, fundSourceUid, fundSource }))} />
@@ -464,7 +464,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                 <div>
                                     <label className="form-label">Physical Delivery Month <span className="form-required">*</span></label>
                                     <MonthYearPicker 
-                                        value={formData.physicalDeliveryDate}
+                                        value={formData.physicalDeliveryDate} defaultYear={formData.fundYear}
                                         onChange={(val) => {
                                             setFormData(prev => ({ ...prev, physicalDeliveryDate: val }));
                                             if (validationErrors.includes('physicalDeliveryDate')) {
@@ -477,7 +477,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                 <div>
                                     <label className="form-label">Target Obligation Month <span className="form-required">*</span></label>
                                     <MonthYearPicker 
-                                        value={formData.obligationDate}
+                                        value={formData.obligationDate} defaultYear={formData.fundYear}
                                         onChange={(val) => {
                                             setFormData(prev => ({ ...prev, obligationDate: val }));
                                             if (validationErrors.includes('obligationDate')) {
@@ -490,7 +490,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                 <div>
                                     <label className="form-label">Target Disbursement Month <span className="form-required">*</span></label>
                                     <MonthYearPicker 
-                                        value={formData.disbursementDate}
+                                        value={formData.disbursementDate} defaultYear={formData.fundYear}
                                         onChange={(val) => {
                                             setFormData(prev => ({ ...prev, disbursementDate: val }));
                                             if (validationErrors.includes('disbursementDate')) {
@@ -532,7 +532,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                 <div>
                                     <label className="form-label">Actual Date (Delivery)</label>
                                     <MonthYearPicker 
-                                        value={formData.actualDate}
+                                        value={formData.actualDate} defaultYear={formData.fundYear}
                                         onChange={async (val) => {
                                             if (val && !(await validateActualMonth(val))) return;
                                             setFormData(prev => ({ ...prev, actualDate: val }));
@@ -566,7 +566,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                 <div>
                                     <label className="form-label">Actual Disbursement Month</label>
                                     <MonthYearPicker 
-                                        value={formData.actualDisbursementDate}
+                                        value={formData.actualDisbursementDate} defaultYear={formData.fundYear}
                                         onChange={async (val) => {
                                             if (val && !(await validateActualMonth(val))) return;
                                             setFormData(prev => ({ ...prev, actualDisbursementDate: val }));

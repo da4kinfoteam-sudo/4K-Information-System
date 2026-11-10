@@ -16,6 +16,8 @@ const suites=[
  'activity-budget-schedule','activity-budget-ui','activity-ipo-links','activity-ipo-ui',
  'activity-repeating','activity-repeating-ui','activity-supplement','activity-supplement-sql','activity-supplement-ui','activity-title',
  'activity-funding-origin','activity-funding-origin-sql','activity-funding-origin-ui',
+ 'activity-funding-classification','activity-funding-classification-ui',
+ 'fund-year','fund-year-ui','fund-year-flows-ui',
  'subproject-accomplishment','subproject-accomplishment-sql','subproject-accomplishment-ui',
  'subproject-budget-schedule','subproject-budget-ui','subproject-budget-lifecycle',
  'independent-budget-target','independent-budget-target-sql','independent-budget-target-ui','independent-budget-target-excel','independent-budget-target-acf',
@@ -24,10 +26,13 @@ const suites=[
 ];
 const artifacts=await mkdtemp(path.join(tmpdir(),'4kis-dcf-final-suite-'));
 const previewSuites=new Set(['dcf-historical-presentation','dcf-revision-domain','dcf-revision-ui','dcf-revision-e2e','dcf-program-management','dcf-detail-ui']);
-const fundingSuites=new Set(['activity-funding-origin','activity-funding-origin-sql','activity-funding-origin-ui','activity-repeating','activity-repeating-ui',
+const fundingSuites=new Set(['activity-funding-classification','activity-funding-classification-ui','activity-funding-origin','activity-funding-origin-sql','activity-funding-origin-ui','activity-repeating','activity-repeating-ui',
  'activity-supplement','activity-supplement-sql','activity-supplement-ui','activity-accomplishment','activity-accomplishment-sql','activity-accomplishment-ui',
  'dcf-revision-safety','dcf-activity-subproject-integration','budget-item-transfer','independent-budget-target-excel','report-scope','report-scope-ui','dashboard-scope','dashboard-scope-ui']);
-const selectedSuites=process.argv.includes('--preview')?suites.filter(name=>previewSuites.has(name)):process.argv.includes('--funding-origin')?suites.filter(name=>fundingSuites.has(name)):suites;
+const fundYearSuites=new Set(['fund-year','fund-year-ui','fund-year-flows-ui','dcf-revision-safety','dcf-activity-subproject-integration','dcf-detail-ui','dcf-import','dcf-pm-list-ui',
+ 'activity-accomplishment-ui','subproject-accomplishment-ui','activity-repeating-ui','subproject-budget-ui','independent-budget-target-excel',
+ 'activity-funding-classification','activity-funding-classification-ui','report-scope-ui','dashboard-scope-ui']);
+const selectedSuites=process.argv.includes('--preview')?suites.filter(name=>previewSuites.has(name)):process.argv.includes('--funding-origin')?suites.filter(name=>fundingSuites.has(name)):process.argv.includes('--fund-year')?suites.filter(name=>fundYearSuites.has(name)):suites;
 async function sourceHashes(){
  const listing=spawnSync('git',['ls-files','-co','--exclude-standard','-z'],{encoding:'utf8',windowsHide:true});
  assert.equal(listing.status,0,listing.stderr);

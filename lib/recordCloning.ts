@@ -1,5 +1,5 @@
 import { remapActivityExpenseGroups } from './activityBudgetSchedules';
-import { isSupplementalExpense } from './activitySupplementalBudget';
+import { isSupplementalExpense, resolveActivityExpenseFunding } from './activitySupplementalBudget';
 import type { Activity, ActivityExpense, Subproject, SubprojectDetail } from '../constants';
 import { normalizeActivityTitle } from './activityTitles';
 import { remapClonedBudgetGroups } from './subprojectBudgetSchedules';
@@ -77,9 +77,10 @@ export const buildActivityClonePayload = (source: Activity, context: CloneContex
         expenses: remapActivityExpenseGroups(source.expenses || []).map(line => {
             const clone = cloneFinancialLine(line, reservedIds);
             if (!isSupplementalExpense(line, source)) return clone;
-            const { supplementUid, supplementRevisionPending, ...draft } = clone;
+            const { supplementUid, supplementRevisionPending, supplementalSource, ...draft } = clone;
+            const funding = resolveActivityExpenseFunding(line, source);
             return { ...draft, fundingOrigin: 'SupplementalDraft' as const, supplementStatus: 'DRAFT' as const,
-                supplementalSource: line.supplementalSource || (line.isSavings || source.isSavings ? 'Savings' as const : 'Realignment' as const) };
+                ...(funding.source ? { supplementalSource: funding.source } : {}) };
         }),
     };
 };

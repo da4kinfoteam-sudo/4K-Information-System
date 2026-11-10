@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Copy, Filter, RotateCcw, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { ScopeMultiSelect } from './DashboardScopeFilters';
 
 export type TableColumnFilters = Record<string, string[]>;
 
@@ -9,6 +10,7 @@ export interface TableFilterField {
     label: string;
     values: string[];
     options?: Array<{ value: string; label: string }>;
+    multiple?: boolean;
 }
 
 interface ColumnFilterDialogProps {
@@ -56,6 +58,7 @@ export const ColumnFilterDialog: React.FC<ColumnFilterDialogProps> = ({
         const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         const focusFrame = window.requestAnimationFrame(() => closeRef.current?.focus());
         const onKeyDown = (event: KeyboardEvent) => {
+            if (event.defaultPrevented || document.querySelector('[data-radix-popper-content-wrapper]')) return;
             if (event.key === 'Escape') {
                 event.preventDefault();
                 onCloseRef.current();
@@ -114,6 +117,13 @@ export const ColumnFilterDialog: React.FC<ColumnFilterDialogProps> = ({
                 </header>
                 <div className="modal-card__body column-filter-dialog__body">
                     {fields.map(field => {
+                        if (field.multiple) return <ScopeMultiSelect key={field.key} label={field.label} allLabel={`All ${field.label}`} menuClassName="column-filter-menu" options={field.options || field.values.map(value => ({ value, label: value }))}
+                            value={Object.hasOwn(draft, field.key) ? { mode: 'values', values: draft[field.key] } : { mode: 'all' }}
+                            onChange={value => setDraft(previous => {
+                                const next = { ...previous };
+                                if (value.mode === 'all') delete next[field.key]; else next[field.key] = value.values;
+                                return next;
+                            })} />;
                         const selected = draft[field.key]?.[0] || '';
                         return (
                             <label className="column-filter-field" key={field.key}>

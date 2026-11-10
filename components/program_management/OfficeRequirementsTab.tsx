@@ -4,6 +4,9 @@ import { claimDcfImportUpload, dcfImportFileIdentity, dcfImportRowUid, persistDc
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
+import { FundYearField } from '../ui/FundYearField';
+import { shiftFundYearDate } from '../../lib/fundYear';
+import { validateDcfForm } from '../../lib/dcfFormDrafts';
 import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, RefFundSource } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
@@ -301,20 +304,6 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                     setSelectedParticular(foundParticular);
                 }
             }
-        } else if (name === 'fundYear') {
-            const newYear = parseInt(value) || new Date().getFullYear();
-            setFormData(prev => {
-                const newData = { ...prev, [name]: newYear };
-                if (prev.obligationDate) {
-                    const m = prev.obligationDate.split('-')[1];
-                    if (m) newData.obligationDate = `${newYear}-${m}-01`;
-                }
-                if (prev.disbursementDate) {
-                    const m = prev.disbursementDate.split('-')[1];
-                    if (m) newData.disbursementDate = `${newYear}-${m}-01`;
-                }
-                return newData;
-            });
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
@@ -322,6 +311,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!(await validateDcfForm(e.currentTarget))) return;
         setValidationErrors([]);
         
         // Validation
@@ -745,8 +735,11 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                         <div className="detail-stack">
                             <div className="form-grid">
                                 <div>
-                                    <label className="form-label">Fund Year <span className="form-required">*</span></label>
-                                    <input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} />
+                                    <FundYearField name="fundYear" value={formData.fundYear} className={getInputClasses('fundYear')}
+                                        reschedule={!!(formData.obligationDate || formData.disbursementDate || formData.physicalDeliveryDate)}
+                                        onChange={(year, move) => setFormData({ ...formData, fundYear: year, ...(move ? {
+                                            obligationDate: shiftFundYearDate(formData.obligationDate, year, formData.fundYear), disbursementDate: shiftFundYearDate(formData.disbursementDate, year, formData.fundYear), physicalDeliveryDate: shiftFundYearDate(formData.physicalDeliveryDate, year, formData.fundYear),
+                                        } : {}) })} />
                                 </div>
                                 <div>
                                     <label className="form-label">Fund Type <span className="form-required">*</span></label>
@@ -849,7 +842,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                             <div>
                                 <label className="form-label">Physical Delivery Month <span className="form-required">*</span></label>
                                 <MonthYearPicker 
-                                    value={formData.physicalDeliveryDate}
+                                    value={formData.physicalDeliveryDate} defaultYear={formData.fundYear}
                                     onChange={(val) => {
                                         setFormData(prev => ({ ...prev, physicalDeliveryDate: val }));
                                         if (validationErrors.includes('physicalDeliveryDate')) {
@@ -862,7 +855,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                             <div>
                                 <label className="form-label">Target Obligation <span className="form-required">*</span></label>
                                 <MonthYearPicker 
-                                    value={formData.obligationDate}
+                                    value={formData.obligationDate} defaultYear={formData.fundYear}
                                     onChange={(val) => {
                                         setFormData(prev => ({ ...prev, obligationDate: val }));
                                         if (validationErrors.includes('obligationDate')) {
@@ -875,7 +868,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                             <div>
                                 <label className="form-label">Target Disbursement <span className="form-required">*</span></label>
                                 <MonthYearPicker 
-                                    value={formData.disbursementDate}
+                                    value={formData.disbursementDate} defaultYear={formData.fundYear}
                                     onChange={(val) => {
                                         setFormData(prev => ({ ...prev, disbursementDate: val }));
                                         if (validationErrors.includes('disbursementDate')) {

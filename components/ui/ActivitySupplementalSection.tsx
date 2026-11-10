@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { ActivityBudgetEditor } from './ActivityBudgetEditor';
 import { RecordKpiCard, RecordKpiGrid, RecordPanel, formatRecordMetricCurrency } from './RecordDetailLayout';
-import { ActivitySupplement, getActivityBudgetSummary, isSupplementalExpense, SupplementalSource } from '../../lib/activitySupplementalBudget';
+import { ActivitySupplement, getActivityBudgetSummary, getActivityExpenseFundingLabel, isSupplementalExpense, SupplementalSource } from '../../lib/activitySupplementalBudget';
 import { readActivitySupplements, saveActivitySupplement } from '../../lib/activitySupplementalPersistence';
 import { getBudgetLineAmount } from '../../lib/budgetLineAdjustments';
 import { BudgetTargetSummary } from './BudgetTargetPlanEditor';
@@ -141,7 +141,7 @@ export function ActivitySupplementalSection({ activity, uacsCodes, onUpdate, tra
             <tbody>{entries.map(row => {
                 const ledger = supplements.find(item => item.uid === row.supplementUid);
                 const first = ledger ? entries.find(item => item.supplementUid === ledger.uid)?.id === row.id : true;
-                return <tr key={row.id}>{transferSelection && <td><input type="checkbox" className="form-checkbox" aria-label={`Select supplemental schedule ${row.id} for transfer`} checked={transferSelection.selectedIds.includes(String(row.id))} disabled={busy || !transferSelection.eligibleIds.has(String(row.id))} onChange={() => transferSelection.onToggle(String(row.id))} /></td>}<td>{ledger?.source || row.supplementalSource || (row.isSavings || activity.isSavings ? 'Savings' : 'Realignment')}</td>
+                return <tr key={row.id}>{transferSelection && <td><input type="checkbox" className="form-checkbox" aria-label={`Select supplemental schedule ${row.id} for transfer`} checked={transferSelection.selectedIds.includes(String(row.id))} disabled={busy || !transferSelection.eligibleIds.has(String(row.id))} onChange={() => transferSelection.onToggle(String(row.id))} /></td>}<td>{getActivityExpenseFundingLabel(row, activity)}</td>
                     <td title={ledger?.reference}>{ledger?.reference || '-'}</td><td>{ledger?.authorization_date || '-'}</td><td title={row.expenseParticular}>{row.expenseParticular}</td><td>{row.uacsCode}</td>
                     <td>{row.targetScheduleVersion === 2 ? <BudgetTargetSummary line={row} allocation={getBudgetLineAmount(row)} stage="obligation" /> : month(row.obligationMonth)}</td><td>{row.targetScheduleVersion === 2 ? <BudgetTargetSummary line={row} allocation={getBudgetLineAmount(row)} stage="disbursement" /> : month(row.disbursementMonth)}</td><td className="data-table__numeric">{money(getBudgetLineAmount(row))}</td>
                     <td>{ledger?.pending_status ? `${ledger.status} / Revision ${ledger.pending_status}` : ledger?.status || (row.fundingOrigin === 'SupplementalDraft' ? 'Unsubmitted Draft' : row.supplementStatus || 'Previously Recorded')}</td>

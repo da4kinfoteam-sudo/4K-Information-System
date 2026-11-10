@@ -1,8 +1,33 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "dcf-history-and-activity-funding-origin",
+  "currentReleaseId": "dcf-fund-year-and-activity-funding-controls",
   "releases": [
+    {
+      "id": "dcf-fund-year-and-activity-funding-controls",
+      "version": "1.6.0",
+      "kind": "feature",
+      "title": "DCF Fund Year and activity funding controls",
+      "releaseDate": "2026-11-10",
+      "pr": 101,
+      "sections": {
+        "Added": [
+          "Typable, single-select Fund Year controls across DCF creation, editing and transfer previews.",
+          "Funding Origin display and multi-select filtering in the Activities and Trainings list."
+        ],
+        "Improved": [
+          "Fund Year changes offer Cancel, Keep Existing Dates or Reschedule Planned Dates in a compact responsive dialog.",
+          "Optional planned-date rescheduling preserves cross-year offsets; blank actual-date calendars open in the selected Fund Year without recording an accomplishment.",
+          "Funding labels and spreadsheet outputs consistently distinguish target and supplemental budgets."
+        ],
+        "Fixed": [
+          "Activities marked as Savings or Realignment include their eligible expense items in supplemental totals without requiring duplicate item tags.",
+          "Actual accomplishment years remain independent from Fund Year, and unrelated edits preserve missing historical Fund Years.",
+          "Date validation completes before saving so recently entered dates are not replaced by older form values."
+        ],
+        "Affected Pages": ["Activities and Trainings", "Subprojects", "Program Management", "Physical Accomplishment", "Budget Item Transfer", "Activity Excel Import and Export"]
+      }
+    },
     {
       "id": "dcf-history-and-activity-funding-origin",
       "version": "1.5.0",

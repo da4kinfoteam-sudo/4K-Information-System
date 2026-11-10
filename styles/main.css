@@ -231,6 +231,32 @@
   padding: 0.75rem;
   width: var(--radix-popover-trigger-width);
 }
+.dashboard-scope-menu.column-filter-menu { z-index: 1001; }
+.actual-date-picker { position: relative; min-width: 0; }
+.actual-date-picker > input { padding-right: 2.5rem; }
+.actual-date-popover { z-index: 10000; width: 340px; max-width: calc(100vw - 32px); padding: 12px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--surface-card); color: var(--text-primary); box-shadow: 0 4px 12px #00000014; }
+.actual-date-popover__header { display: grid; grid-template-columns: 28px minmax(0, 1fr) 84px 28px; align-items: end; gap: 4px; margin-bottom: 8px; }
+.actual-date-popover__header .form-label { display: none; }
+.actual-date-popover__header .table-action { width: 28px; height: 36px; min-width: 0; padding: 0; display: grid; place-items: center; }
+.actual-date-popover__header .table-action svg { width: 16px; height: 16px; flex-shrink: 0; }
+.actual-date-popover__header .form-control { min-width: 0; padding-left: 8px; }
+.actual-date-popover__days { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.actual-date-popover__days th { font-size: 12px; font-weight: 500; text-align: center; padding: 4px 0; }
+.actual-date-popover__days td { padding: 1px; text-align: center; }
+.actual-date-popover__days button { width: 100%; height: 36px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 13px; }
+.actual-date-popover__days button:hover { background: var(--surface-muted); }
+.actual-date-popover__days button[aria-pressed="true"] { background: var(--brand-green-600); color: white; }
+.actual-date-popover__days .is-other-month { color: var(--text-muted); }
+.fund-year-field .confirm-dialog { width: 100%; max-width: 36rem; }
+.fund-year-field .confirm-dialog__actions { flex-wrap: nowrap; gap: 8px; }
+.fund-year-field .confirm-dialog__actions .btn { white-space: nowrap; flex-shrink: 0; }
+.confirm-dialog__label-compact { display: none; }
+@media (max-width: 480px) {
+  .fund-year-field .confirm-dialog__actions { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); padding: 12px; }
+  .fund-year-field .confirm-dialog__actions .btn { min-width: 0; min-height: 44px; padding: 0 8px; }
+  .fund-year-field .confirm-dialog__label-full { display: none; }
+  .fund-year-field .confirm-dialog__label-compact { display: inline; }
+}
 .dashboard-scope-menu__actions { display: flex; gap: 0.5rem; margin: 0.5rem 0; }
 .dashboard-scope-menu__options { max-height: min(18rem, 45vh); overflow-y: auto; }
 .dashboard-scope-menu__options label { align-items: center; display: flex; gap: 0.5rem; min-height: 2rem; padding: 0.25rem; }

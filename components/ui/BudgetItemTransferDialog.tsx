@@ -1,5 +1,8 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
-import { Activity, ActivityExpense, IPO, RefFundSource, Subproject, SubprojectDetail, User, filterYears, fundTypes, operatingUnits, otherActivityComponents, tiers } from '../../constants';
+import { FundYearField } from './FundYearField';
+import { ActualDatePicker } from './ActualDatePicker';
+import { validateDcfForm } from '../../lib/dcfFormDrafts';
+import { Activity, ActivityExpense, IPO, RefFundSource, Subproject, SubprojectDetail, User, fundTypes, operatingUnits, otherActivityComponents, tiers } from '../../constants';
 import {
     BudgetTransferSourceType,
     ParentActualField,
@@ -78,8 +81,9 @@ const TransferField: React.FC<{
     min?: number;
     max?: number;
     step?: number | 'any';
+    defaultYear?: number | string | null;
     onChange: (name: string, value: string) => void;
-}> = ({ label, name, value, type = 'text', options = [], disabled = false, required = false, min, max, step, onChange }) => (
+}> = ({ label, name, value, type = 'text', options = [], disabled = false, required = false, min, max, step, defaultYear, onChange }) => (
     <label className="form-field budget-transfer-dialog__field">
         <span className="form-label">{label}{required ? ' *' : ''}</span>
         {type === 'textarea' ? (
@@ -88,7 +92,7 @@ const TransferField: React.FC<{
             <select className="form-control" value={value} disabled={disabled} required={required} onChange={event => onChange(name, event.target.value)}>
                 {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-        ) : (
+        ) : type === 'date' ? <ActualDatePicker value={toInputDate(value)} defaultYear={defaultYear} disabled={disabled} ariaLabel={label} name={name} onChange={date => onChange(name, date)} /> : (
             <input className="form-control" type={type} min={min} max={max} step={step} value={type === 'date' ? toInputDate(value) : value} disabled={disabled} required={required} onChange={event => onChange(name, event.target.value)} />
         )}
     </label>
@@ -134,7 +138,6 @@ export const BudgetItemTransferDialog: React.FC<BudgetItemTransferDialogProps> =
     const sourceRemainder = useMemo(() => buildActualAllocation(actualFields, sourceActualValues, destinationActuals), [actualFields, sourceActualValues, destinationActuals]);
     const scopeUnits = Array.from(new Set([...operatingUnits, source.operatingUnit])).filter(Boolean);
     const sourceFundSource = fundSources.find(option => option.uid === metadata.fundSourceUid);
-    const yearOptions = Array.from(new Set([...filterYears, metadata.fundingYear])).filter(Boolean).sort();
     const sourceIpoName = (source as Subproject).indigenousPeopleOrganization;
     const ipoOptions = sourceType === 'subproject'
         ? [...ipos, ...(
@@ -207,6 +210,7 @@ export const BudgetItemTransferDialog: React.FC<BudgetItemTransferDialogProps> =
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
+        if (!(await validateDcfForm(event.currentTarget))) return;
         setError(null);
         const allocationError = validateActualAllocation(actualFields, sourceActualValues, destinationActuals, sourceRemainder);
         if (allocationError) {
@@ -269,7 +273,7 @@ export const BudgetItemTransferDialog: React.FC<BudgetItemTransferDialogProps> =
                                 )}
                                 <TransferField label="Status" name="status" value={metadata.status} type="select" required options={['Proposed', 'Ongoing', 'Completed'].map(value => ({ value, label: value }))} onChange={setField} />
                                 <TransferField label="Operating Unit" name="operatingUnit" value={metadata.operatingUnit} type="select" disabled={!canChangeOperatingUnit} options={scopeUnits.map(value => ({ value, label: value }))} onChange={setField} />
-                                <TransferField label="Fund Year" name="fundingYear" value={metadata.fundingYear} type="select" options={[{ value: '', label: 'Not specified' }, ...yearOptions.map(value => ({ value, label: value }))]} onChange={setField} />
+                                <FundYearField name="fundingYear" value={metadata.fundingYear} onChange={year => setField('fundingYear', String(year))} />
                                 <TransferField label="Fund Type" name="fundType" value={metadata.fundType} type="select" options={[{ value: '', label: 'Not specified' }, ...fundTypes.map(value => ({ value, label: value }))]} onChange={setField} />
                                 <TransferField label="Fund Source" name="fundSourceUid" value={metadata.fundSourceUid} type="select" options={[{ value: '', label: 'Not specified' }, ...fundSources.filter(item => item.is_active || item.uid === metadata.fundSourceUid).map(item => ({ value: item.uid, label: item.label }))]} onChange={setField} />
                                 <TransferField label="Tier" name="tier" value={metadata.tier} type="select" options={[{ value: '', label: 'Not specified' }, ...tiers.map(value => ({ value, label: value }))]} onChange={setField} />
@@ -313,7 +317,7 @@ export const BudgetItemTransferDialog: React.FC<BudgetItemTransferDialogProps> =
                                     </>
                                 )}
                                 {inputDateNames.map(name => (
-                                    <TransferField key={name} label={name.replace(/([A-Z])/g, ' $1').replace(/^./, text => text.toUpperCase())} name={name} value={metadata[name]} type="date" onChange={setField} />
+                                    <TransferField key={name} label={name.replace(/([A-Z])/g, ' $1').replace(/^./, text => text.toUpperCase())} name={name} value={metadata[name]} defaultYear={metadata.fundingYear} type="date" onChange={setField} />
                                 ))}
                                 <TransferField label="Remarks" name="remarks" value={metadata.remarks} type="textarea" onChange={setField} />
                                 {sourceType === 'subproject' && <TransferField label="Accomplishment Remarks" name="accomplishmentRemarks" value={metadata.accomplishmentRemarks} type="textarea" onChange={setField} />}

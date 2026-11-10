@@ -1,4 +1,6 @@
 import { useProgramManagementWriter } from '../../lib/programManagementPersistence';
+import { FundYearField } from '../ui/FundYearField';
+import { validateDcfForm } from '../../lib/dcfFormDrafts';
 import { claimDcfImportUpload, dcfImportFileIdentity, dcfImportRowUid, persistDcfImportRows } from '../../lib/dcfImportPersistence';
 
 // Author: 4K 
@@ -376,6 +378,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!(await validateDcfForm(e.currentTarget))) return;
         
         const requiredFields = [
             { name: 'operatingUnit', label: 'Operating Unit' },
@@ -810,7 +813,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                     <fieldset className="form-fieldset">
                         <legend className="form-legend">Funding Source</legend>
                         <div className="program-form-grid program-form-grid--four">
-                            <div><label className="form-label">Fund Year <span className="form-required">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
+                            <FundYearField name="fundYear" value={formData.fundYear} className={getInputClasses('fundYear')} onChange={year => setFormData(previous => ({ ...previous, fundYear: year }))} />
                             <div><label className="form-label">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                             <div><label className="form-label">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                             <FundSourceField
@@ -934,7 +937,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                 <div>
                                     <label className="form-label">Obligation Date <span className="form-required">*</span></label>
                                     <MonthYearPicker 
-                                        value={currentExpense.obligationDate} 
+                                        value={currentExpense.obligationDate} defaultYear={formData.fundYear}
                                         onChange={(val) => {
                                             setCurrentExpense(prev => ({ ...prev, obligationDate: val }));
                                             if (validationErrors.includes('obligationDate')) {

@@ -57,7 +57,7 @@ try{
     let exported;globalThis.XLSX={...XLSX,writeFile:book=>{exported=book;}};globalThis.window={XLSX:globalThis.XLSX};const messages=[];globalThis.alert=message=>messages.push(message);
     const {downloadActivitiesReport,handleActivitiesUpload}=await server.ssrLoadModule('/components/mainfunctions/ImportExportService.ts');
     downloadActivitiesReport([source],[]);const report=XLSX.utils.sheet_to_json(exported.Sheets['Activities Report'])[0];
-    assert.equal(report['Total Budget'],10000);assert.equal(report['Supplemental Budget'],6000);assert.equal(report['Current Active Budget'],16000);
+    assert.equal(report['Target Budget'],10000);assert.equal(report['Supplemental Budget'],6000);assert.equal(report['Current Active Budget'],16000);
     const importRow=async extras=>{
         const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.json_to_sheet([{uid:'ACT-IMPORT',type:'Activity',component:'Program Management',name:'Fixture',date:'2026-10-14',expense_uacsCode:'502',expense_amount:2000,expense_obligationMonth:'2026-10-01',expense_disbursementMonth:'2026-11-01',expense_supplementalSource:'Savings',...extras}]),'Activities Data');
         const binary=XLSX.write(book,{type:'array',bookType:'xlsx'});globalThis.FileReader=class{readAsArrayBuffer(){globalThis.importPromise=this.onload({target:{result:binary}});}};

@@ -1,6 +1,8 @@
 import { readProgramManagementState, saveProgramManagementChange, type ProgramManagementState, type ProgramManagementRequest, type ProgramManagementEntity } from '../../lib/programManagementPersistence';
 // Author: 4K 
 import { getActivityDisplayTitle } from '../../lib/activityTitles';
+import { ActualDatePicker } from '../ui/ActualDatePicker';
+import { validateDcfForm } from '../../lib/dcfFormDrafts';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { hydrateSubprojectAccomplishment, readSubprojectAccomplishments, saveSubprojectAccomplishment, type SubprojectAccomplishmentSnapshot, type SubprojectAccomplishmentRequest } from '../../lib/subprojectAccomplishmentPersistence';
 import { ChevronDown, ChevronRight, Search, Undo2, X } from 'lucide-react';
@@ -173,6 +175,12 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 
     // Local Data State
     const [items, setItems] = useState<PhysicalItem[]>([]);
+    const sourceFundYears = useMemo(() => new Map<string, number>([
+        ...subprojects.map(row => [`Subproject:${row.id}`, row.fundingYear] as [string, number]),
+        ...activities.map(row => [`Activity:${row.id}`, row.fundingYear] as [string, number]),
+        ...officeReqs.map(row => [`Office:${row.id}`, row.fundYear] as [string, number]),
+        ...staffingReqs.map(row => [`Staffing:${row.id}`, row.fundYear] as [string, number]),
+    ]), [subprojects, activities, officeReqs, staffingReqs]);
     const [originalItems, setOriginalItems] = useState<PhysicalItem[]>([]);
     const [changedItems, setChangedItems] = useState<Map<string, Partial<PhysicalItem>>>(new Map());
     const physicalDraftRef = useRef({ items, originalItems, changedItems });
@@ -744,8 +752,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         }
     };
 
-    const handleSaveAllClick = () => {
-        setIsSaveConfirmOpen(true);
+    const handleSaveAllClick = async () => {
+        if (await validateDcfForm()) setIsSaveConfirmOpen(true);
     };
 
     const confirmSaveAll = async () => {
@@ -841,13 +849,13 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     };
 
     // --- Render Helpers ---
-    const renderDateInput = (value: string, onChange: (val: string) => void | Promise<void>, disabled: boolean, label = 'Date') => (
-        <input 
-            type="date" 
+    const renderDateInput = (value: string, onChange: (val: string) => void | Promise<void>, disabled: boolean, label = 'Date', defaultYear?: number) => (
+        <ActualDatePicker
+            defaultYear={defaultYear}
             value={value} 
-            onChange={(e) => onChange(e.target.value)} 
+            onChange={onChange}
             disabled={disabled}
-            aria-label={label}
+            ariaLabel={label}
             className={commonInputClasses}
         />
     );
@@ -1009,6 +1017,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     };
 
     const renderPhysicalItemRows = (groupItems: PhysicalItem[]) => groupItems.map(item => {
+        const fundYear = sourceFundYears.get(`${item.sourceType}:${item.sourceId}`);
         const isParentExpanded = item.isParent && (normalizedSearchQuery.length > 0 || expandedParents.includes(item.uniqueId));
         const completionRate = getCompletionRate(item);
         const itemPhysicalDecision = getPhysicalStatusDecision(item);
@@ -1054,9 +1063,9 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     <td className="px-4 py-2 text-center">
                         {canEditVisibleTarget && !(item.sourceType === 'Staffing' && item.isParent) ? (
                             <div className="space-y-1">
-                                    {renderDateInput(item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateStart: val }), false, `Target date for ${item.name}`)}
+                                    {renderDateInput(item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateStart: val }), false, `Target date for ${item.name}`, fundYear)}
                                 {item.sourceType === 'Activity' && (
-                                    renderDateInput(item.targetDateEnd || item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateEnd: val }), false, `Target end date for ${item.name}`)
+                                    renderDateInput(item.targetDateEnd || item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateEnd: val }), false, `Target end date for ${item.name}`, fundYear)
                                 )}
                             </div>
                         ) : (
@@ -1075,12 +1084,12 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                 {renderDateInput(item.actualDateStart, async (val) => {
                                     if (val && !(await validatePhysicalActualMonth(item, val))) return;
                                     updateLocalItem(item.uniqueId, { actualDateStart: val });
-                                }, isLocked || isDerivedSubprojectParentActual, `Actual date for ${item.name}`)}
+                                }, isLocked || isDerivedSubprojectParentActual, `Actual date for ${item.name}`, fundYear)}
                                 {item.sourceType === 'Activity' && item.targetDateEnd && (
                                     renderDateInput(item.actualDateEnd || item.actualDateStart, async (val) => {
                                         if (val && !(await validatePhysicalActualMonth(item, val))) return;
                                         updateLocalItem(item.uniqueId, { actualDateEnd: val });
-                                    }, isLocked, `Actual end date for ${item.name}`)
+                                    }, isLocked, `Actual end date for ${item.name}`, fundYear)
                                 )}
                             </div>
                         )}

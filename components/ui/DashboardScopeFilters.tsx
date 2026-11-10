@@ -115,7 +115,7 @@ export function useDashboardScopeFilters({ storageKey, references, records = [],
 }
 
 interface Choice { value: string; label: string }
-export function ScopeMultiSelect({ label, allLabel, value, options, disabled, onChange }: { key?: string; label: string; allLabel: string; value: ScopeSelection; options: Choice[]; disabled?: boolean; onChange: (value: ScopeSelection) => void }) {
+export function ScopeMultiSelect({ label, allLabel, value, options, disabled, menuClassName = '', onChange }: { key?: string; label: string; allLabel: string; value: ScopeSelection; options: Choice[]; disabled?: boolean; menuClassName?: string; onChange: (value: ScopeSelection) => void }) {
     const [open, setOpen] = useState(false), [search, setSearch] = useState('');
     const searchRef = useRef<HTMLInputElement>(null);
     const summary = value.mode === 'all' ? allLabel : value.values.map(key => options.find(option => option.value === key)?.label || key).join(', ') || 'Select...';
@@ -125,7 +125,7 @@ export function ScopeMultiSelect({ label, allLabel, value, options, disabled, on
             <PopoverTrigger asChild><button type="button" className="form-control dashboard-scope-select" aria-label={label} title={summary} disabled={disabled}>
                 <span>{summary}</span><ChevronDown size={16} aria-hidden="true" />
             </button></PopoverTrigger>
-            <PopoverContent align="start" className="dashboard-scope-menu" onOpenAutoFocus={event => { event.preventDefault(); searchRef.current?.focus(); }}>
+            <PopoverContent align="start" className={`dashboard-scope-menu ${menuClassName}`} onOpenAutoFocus={event => { event.preventDefault(); searchRef.current?.focus(); }}>
                 <input ref={searchRef} type="search" className="form-control" aria-label={`Search ${label}`} value={search} onChange={event => setSearch(event.target.value)} />
                 <div className="dashboard-scope-menu__actions"><button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange(allSelection())}>Select All</button><button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange(selectedValues([]))}>Clear</button></div>
                 <div className="dashboard-scope-menu__options custom-scrollbar" role="group" aria-label={`${label} choices`} onKeyDown={event => {
