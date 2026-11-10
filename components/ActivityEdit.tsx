@@ -1,5 +1,8 @@
 import { getActivityBudgetSummary, getActivityEditableBudgetExpenses, hasWholeActivityFundingOrigin, isOriginalActivityBudgetLocked, isActivityExpenseActualEligible } from '../lib/activitySupplementalBudget';
 import { ActivityBudgetEditor } from './ui/ActivityBudgetEditor';
+import { FundYearField } from './ui/FundYearField';
+import { ActualDatePicker } from './ui/ActualDatePicker';
+import { validateDcfForm } from '../lib/dcfFormDrafts';
 import { rescheduleActivityTargets, validateActivitySchedule } from '../lib/activityBudgetSchedules';
 import { persistActivityDraft } from '../lib/activityDraftPersistence';
 import { dcfChangedFields, persistDcfMutation, type DcfMutationRequest } from '../lib/dcfMutation';
@@ -211,7 +214,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             const userOu = currentUser?.operatingUnit || '';
             const defaultSource = getNewFundSourceDefault(fundSources);
             setFormData({
-                ...defaultFormData,
+                ...defaultFormData, fundingYear: new Date().getFullYear(),
                 type: forcedType || 'Activity',
                 operatingUnit: userOu,
                 encodedBy: currentUser?.fullName || '',
@@ -285,10 +288,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     const handleNumericChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         const numValue = value === '' ? 0 : Number(value);
-        if (name === 'fundingYear' && budgetDraftPending) { alert('Apply or discard the schedule draft before changing Fund Year.'); return; }
-        const reschedule = mode === 'create' && name === 'fundingYear' && formData.fundingYear !== numValue && formData.expenses.length > 0
-            && window.confirm('Reschedule planned expense months to this Fund Year? Actual dates will remain unchanged.');
-        setFormData(previous => ({ ...previous, [name]: numValue, ...(reschedule ? { expenses: rescheduleActivityTargets(previous.expenses, numValue) } : {}) }));
+        setFormData(previous => ({ ...previous, [name]: numValue }));
     };
 
     const handleActivityTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -531,6 +531,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
+        if (!(await validateDcfForm(e.currentTarget))) return;
         if (mode === 'expenses' && originalBudgetLocked) { alert('The original budget is locked. Use Supplemental Information.'); return; }
         if (budgetDraftPending) { alert('Apply or discard the expense schedule draft before saving.'); return; }
         if (actualsLoading || actualsLoadError) { alert(actualsLoadError || 'Wait for existing actuals to finish loading.'); return; }
@@ -1034,7 +1035,9 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                 <fieldset className="form-fieldset" disabled={isDetailsLocked || isSaving || originalBudgetLocked || uncertainRepeatingKeys.length > 0}>
                                     <legend className="form-legend">Funding</legend>
                                     <div className="form-grid form-grid--four">
-                                        <div><label className="form-label">Fund Year</label><input type="number" name="fundingYear" value={formData.fundingYear} onChange={handleNumericChange} className={commonInputClasses} /></div>
+                                        <FundYearField key={activity?.id || 'new'} name="fundingYear" value={formData.fundingYear} reschedule={mode === 'create' && formData.expenses.length > 0}
+                                            blockedReason={budgetDraftPending ? 'Apply or discard the schedule draft before changing Fund Year.' : undefined}
+                                            onChange={(year, move) => setFormData({ ...formData, fundingYear: year, ...(move ? { expenses: rescheduleActivityTargets(formData.expenses, year, formData.fundingYear) } : {}) })} />
                                         <div><label className="form-label">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                         <div>
                                             <label className="form-label">Tier</label>
@@ -1154,22 +1157,22 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                             <div className="form-grid">
                                 <div>
                                     <label className="form-label">Actual Start Date</label>
-                                    <input
-                                        type="date"
+                                    <ActualDatePicker
+                                        defaultYear={formData.fundingYear} ariaLabel="Actual Start Date"
                                         name="actualDate"
                                         value={formData.actualDate || ''}
-                                        onChange={(event) => { void handleActualConductDateChange('actualDate', event.currentTarget.value); }}
+                                        onChange={value => handleActualConductDateChange('actualDate', value)}
                                         className={commonInputClasses}
                                     />
                                 </div>
                                 {conductType === 'Multi-day' && (
                                     <div>
                                         <label className="form-label">Actual End Date</label>
-                                        <input
-                                            type="date"
+                                        <ActualDatePicker
+                                            defaultYear={formData.fundingYear} ariaLabel="Actual End Date"
                                             name="actualEndDate"
                                             value={formData.actualEndDate || ''}
-                                            onChange={(event) => { void handleActualConductDateChange('actualEndDate', event.currentTarget.value); }}
+                                            onChange={value => handleActualConductDateChange('actualEndDate', value)}
                                             className={commonInputClasses}
                                         />
                                     </div>

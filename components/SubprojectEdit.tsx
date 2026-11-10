@@ -2,6 +2,9 @@
 import React, { useState, FormEvent, useEffect, useMemo, useRef } from 'react';
 import { Info, Pencil, Trash2 } from 'lucide-react';
 import { MonthYearPicker } from './ui/MonthYearPicker';
+import { FundYearField } from './ui/FundYearField';
+import { shiftFundYearDate } from '../lib/fundYear';
+import { validateDcfForm } from '../lib/dcfFormDrafts';
 import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, philippineRegions, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock, RefFundSource } from '../constants';
 import LocationPicker from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
@@ -189,7 +192,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             const defaultOu = currentUser?.operatingUnit || '';
             const defaultRegion = ouToRegionMap[defaultOu] || '';
             setFormData({
-                ...defaultFormData,
+                ...defaultFormData, fundingYear: new Date().getFullYear(),
                 operatingUnit: defaultOu,
                 encodedBy: currentUser?.fullName || ''
             });
@@ -214,8 +217,6 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>): void => {
         const { name, value } = e.target;
         if (name === 'operatingUnit' && !canChooseOperatingUnit) return;
-        if (name === 'fundingYear' && subproject?.status === 'Proposed') setProposedBudgetItemsChanged(true);
-        const rescheduleTargets = name === 'fundingYear' && Number(value) >= 1900 && Number(value) <= 9999 && Number(value) !== Number(formData.fundingYear) && window.confirm('Also reschedule the planned dates to this Fund Year? Actual dates will not change.');
         setMissingFields(prev => prev.filter(f => f !== name));
         setFormData(prev => {
             const newData = { ...prev, [name]: value };
@@ -236,20 +237,6 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                 const selectedSource = getFundSourceByUid(value, fundSources);
                 newData.fundSourceUid = value || null;
                 newData.fundSource = selectedSource?.label || (value ? prev.fundSource : null);
-            } else if (name === 'fundingYear') {
-                const year = parseInt(value) || new Date().getFullYear();
-                newData.fundingYear = year;
-                if (rescheduleTargets) newData.startDate = `${year}-01-01`;
-                if (rescheduleTargets && newData.estimatedCompletionDate) {
-                    const month = getMonthFromDateStr(newData.estimatedCompletionDate);
-                    if (month !== '') {
-                        newData.estimatedCompletionDate = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
-                    }
-                }
-                
-                if (newData.details?.length && rescheduleTargets) {
-                    newData.details = rescheduleBudgetTargets(newData.details, year);
-                }
             }
             return newData;
         });
@@ -764,6 +751,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
 
     const handleSubmit = async (event: FormEvent) => {
         event.preventDefault();
+        if (!(await validateDcfForm(event.currentTarget))) return;
         if (saveInFlight.current) return;
         if (budgetDraftPending) { alert('Apply or discard the schedule draft before saving.'); return; }
         if (!subproject && !hasAccess('Subprojects', 'edit')) { alert('You do not have permission to create Subprojects.'); return; }
@@ -844,7 +832,16 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                 </div>
                             </div>
                             <div className="form-grid form-grid--four subproject-funding-grid">
-                                <div><label className="form-label">Fund Year</label><input type="number" name="fundingYear" value={formData.fundingYear} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <FundYearField key={subproject?.id || 'new'} name="fundingYear" value={formData.fundingYear}
+                                    reschedule={(!subproject || subproject.status === 'Proposed') && !!(formData.details.length || formData.estimatedCompletionDate || formData.startDate)}
+                                    blockedReason={budgetDraftPending ? 'Apply or discard the schedule draft before changing Fund Year.' : undefined}
+                                    onChange={(year, move) => {
+                                        const next = { ...formData, fundingYear: year, ...(move ? {
+                                            startDate: shiftFundYearDate(formData.startDate, year, formData.fundingYear), estimatedCompletionDate: shiftFundYearDate(formData.estimatedCompletionDate, year, formData.fundingYear),
+                                            details: rescheduleBudgetTargets(formData.details, year, formData.fundingYear),
+                                        } : {}) };
+                                        setFormData(next); if (subproject?.status === 'Proposed') setProposedBudgetItemsChanged(true);
+                                    }} />
                                 <div><label className="form-label">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                 <div><label className="form-label">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                 <div><label className="form-label">Fund Source <span className="form-required">*</span></label><select name="fundSourceUid" value={selectedFundSourceUid} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('fundSourceUid') ? 'form-control--invalid' : ''}`} required={!subproject}><option value="">{!selectedFundSourceUid && formData.fundSource?.trim() ? formData.fundSource : 'Select Fund Source'}</option>{selectedFundSourceUid && !fundSourceOptions.some(source => source.uid === selectedFundSourceUid) && <option value={selectedFundSourceUid}>{formData.fundSource || selectedFundSourceUid}</option>}{fundSourceOptions.map(source => <option key={source.uid} value={source.uid}>{source.label}{!source.is_active ? ' (Inactive)' : ''}</option>)}</select></div>

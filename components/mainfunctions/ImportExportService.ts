@@ -1,7 +1,7 @@
 // Author: 4K
 import React from 'react';
 import { getActivityDisplayTitle, normalizeActivityTitle } from '../../lib/activityTitles';
-import { getActivityBudgetSummary } from '../../lib/activitySupplementalBudget';
+import { getActivityBudgetSummary, getActivityExpenseFundingLabel, getActivityParentFundingLabel, isSupplementalExpense, parseActivityParentFundingFlags } from '../../lib/activitySupplementalBudget';
 import { 
     Subproject, Activity, IPO, Commodity, OfficeRequirement, StaffingRequirement, OtherProgramExpense,
     SubprojectDetail, ActivityExpense, fundTypes, tiers, objectTypes, ObjectType, philippineRegions, operatingUnits, Tier, FundType, RefFundSource
@@ -526,7 +526,10 @@ export const downloadActivitiesReport = (activities: Activity[], fundSources: Re
         'Location': a.location,
         'Male Participants': a.participantsMale,
         'Female Participants': a.participantsFemale,
-        'Total Budget': getActivityBudgetSummary(a).target,
+        'Funding Origin': getActivityParentFundingLabel(a),
+        'Savings Origin': a.isSavings ?? '',
+        'Realignment Origin': a.isRealignment ?? '',
+        'Target Budget': getActivityBudgetSummary(a).target,
         'Original Allocation': getActivityBudgetSummary(a).original ?? '',
         'Supplemental Budget': getActivityBudgetSummary(a).supplemental,
         'Current Active Budget': getActivityBudgetSummary(a).current,
@@ -551,9 +554,11 @@ export const downloadActivitiesReport = (activities: Activity[], fundSources: Re
         'UACS Code': row.uacsCode, 'Obligation Month': row.obligationMonth, 'Disbursement Month': row.disbursementMonth,
         Amount: getBudgetLineAmount(row), Cancelled: !!row.isCancelled, Savings: !!row.isSavings, Realignment: !!row.isRealignment,
         Reason: row.adjustmentReason || '',
-        'Funding Origin': row.fundingOrigin || '', 'Supplement UID': row.supplementUid || '',
+        'Expense Funding Classification': row.fundingOrigin || '', 'Supplement UID': row.supplementUid || '',
         'Supplement Source': row.supplementalSource || '', 'Supplement Approval': row.supplementStatus || '',
         'Revision Pending': !!row.supplementRevisionPending,
+        'Funding Origin': getActivityParentFundingLabel(parent),
+        'Effective Funding Source': getActivityExpenseFundingLabel(row, parent),
     })));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(schedules), "Budget Schedules");
     const importRows = activities.flatMap(parent => ((parent.expenses || []).length ? parent.expenses : [null]).map(row => ({
@@ -561,9 +566,10 @@ export const downloadActivitiesReport = (activities: Activity[], fundSources: Re
         location: parent.location, facilitator: parent.facilitator || '', description: parent.description, participatingIpos: (parent.participatingIpos || []).join('; '),
         participantsMale: parent.participantsMale, participantsFemale: parent.participantsFemale, fundingYear: parent.fundingYear, fundType: parent.fundType,
         tier: parent.tier, fundSourceUid: parent.fundSourceUid || '', fundSource: parent.fundSource || '', operatingUnit: parent.operatingUnit,
+        isSavings: parent.isSavings ?? '', isRealignment: parent.isRealignment ?? '',
         ...(row ? { expense_id: row.id, expense_budgetItemGroupId: row.budgetItemGroupId || '', expense_uacsCode: row.uacsCode, expense_amount: row.amount,
             expense_obligationMonth: row.obligationMonth, expense_disbursementMonth: row.disbursementMonth, expense_targetScheduleVersion: row.targetScheduleVersion ?? '',
-            expense_supplementalSource: row.supplementalSource || (row.isSavings ? 'Savings' : row.isRealignment ? 'Realignment' : '') } : {}),
+            expense_supplementalSource: isSupplementalExpense(row) ? getActivityExpenseFundingLabel(row) : '' } : {}),
     })));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(importRows), 'Activities Data');
     appendTargetSheets(wb, activities.flatMap(parent => (parent.expenses || []).map(line => ({ uid: parent.uid, line }))));
@@ -575,7 +581,7 @@ export const downloadActivitiesTemplate = (fundSources: RefFundSource[]) => {
     const headers = [
         'uid', 'type', 'component', 'name', 'activity_title', 'date', 'province', 'municipality', 'facilitator', 'description',
         'participatingIpos', 'participantsMale', 'participantsFemale',
-        'fundingYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'operatingUnit',
+        'fundingYear', 'fundType', 'tier', 'fundSourceUid', 'fundSource', 'operatingUnit', 'isSavings', 'isRealignment',
         'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount', 'expense_budgetItemGroupId', 'expense_supplementalSource', 'expense_id', 'expense_targetScheduleVersion'
     ];
     const exampleData = [
@@ -608,6 +614,7 @@ export const downloadActivitiesTemplate = (fundSources: RefFundSource[]) => {
     const instructions = [
         ["Column", "Description"],
         ["activity_title", "Optional specific title for an Activity. Blank keeps its generic name. Training uses name instead."],
+        ["isSavings / isRealignment", "Optional TRUE/FALSE activity funding flags. Select at most one. A tagged activity is wholly supplemental; individual expense tags are not required. Missing columns remain compatible with older templates. Existing UIDs are not updated."],
         ["participatingIpos", "Names of IPOs. Separate multiple IPOs with a semicolon (;). Example: 'IPO One; IPO Two'"],
         ["province", "Province name."],
         ["municipality", "City or Municipality name."],
@@ -677,6 +684,7 @@ export const handleActivitiesUpload = (
                 const uid = String(row.uid || '').trim();
                 if (!uid) return; // Skip empty rows
                 if (existingUids.has(uid) && (!supabase || !hasDcfImportAttempt('activities', currentUser?.id, fileIdentity, uid))) return;
+                const parentFunding = parseActivityParentFundingFlags(row);
                 if (row.expense_supplementUid || row.supplementUid || row['Supplement UID'] || row.expense_supplementStatus || row.supplementStatus || row['Supplement Approval']) {
                     throw new Error(`Row ${rowNum}: Supplemental approval and ledger identities cannot be imported.`);
                 }
@@ -734,6 +742,7 @@ export const handleActivitiesUpload = (
                     groupedData.set(uid, {
                         common: {
                             uid: uid,
+                            ...parentFunding,
                             type: row.type,
                             component: row.component as any,
                             name: String(row.name),
@@ -760,6 +769,12 @@ export const handleActivitiesUpload = (
                 } else {
                     // Entry exists, merge participating IPOs
                     const entry = groupedData.get(uid);
+                    for (const key of ['isSavings', 'isRealignment'] as const) {
+                        if (parentFunding[key] === undefined) continue;
+                        if (entry.common[key] !== undefined && entry.common[key] !== parentFunding[key]) throw new Error(`Row ${rowNum}: Activity UID ${uid} contains conflicting funding origin flags.`);
+                        entry.common[key] = parentFunding[key];
+                    }
+                    parseActivityParentFundingFlags(entry.common);
                     if (rowActivityTitle) {
                         if (entry.common.activity_title && rowActivityTitle !== entry.common.activity_title) {
                             throw new Error(`Row ${rowNum}: Activity UID ${uid} contains conflicting Activity Titles across its rows.`);

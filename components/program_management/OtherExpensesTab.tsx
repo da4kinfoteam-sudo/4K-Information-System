@@ -1,4 +1,6 @@
 import { useProgramManagementWriter } from '../../lib/programManagementPersistence';
+import { FundYearField } from '../ui/FundYearField';
+import { validateDcfForm } from '../../lib/dcfFormDrafts';
 import { claimDcfImportUpload, dcfImportFileIdentity, dcfImportRowUid, persistDcfImportRows } from '../../lib/dcfImportPersistence';
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -176,7 +178,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         if (view === 'form') {
             if (editingItem) {
                 // Should technically not be reachable via Add New but keeping logic robust
-                setFormData({ ...initialFormState, ...editingItem });
+                setFormData({ ...initialFormState, ...editingItem, fundYear: editingItem.fundYear });
                 let foundType: ObjectType = 'MOOE'; let foundParticular = '';
                 outerLoop: for (const type of objectTypes) { if(uacsCodes[type]) { for (const part in uacsCodes[type]) { if (uacsCodes[type][part].hasOwnProperty(editingItem.uacsCode)) { foundType = type; foundParticular = part; break outerLoop; } } } }
                 setSelectedObjectType(foundType); setSelectedParticular(foundParticular);
@@ -353,6 +355,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!(await validateDcfForm(e.currentTarget))) return;
         
         const requiredFields = [
             { key: 'operatingUnit', label: 'Operating Unit' },
@@ -409,7 +412,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             ...formData,
             amount: Number(formData.amount), 
             obligatedAmount: Number(formData.amount), // Set obligatedAmount equal to amount (allocation)
-            fundYear: Number(formData.fundYear),
+            fundYear: formData.fundYear ? Number(formData.fundYear) : formData.fundYear,
             fundSourceUid: selectedFundSource.uid,
             fundSource: selectedFundSource.label,
             // Default 0 for new accomplishments
@@ -750,8 +753,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                         <div className="detail-stack">
                             <div className="form-grid">
                                 <div>
-                                    <label className="form-label">Fund Year <span className="form-required">*</span></label>
-                                    <input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} />
+                                    <FundYearField name="fundYear" value={formData.fundYear} className={getInputClasses('fundYear')} onChange={year => setFormData(previous => ({ ...previous, fundYear: year }))} />
                                 </div>
                                 <div>
                                     <label className="form-label">Fund Type <span className="form-required">*</span></label>
@@ -860,7 +862,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                 <div>
                                     <label className="form-label">Obligation Date <span className="form-required">*</span></label>
                                     <MonthYearPicker 
-                                        value={formData.obligationDate} 
+                                        value={formData.obligationDate} defaultYear={formData.fundYear}
                                         onChange={(val) => {
                                             setFormData(prev => ({...prev, obligationDate: val}));
                                             if (validationErrors.includes('obligationDate')) {

@@ -1,6 +1,7 @@
 ﻿
 // Author: 4K
-import { getActivityBudgetSummary, hasProtectedActivityBudgetHistory } from '../lib/activitySupplementalBudget';
+import { getActivityBudgetSummary, getActivityParentFundingLabel, hasProtectedActivityBudgetHistory } from '../lib/activitySupplementalBudget';
+import { ACTIVITY_PARENT_ORIGINS, matchesActivityFundingFilter, normalizeActivityColumnFilters } from '../lib/activityFundingFilters';
 import { getActivityDisplayTitle } from '../lib/activityTitles';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
@@ -64,7 +65,6 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 const commonInputClasses = "form-control";
-const DCF_SCOPE_COLUMN_KEYS = new Set(['fundingYear', 'operatingUnit', 'fundType', 'tier']);
 
 const getStatusBadge = (status: Activity['status']) => {
     switch (status) {
@@ -118,7 +118,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
 
     // Column Filters (New) - Stores an array of selected values for each column key
     const [savedColumnFilters, setSavedColumnFilters] = useLocalStorageState<Record<string, string[]>>(`${tableStoragePrefix}_columnFilters`, {});
-    const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>(savedColumnFilters);
+    const [columnFilters, setColumnFilters] = useState(() => normalizeActivityColumnFilters(savedColumnFilters));
     const [isColumnFilterOpen, setIsColumnFilterOpen] = useState(false);
 
     // Sorting
@@ -137,14 +137,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     const applyExternalScope = dcfFilters.applyScope;
 
     useEffect(() => {
-        const cleanedFilters = Object.fromEntries(
-            Object.entries(columnFilters).filter(([key]) => !DCF_SCOPE_COLUMN_KEYS.has(key))
-        );
-        if (Object.keys(cleanedFilters).length !== Object.keys(columnFilters).length) {
+        const cleanedFilters = normalizeActivityColumnFilters(columnFilters);
+        if (JSON.stringify(cleanedFilters) !== JSON.stringify(columnFilters)) {
             setColumnFilters(cleanedFilters);
-            setSavedColumnFilters(cleanedFilters);
         }
-    }, [columnFilters, setSavedColumnFilters]);
+        if (JSON.stringify(cleanedFilters) !== JSON.stringify(savedColumnFilters)) setSavedColumnFilters(cleanedFilters);
+    }, [columnFilters, savedColumnFilters, setSavedColumnFilters]);
 
     // Listen to External Filters (Chatbot)
     useEffect(() => {
@@ -240,6 +238,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             const selectedValues = columnFilters[key];
             if (selectedValues.length > 0) {
                 filtered = filtered.filter(item => {
+                    if (key === 'parentFundingOrigin') {
+                        return matchesActivityFundingFilter(item, key, selectedValues);
+                    }
                     if (key === 'fundSourceUid') {
                         return selectedValues.includes(getFundSourceFilterValue(item, fundSources));
                     }
@@ -607,7 +608,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         { key: 'component', label: 'Component', values: uniqueValues.component },
         { key: 'status', label: 'Status', values: uniqueValues.status },
         { key: 'date', label: 'Date', values: uniqueValues.date },
-        { key: 'fundSourceUid', label: 'Fund Source', values: uniqueValues.fundSource.map(option => option.value), options: uniqueValues.fundSource }
+        { key: 'fundSourceUid', label: 'Fund Source', values: uniqueValues.fundSource.map(option => option.value), options: uniqueValues.fundSource },
+        { key: 'parentFundingOrigin', label: 'Funding Origin', values: ACTIVITY_PARENT_ORIGINS, multiple: true }
     ];
 
     const activityPageTitle = forcedType === 'Training' ? 'Trainings Management' : forcedType === 'Activity' ? 'Activities Management' : 'Activities Management';
@@ -617,7 +619,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         <div className="data-list-page activities-major-table-page">
             {isDeleteModalOpen && <ConfirmDialog title="Confirm deletion" description="Are you sure you want to delete this activity?" confirmLabel="Delete" onCancel={() => setIsDeleteModalOpen(false)} onConfirm={confirmDelete} />}
             {isMultiDeleteModalOpen && <ConfirmDialog title={`Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'entry' : 'entries'}?`} description="This action cannot be undone. The selected records will be permanently removed." confirmLabel="Delete" onCancel={() => setIsMultiDeleteModalOpen(false)} onConfirm={confirmMultiDelete} />}
-            <ColumnFilterDialog open={isColumnFilterOpen} fields={columnFilterFields} filters={columnFilters} onApply={(filters) => { setColumnFilters(filters); setSavedColumnFilters(filters); }} onClose={() => setIsColumnFilterOpen(false)} />
+            <ColumnFilterDialog open={isColumnFilterOpen} fields={columnFilterFields} filters={columnFilters} onApply={(filters) => { const normalized = normalizeActivityColumnFilters(filters); setColumnFilters(normalized); setSavedColumnFilters(normalized); }} onClose={() => setIsColumnFilterOpen(false)} />
 
             <div className="data-list-header">
                 <h2 className="data-list-title">{activityPageTitle}</h2>
@@ -656,7 +658,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                             <SortableTableHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Fund Source" columnKey="fundSourceUid" sortConfig={sortConfig} onSort={handleSort} />
-                            <SortableTableHeader label="Budget" columnKey="budget" sortConfig={sortConfig} onSort={handleSort} />
+                            <th>Funding Origin</th>
+                            <SortableTableHeader label="Target Budget" columnKey="budget" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Supplemental Budget" columnKey="supplementalBudget" sortConfig={sortConfig} onSort={handleSort} />
                             <SortableTableHeader label="Status" columnKey="status" sortConfig={sortConfig} onSort={handleSort} />
                             <th>Workflow Status</th>
@@ -682,13 +685,14 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     <td><TruncatedTableCell value={activity.operatingUnit} /></td>
                                     <td><TruncatedTableCell value={ipoPreview} fullText={participatingIpos.join(', ') || 'No participating IPO'} /></td>
                                     <td>{activity.fundingYear || '—'}</td><td>{activity.fundType || '—'}</td><td>{activity.tier || '—'}</td><td><TruncatedTableCell value={getFundSourceLabel(activity, fundSources) || '—'} /></td>
+                                    <td className="data-table__cell--nowrap"><TruncatedTableCell value={getActivityParentFundingLabel(activity)} fullText={activity.isSavings && activity.isRealignment ? 'Conflicting funding origin flags: Savings / Realignment' : getActivityParentFundingLabel(activity)} /></td>
                                     <td className="data-table__cell--numeric">{currency.format(totalBudget)}</td>
                                     <td className="data-table__cell--numeric">{currency.format(getActivityBudgetSummary(activity).supplemental)}</td>
                                     <td><span className={getStatusBadge(activity.status)}>{activity.status || 'Unknown'}</span></td>
                                     <td><div className="data-table__actions">{getWorkflowStatusBadge(activity.workflow_status)}{activity.workflow_status === 'PENDING' && canApprove(currentUser?.role) && <><button onClick={(event) => handleApprove(activity.id, event)} className="action-mini action-mini--approve" aria-label={`Approve ${getActivityDisplayTitle(activity)}`}><Check aria-hidden="true" /></button><button onClick={(event) => handleReject(activity.id, event)} className="action-mini action-mini--reject" aria-label={`Reject ${getActivityDisplayTitle(activity)}`}><X aria-hidden="true" /></button></>}</div></td>
                                 </tr>;
                             })}
-                            {paginatedActivities.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 13 : 12}>No activities match the current filters.</td></tr>}
+                            {paginatedActivities.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 14 : 13}>No activities match the current filters.</td></tr>}
                         </tbody>
                     </table>
                 </div>

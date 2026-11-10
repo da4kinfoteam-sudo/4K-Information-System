@@ -1,7 +1,10 @@
 
 // Author: 4K
 import React, { useState, FormEvent, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, filterYears, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock, ObligationRecord, DisbursementRecord, RefFundSource } from '../constants';
+import { FundYearField } from './ui/FundYearField';
+import { shiftFundYearDate } from '../lib/fundYear';
+import { validateDcfForm } from '../lib/dcfFormDrafts';
+import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock, ObligationRecord, DisbursementRecord, RefFundSource } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
@@ -522,16 +525,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setBudgetItemFormMessage(null);
     };
 
-    // Helper for Funding Year selection range
-    const yearOptions = useMemo(() => {
-        const currentYear = new Date().getFullYear();
-        const years = [];
-        for (let i = currentYear - 5; i <= currentYear + 5; i++) {
-            years.push(i);
-        }
-        return years;
-    }, []);
-
     useEffect(() => {
         const sameDraftContext = draftContextRef.current?.subprojectId === subproject.id
             && draftContextRef.current?.editMode === editMode;
@@ -867,23 +860,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 fundSourceUid: value || null,
                 fundSource: selectedSource?.label || (value ? prev.fundSource : null)
             }));
-        } else if (name === 'fundingYear') {
-            const year = parseInt(value) || new Date().getFullYear();
-            const rescheduleTargets = window.confirm('Also reschedule the planned dates to this Fund Year? Actual dates will not change.');
-            setEditedSubproject(prev => {
-                const newData = { ...prev, fundingYear: year, startDate: rescheduleTargets ? `${year}-01-01` : prev.startDate };
-                if (rescheduleTargets && newData.estimatedCompletionDate) {
-                    const month = getMonthFromDateStr(newData.estimatedCompletionDate);
-                    if (month !== '') {
-                        newData.estimatedCompletionDate = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
-                    }
-                }
-                return newData;
-            });
-
-            if (detailItems.length && rescheduleTargets) {
-                setDetailItems(previous => rescheduleBudgetTargets(previous as SubprojectDetailType[], year));
-            }
         } else if (name === 'operatingUnit') {
             const mappedRegion = ouToRegionMap[value];
             setEditedSubproject(prev => ({
@@ -1873,6 +1849,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     };
     const handleSubmit = async (event: FormEvent) => {
         event.preventDefault();
+        if (!(await validateDcfForm(event.currentTarget))) return;
         if (saveInFlight.current) return;
         if (budgetDraftPending) { alert('Apply or discard the schedule draft before saving.'); return; }
         if (editMode === 'budget') for (const row of detailItems) {
@@ -2000,10 +1977,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         <legend>Funding</legend>
                                          <div className="form-grid form-grid--four subproject-funding-grid">
                                             <div>
-                                                <label className="form-label">Year</label>
-                                                <select name="fundingYear" value={editedSubproject.fundingYear} onChange={handleInputChange} className={commonInputClasses}>
-                                                    {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-                                                </select>
+                                                <FundYearField key={subproject.id} name="fundingYear" value={editedSubproject.fundingYear}
+                                                    reschedule={canEditBudget && subproject.status === 'Proposed' && !!(detailItems.length || editedSubproject.startDate || editedSubproject.estimatedCompletionDate)}
+                                                    blockedReason={budgetDraftPending ? 'Apply or discard the schedule draft before changing Fund Year.' : undefined}
+                                                    onChange={(year, move) => {
+                                                        const next = { ...editedSubproject, fundingYear: year, ...(move ? { startDate: shiftFundYearDate(editedSubproject.startDate, year, editedSubproject.fundingYear), estimatedCompletionDate: shiftFundYearDate(editedSubproject.estimatedCompletionDate, year, editedSubproject.fundingYear) } : {}) };
+                                                        const details = move ? rescheduleBudgetTargets(detailItems as SubprojectDetailType[], year, editedSubproject.fundingYear) : detailItems;
+                                                        setEditedSubproject(next); if (move) setDetailItems(details);
+                                                    }} />
                                             </div>
                                             <div>
                                                 <label className="form-label">Type</label>

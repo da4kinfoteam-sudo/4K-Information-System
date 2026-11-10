@@ -4,6 +4,7 @@ import type { Activity, ActivityExpense, IPO } from '../../constants';
 import type { DcfRevisionSnapshot } from '../../lib/dcfRevisionHistory';
 import {
     getActivityBudgetSummary,
+    getActivityExpenseFundingLabel,
     isActivityExpenseActualEligible,
     isSupplementalExpense,
 } from '../../lib/activitySupplementalBudget';
@@ -369,13 +370,7 @@ export function DcfHistoricalActivity({ snapshot }: { snapshot: DcfRevisionSnaps
                                 return (
                                     <tr key={index}>
                                         <td>
-                                            {text(
-                                                ledger?.source ??
-                                                    line.supplementalSource ??
-                                                    (line.isSavings || record.isSavings
-                                                        ? 'Savings'
-                                                        : 'Realignment'),
-                                            )}
+                                            {getActivityExpenseFundingLabel(line as unknown as ActivityExpense, activity)}
                                         </td>
                                         <td>{text(ledger?.reference)}</td>
                                         <td>{date(ledger?.authorization_date)}</td>

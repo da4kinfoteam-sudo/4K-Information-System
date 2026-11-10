@@ -1,4 +1,5 @@
 import type { Subproject, SubprojectDetail, User } from '../constants';
+import { shiftFundYearDate } from './fundYear';
 import { dcfChangedFields, persistDcfMutation, type DcfMutationRequest } from './dcfMutation';
 import { supabase } from '../supabaseClient';
 import { resolveSubprojectCompletionRollup } from './subprojectCompletion';
@@ -81,7 +82,7 @@ export async function persistSubprojectDraft(base: Subproject, draft: Subproject
     return confirmed.record as Subproject;
 }
 
-export function rescheduleBudgetTargets(items: SubprojectDetail[], year: number): SubprojectDetail[] {
-    const change = (date?: string) => date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? `${year}-${date.slice(5, 7)}-01` : date;
-    return items.map(row => row.isSuperseded ? row : { ...rescheduleTargetPlan(row, year), deliveryDate: change(row.deliveryDate), obligationMonth: change(row.obligationMonth), disbursementMonth: change(row.disbursementMonth) });
+export function rescheduleBudgetTargets(items: SubprojectDetail[], year: number, previousYear?: number): SubprojectDetail[] {
+    const change = (date?: string) => date ? shiftFundYearDate(date, year, previousYear) : date;
+    return items.map(row => row.isSuperseded ? row : { ...rescheduleTargetPlan(row, year, previousYear), deliveryDate: change(row.deliveryDate), obligationMonth: change(row.obligationMonth), disbursementMonth: change(row.disbursementMonth) });
 }

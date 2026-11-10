@@ -1,4 +1,7 @@
 import { DcfRevisionHistory } from '../shared/DcfRevisionHistory';
+import { FundYearField } from '../ui/FundYearField';
+import { ActualDatePicker } from '../ui/ActualDatePicker';
+import { validateDcfForm } from '../../lib/dcfFormDrafts';
 
 // Author: 4K 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -522,6 +525,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!(await validateDcfForm(e.currentTarget))) return;
         if (saveInFlight.current) return;
         saveInFlight.current = true;
         try { await submitForm(e); } finally { saveInFlight.current = false; }
@@ -561,7 +565,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             { name: 'fundYear', label: 'Fund Year' }
         ];
 
-        const missing = requiredFields.filter(f => !formData[f.name as keyof typeof formData]);
+        const missing = requiredFields.filter(f => !(f.name === 'fundYear' && !item.fundYear && !formData.fundYear) && !formData[f.name as keyof typeof formData]);
         if (missing.length > 0) {
             setValidationErrors(missing.map(f => f.name));
             alert(`The following required fields are missing: ${missing.map(f => f.label).join(', ')}`);
@@ -644,7 +648,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             uacsCode: primaryUacs,
             obligationDate: primaryObligationDate,
             salaryGrade: Number(formData.salaryGrade),
-            fundYear: Number(formData.fundYear),
+            fundYear: formData.fundYear ? Number(formData.fundYear) : formData.fundYear,
             expenses: normalizedExpensesList,
             actualAmount: 0, // Removed usage as per request, ensuring 0
             actualObligationAmount: normalizedExpensesList.length === 0 ? null : aggregatedTotals.actualObligationAmount,
@@ -724,7 +728,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         <fieldset className="form-fieldset">
                             <legend className="form-legend">Funding Source</legend>
                             <div className="form-grid">
-                                <div><label className="form-label">Fund Year <span className="form-required">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
+                                <FundYearField key={item.id} name="fundYear" value={formData.fundYear} className={getInputClasses('fundYear')} onChange={year => setFormData(previous => ({ ...previous, fundYear: year }))} />
                                 <div><label className="form-label">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                 <div><label className="form-label">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                 <FundSourceField uid={formData.fundSourceUid} label={formData.fundSource} references={fundSources} onChange={(fundSourceUid, fundSource) => setFormData(previous => ({ ...previous, fundSourceUid, fundSource }))} />
@@ -834,7 +838,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                     <div>
                                         <label className="form-label">Obligation Date <span className="form-required">*</span></label>
                                         <MonthYearPicker 
-                                            value={currentExpense.obligationDate} 
+                                            value={currentExpense.obligationDate} defaultYear={formData.fundYear}
                                             onChange={(val) => {
                                                 setCurrentExpense(prev => ({ ...prev, obligationDate: val }));
                                                 if (validationErrors.includes('obligationDate')) {
@@ -1010,9 +1014,9 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         <fieldset className="form-fieldset">
                             <legend className="form-legend">Physical Accomplishment</legend>
                             <div className="form-grid">
-                                <div><label className="form-label">Date Hired</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={async (event) => {
-                                    if (event.target.value && !(await validateActualMonth(event.target.value))) return;
-                                    handleInputChange(event);
+                                <div><label className="form-label">Date Hired</label><ActualDatePicker ariaLabel="Date Hired" defaultYear={formData.fundYear} name="actualObligationDate" value={formData.actualObligationDate} onChange={async (value) => {
+                                    if (value && !(await validateActualMonth(value))) return;
+                                    setFormData(previous => ({ ...previous, actualObligationDate: value }));
                                 }} className={commonInputClasses} /></div>
                             </div>
                         </fieldset>
