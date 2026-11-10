@@ -9,7 +9,7 @@
       "kind": "feature",
       "title": "DCF Fund Year and activity funding controls",
       "releaseDate": "2026-11-10",
-      "pr": null,
+      "pr": 101,
       "sections": {
         "Added": [
           "Typable, single-select Fund Year controls across DCF creation, editing and transfer previews.",
