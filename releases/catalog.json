@@ -9,7 +9,7 @@
       "kind": "feature",
       "title": "GAD PIMME year columns and historical summaries",
       "releaseDate": "2026-11-14",
-      "pr": null,
+      "pr": 102,
       "sections": {
         "Added": [
           "Choose historical year columns in the Gender and Development list while keeping the current year visible.",
