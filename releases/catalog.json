@@ -1,8 +1,32 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "dcf-fund-year-and-activity-funding-controls",
+  "currentReleaseId": "gad-pimme-list-year-controls",
   "releases": [
+    {
+      "id": "gad-pimme-list-year-controls",
+      "version": "1.7.0",
+      "kind": "feature",
+      "title": "GAD PIMME year columns and historical summaries",
+      "releaseDate": "2026-11-14",
+      "pr": 102,
+      "sections": {
+        "Added": [
+          "Choose historical year columns in the Gender and Development list while keeping the current year visible.",
+          "Select a Summary Year to view saved assessment summaries for that year."
+        ],
+        "Improved": [
+          "Status filtering and Operating Unit row navigation follow the selected Summary Year; individual year cells open their own assessment year.",
+          "Compact tables, truncated descriptions, padded pagination and scrollable year menus adapt to desktop and mobile screens.",
+          "Year selections and supported list preferences are remembered separately for each user."
+        ],
+        "Fixed": [
+          "Historical selections survive failed refreshes, and late responses cannot restore another account or Operating Unit scope's data.",
+          "Completed assessments with zero scores remain completed; summary totals stay independent of table search and pagination."
+        ],
+        "Affected Pages": ["Gender and Development Assessment List"]
+      }
+    },
     {
       "id": "dcf-fund-year-and-activity-funding-controls",
       "version": "1.6.0",

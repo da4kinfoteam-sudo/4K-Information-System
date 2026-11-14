@@ -13,6 +13,8 @@
     "test:lod-scoring": "node --experimental-strip-types scripts/run-lod-scoring-check.mjs",
     "test:lod-overrides": "node --experimental-strip-types scripts/run-lod-override-check.mjs",
     "test:gad-pimme": "node --experimental-strip-types scripts/run-gad-pimme-check.mjs",
+    "test:gad-pimme-list": "node scripts/run-gad-pimme-list-check.mjs",
+    "test:gad-pimme-list-ui": "node scripts/run-gad-pimme-list-ui-check.mjs",
     "test:gad-pimme-export": "node --experimental-strip-types scripts/run-gad-pimme-export-check.mjs",
     "test:gad-pimme-sql": "node scripts/run-gad-pimme-signatory-sql-check.mjs",
     "test:gad-pimme-ui": "node scripts/run-gad-pimme-ui-check.mjs",

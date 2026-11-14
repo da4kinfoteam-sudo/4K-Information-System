@@ -12334,6 +12334,61 @@ button.bar1-drilldown-card:focus-visible {
   padding: 0.75rem;
 }
 
+.gad-pimme-summary-controls {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.gad-pimme-summary-controls .gad-pimme-year-select {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  min-width: 9rem;
+}
+
+.gad-pimme-summary-controls select {
+  width: 100%;
+  padding: 0 0.65rem;
+}
+
+.gad-pimme-column-control {
+  flex: 0 0 2.75rem;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+}
+
+.popover-content.gad-pimme-year-columns-menu {
+  display: flex;
+  flex-direction: column;
+  width: 13rem;
+  max-width: calc(100vw - 2rem);
+  max-height: min(var(--radix-popover-content-available-height, 80vh), calc(100dvh - 1rem));
+  padding: 0.75rem;
+}
+
+.gad-pimme-year-columns-menu > button {
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.gad-pimme-year-columns-menu__options {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(18rem, 50vh);
+  overflow-y: auto;
+  margin-bottom: 0.5rem;
+}
+
+.gad-pimme-year-columns-menu__options label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+
 .gad-pimme-search {
   align-items: center;
   display: flex;
@@ -12393,12 +12448,17 @@ button.bar1-drilldown-card:focus-visible {
 }
 
 .gad-pimme-table {
+  --gad-pimme-ou-width: 15rem;
   border-collapse: collapse;
   color: var(--text-primary);
   font-size: 0.8125rem;
-  min-width: 62.5rem;
+  min-width: calc(var(--gad-pimme-ou-width) + var(--gad-pimme-year-count, 1) * 10rem);
   table-layout: fixed;
   width: 100%;
+}
+
+.gad-pimme-year-column {
+  width: 10rem;
 }
 
 .gad-pimme-table th,
@@ -12407,6 +12467,7 @@ button.bar1-drilldown-card:focus-visible {
   padding: 0.625rem 1rem;
   text-align: center;
   vertical-align: middle;
+  white-space: nowrap;
 }
 
 .gad-pimme-table th {
@@ -12433,10 +12494,10 @@ button.bar1-drilldown-card:focus-visible {
 .gad-pimme-table .gad-pimme-ou-column {
   background: var(--surface-card);
   left: 0;
-  min-width: 15rem;
+  min-width: var(--gad-pimme-ou-width);
   position: sticky;
   text-align: left;
-  width: 15rem;
+  width: var(--gad-pimme-ou-width);
   z-index: 2;
 }
 
@@ -12447,6 +12508,9 @@ button.bar1-drilldown-card:focus-visible {
 .gad-pimme-ou-column strong,
 .gad-pimme-ou-column span {
   display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .gad-pimme-ou-column strong {
@@ -12498,6 +12562,7 @@ button.bar1-drilldown-card:focus-visible {
   border-top: 0;
   min-height: 3.6rem;
   padding: 0.65rem 1rem;
+  margin: 0;
 }
 
 .gad-pimme-detail-header {
@@ -13021,6 +13086,23 @@ button.bar1-drilldown-card:focus-visible {
 }
 
 @media (max-width: 720px) {
+  .gad-pimme-table {
+    --gad-pimme-ou-width: 10rem;
+  }
+  .gad-pimme-list-page .gad-pimme-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 2.75rem;
+    align-items: center;
+  }
+
+  .gad-pimme-list-page .gad-pimme-search {
+    grid-column: 1 / -1;
+  }
+
+  .gad-pimme-summary-controls .gad-pimme-year-select {
+    width: 100%;
+  }
+
   .gad-pimme-signatories__fields {
     grid-template-columns: minmax(0, 1fr);
   }

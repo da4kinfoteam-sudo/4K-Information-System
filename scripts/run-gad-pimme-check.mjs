@@ -91,8 +91,8 @@ assert.match(driveSource, /ensureFolder\(accessToken, GAD_PIMME_DRIVE_MODULE, co
 assert.match(driveSource, /withDriveFolderInitializationLock\([\s\S]*`gad-pimme:\$\{connection\.id\}:\$\{year\}:\$\{operatingUnit\}`/, 'GAD folder initialization must remain race-safe.');
 assert.match(accessSource, /\/gender-and-development\/detail\?ou=/, 'Detail navigation must remain URL-addressable.');
 assert.match(appSource, /requestAppNavigation\(currentPageRef\.current, nextPage\)/, 'Browser Back/Forward must honor unsaved-change navigation guards.');
-assert.match(listSource, /onClick=\{event => event\.stopPropagation\(\)\}[\s\S]*onClick=\{\(\) => onSelectAssessment\(ou, year\)\}/, 'Year-cell navigation must not trigger current-year row navigation.');
-assert.match(listSource, /onClick=\{\(\) => onSelectAssessment\(ou, currentYear\)\}/, 'OU row navigation must open the current year.');
+assert.match(listSource, /onClick=\{event => event\.stopPropagation\(\)\}[\s\S]*onClick=\{\(\) => onSelectAssessment\(ou, year\)\}/, 'Year-cell navigation must not trigger summary-year row navigation.');
+assert.match(listSource, /onClick=\{\(\) => onSelectAssessment\(ou, summaryYear\)\}/, 'OU row navigation must open the selected summary year, defaulting to the current year.');
 assert.match(detailsSource, /const editable = canEdit && !saving && !exporting && !loadFailed/, 'Edit capability must include permissions and saving/export/load-failure gates.');
 assert.match(detailsSource, /disabled=\{!editable\}/, 'View-only users must not be able to change questionnaire controls.');
 assert.match(detailsSource, /canEdit && <button[^>]+gad-pimme-evidence__upload/, 'Evidence uploads must be hidden from view-only users.');
