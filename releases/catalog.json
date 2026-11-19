@@ -9,7 +9,7 @@
       "kind": "feature",
       "title": "Customizable IPO tables and header filters",
       "releaseDate": "2026-11-19",
-      "pr": null,
+      "pr": 103,
       "sections": {
         "Added": [
           "Edit Table lets users add profile, membership and FFEDIS registration columns while keeping the six default columns visible.",
