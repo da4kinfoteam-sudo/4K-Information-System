@@ -30,7 +30,7 @@ function Harness(){const[rows,setRows]=useState(()=>structuredClone(window.fixtu
 useEffect(()=>{const listener=()=>setRoute(location.hash.slice(1)||'list');addEventListener('hashchange',listener);return()=>removeEventListener('hashchange',listener)},[]);
 const saved=confirmed=>{window.fixture.confirmed.push(...confirmed);setRows(previous=>[...new Map([...previous,...confirmed].map(row=>[row.id,row])).values()])};const id=Number(route.split('/')[1]||1);return <main style={{padding:16,maxWidth:1440,margin:'auto'}}><nav><button className="btn btn-secondary" onClick={()=>location.hash='list'}>IPO list</button></nav>{route==='list'?<IPOs ipos={rows} setIpos={unexpected} onIposSaved={saved} subprojects={empty} activities={empty} onSelectIpo={row=>location.hash='detail/'+row.id} onSelectSubproject={noop} particularTypes={{}} commodityCategories={{}} gidaAreas={empty} elcacAreas={empty}/>:<Detail key={id} ipo={rows.find(row=>row.id===id)||rows[0]} subprojects={empty} trainings={empty} monitoringActivities={empty} cachedMonitoringReports={empty} cachedMonitoringActions={empty} marketingPartners={empty} onUpdateIpo={row=>saved([row])} onSelectSubproject={noop} onSelectActivity={noop} onSelectMarketingPartner={noop} particularTypes={{}} commodityCategories={{}}/>}</main>}
 createRoot(document.getElementById('root')).render(<Harness/>);`;
-const server = await createServer({ configFile: false, root: process.cwd(), appType: 'custom', resolve: { alias: { '@': process.cwd() } }, cacheDir: path.join(artifacts, '.vite'), server: { host: '127.0.0.1', port: serve ? 3024 : 0, strictPort: serve }, optimizeDeps: { noDiscovery: true, include: ['react', 'react-dom/client', 'lucide-react', 'xlsx'], entries: [] }, plugins: [{
+const server = await createServer({ configFile: false, root: process.cwd(), appType: 'custom', resolve: { alias: { '@': process.cwd() } }, cacheDir: path.join(artifacts, '.vite'), server: { host: '127.0.0.1', port: serve ? 3024 : 0, strictPort: serve, watch: { ignored: ['**/scripts/**'] } }, optimizeDeps: { noDiscovery: true, include: ['react', 'react-dom/client', 'lucide-react', 'xlsx'], entries: [] }, plugins: [{
     name: 'ipo-indicator-samples', enforce: 'pre',
     resolveId(id) { if (id === '/ipo-indicator-harness.tsx') return '\0ipo-harness'; for (const key of Object.keys(mocks)) if (id.replace(/\\/g, '/').endsWith('/' + key)) return '\0ipo-mock-' + key; },
     load(id) { if (id === '\0ipo-harness') return transformWithEsbuild(harness, 'ipo-indicator-harness.tsx', { loader: 'tsx', jsx: 'automatic' }); for (const [key, code] of Object.entries(mocks)) if (id === '\0ipo-mock-' + key) return code; },
@@ -55,9 +55,12 @@ try {
     await page.getByRole('cell', { name: 'Legacy IPO', exact: true }).waitFor();
     assert.equal(await page.locator('tbody tr').count(), 3);
     const filter = async value => {
-        await page.getByRole('button', { name: /^Filter/ }).click();
-        await page.getByRole('dialog').getByRole('combobox', { name: 'Flags', exact: true }).selectOption(value);
-        await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
+        await page.getByRole('button', { name: 'Filter Indicators', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: 'Filter Indicators', exact: true });
+        if (value) await dialog.getByRole('button', { name: 'Clear', exact: true }).click();
+        else await dialog.getByRole('button', { name: 'Reset Indicators filter', exact: true }).click();
+        if (value) await dialog.getByRole('checkbox', { name: value, exact: true }).check();
+        await dialog.getByRole('button', { name: 'Apply', exact: true }).click();
     };
     await filter('F2C2 Cluster'); assert.equal(await page.locator('tbody tr').count(), 1);
     assert.match(await page.locator('tbody').innerText(), /Cluster IPO/);
@@ -143,7 +146,7 @@ try {
     });
     await page.getByRole('button', { name:'Next',exact:true }).click();
     await page.getByText('Showing 11 to 17 of 17 entries', { exact:true }).waitFor();
-    await page.getByRole('button', { name:/^Filter/ }).click();
+    await page.getByRole('button', { name:'Filter Indicators',exact:true }).click();
     assert.equal(await page.getByText('Showing 11 to 17 of 17 entries', { exact:true }).count(), 1, 'Opening filters retains the page');
     await page.getByRole('dialog').getByRole('button', { name:'Cancel',exact:true }).click();
     await page.getByRole('button', { name:'Previous',exact:true }).click();

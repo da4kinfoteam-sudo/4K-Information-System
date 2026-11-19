@@ -28622,3 +28622,48 @@ button.lod-table-state:hover {
   .dcf-revision-fields { grid-template-columns: minmax(0, 1fr); }
   .dcf-revision-history .table-action, .dcf-revision-modal .btn, .dcf-revision-modal .modal-close-btn { min-width: 44px; min-height: 44px; }
 }
+
+/* IPO registry columns use the existing table surface and portal-based filter menus. */
+.ipo-list-page { min-width: 0; max-width: 100%; }
+.ipo-list-page .major-table-toolbar__query { min-width: 0; }
+.ipo-list-page .data-table-scroll { max-width: 100%; }
+.ipo-list-page .ipo-list-table { table-layout: fixed; min-width: 100%; }
+.ipo-list-table th, .ipo-list-table td { white-space: nowrap; }
+.ipo-list-page .ipo-list-table th { letter-spacing: 0; padding-top: 0; padding-bottom: 0; }
+.ipo-list-table td .table-cell-truncate { max-width: 100%; }
+.ipo-list-table th .ipo-list-header__trigger { display: block; width: 100%; min-width: 0; min-height: calc(0.9rem + 1rem); padding: 0.5rem 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; text-transform: inherit; white-space: nowrap; }
+.ipo-list-table th .ipo-list-header__trigger:hover, .ipo-list-table th .ipo-list-header__trigger.is-active { color: var(--brand-primary); background: transparent; }
+.ipo-list-table th .ipo-list-header__trigger.is-active { text-decoration: underline; text-underline-offset: 3px; }
+.ipo-list-header__trigger:focus-visible, .ipo-columns-menu :focus-visible, .ipo-column-filter :focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+.ipo-columns-menu, .dashboard-scope-menu.ipo-column-filter { display: grid; gap: 8px; width: min(29rem, calc(100vw - 16px)); max-width: calc(100vw - 16px); max-height: min(38rem, var(--radix-popover-content-available-height)); padding: 12px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface); color: var(--app-text); font-size: 0.8125rem; box-sizing: border-box; overflow: hidden; }
+.ipo-columns-menu { grid-template-rows: auto minmax(0, 1fr) auto; }
+.dashboard-scope-menu.ipo-column-filter { width: min(23rem, calc(100vw - 16px)); grid-template-rows: minmax(0, 1fr) auto; }
+.ipo-column-filter__body { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ipo-column-filter__body > * { flex-shrink: 0; }
+.ipo-column-sort { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--app-border); }
+.ipo-column-sort button { display: flex; align-items: center; justify-content: flex-start; gap: 6px; min-width: 0; min-height: 30px; border: 0; border-radius: 4px; padding: 4px 8px; color: inherit; background: transparent; font: inherit; white-space: nowrap; }
+.ipo-column-sort button:last-child { justify-content: center; min-width: 30px; }
+.ipo-column-sort button svg { flex-shrink: 0; }
+.ipo-column-sort button:hover, .ipo-column-sort button[aria-pressed="true"] { background: var(--brand-primary-soft); color: var(--brand-primary); }
+.ipo-columns-menu .form-control, .ipo-column-filter .form-control { box-sizing: border-box; min-width: 0; max-width: 100%; width: 100%; font-size: inherit; }
+.ipo-columns-menu .form-control:is(:focus, :focus-visible), .ipo-column-filter .form-control:is(:focus, :focus-visible) { border-color: var(--brand-primary); outline: 2px solid var(--brand-primary); outline-offset: -2px; box-shadow: none; }
+.ipo-columns-menu__options { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ipo-columns-menu__options fieldset { margin: 0 0 12px; padding: 0; border: 0; min-width: 0; }
+.ipo-columns-menu__options legend { padding: 4px 0; font: inherit; font-weight: 600; }
+.ipo-columns-menu__options label { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 4px; }
+.ipo-columns-menu__options label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ipo-columns-menu__options input { flex-shrink: 0; accent-color: var(--brand-primary); }
+.ipo-column-filter .dashboard-scope-menu__actions { margin: 0; }
+.ipo-column-filter .dashboard-scope-menu__options { min-height: 0; max-height: none; overflow: visible; }
+.ipo-list-menu-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--app-border); padding-top: 10px; }
+.ipo-list-menu-footer > div { display: flex; gap: 8px; }
+.ipo-list-menu-footer .btn { white-space: nowrap; }
+.ipo-column-filter .ipo-list-menu-footer { justify-content: flex-end; }
+@media (max-width: 767px) {
+  .ipo-list-page .major-table-search { width: 100%; }
+  .ipo-list-page .major-table-toolbar__query { width: 100%; }
+  .ipo-list-menu-footer .btn, .ipo-column-filter .btn, .ipo-column-sort button, .ipo-columns-menu__options label { min-height: 44px; }
+  .ipo-column-sort button:last-child { min-width: 44px; }
+  .ipo-list-menu-footer { gap: 6px; }
+  .ipo-list-menu-footer .btn { padding-left: 8px; padding-right: 8px; }
+}

@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo, useRef } from 'react';
-import { Check, ChevronDown, Download, FileSpreadsheet, Plus, SlidersHorizontal, Upload, X } from 'lucide-react';
+import { Check, Download, FileSpreadsheet, Plus, RotateCcw, Upload, X } from 'lucide-react';
 import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes, LodAssessment, GidaArea, ElcacArea, normalizeRegionName } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { supabase } from '../supabaseClient';
@@ -10,15 +10,17 @@ import { usePagination, useSelection, useUserAccess } from './mainfunctions/Tabl
 import { downloadIposReport, downloadIposTemplate, handleIposUpload } from './mainfunctions/ImportExportService';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchAll } from '../hooks/useSupabaseTable';
-import useLocalStorageState from '../hooks/useLocalStorageState';
-import { ConfirmDialog, DataTablePagination, SortableTableHeader as CanonicalSortableTableHeader } from './ui/enterprise';
-import { BulkSelectionBar, ColumnFilterDialog, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from './ui/MajorDataTable';
+import { ConfirmDialog, DataTablePagination } from './ui/enterprise';
+import { BulkSelectionBar, MajorTableToolbar, SelectionCheckbox, TruncatedTableCell } from './ui/MajorDataTable';
 import { getLodEffectiveState } from '../lib/lodScoring';
 import { subscribeToLodDataChanges } from '../lib/lodDataSync';
 import { commodityCapacityToFormValue, getCommodityCapacityValues } from '../lib/commodityProfile';
 import { getActiveSubprojectBudget } from '../lib/subprojectItemAdjustments';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets, isParentExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import { normalizeIpoIndicators } from '../lib/ipoProfileIndicators';
+import { useIpoListPreferences } from '../hooks/useIpoListPreferences';
+import { IPO_DEFAULT_SORT, createIpoColumnContext, isDefaultIpoColumn, ipoColumnDisplay, ipoColumnOptions, normalizeIpoListSort, processIpoList, visibleIpoColumns, type IpoListSort } from '../lib/ipoListColumns';
+import { IpoColumnHeader, IpoColumnsControl } from './IPO/IpoListControls';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -75,20 +77,8 @@ const defaultFormData = {
 };
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
-const flagDefaults = {
-    womenLed: false,
-    withinGida: false,
-    withinElcac: false,
-    withScad: false,
-    withSubprojects: false,
-    withTrainings: false,
-    f2c2Cluster: false,
-    ffedisRegistered: false,
-};
-
-const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories, externalFilters, onClearExternalFilters, gidaAreas, elcacAreas }) => {
+const IpoManagement: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories, externalFilters, onClearExternalFilters, gidaAreas, elcacAreas }) => {
     const { currentUser } = useAuth();
-    const tableStoragePrefix = `ipos_${currentUser?.id || 'anonymous'}`;
     const { canEdit } = useUserAccess('IPO Management');
     const isAdmin = currentUser?.role === 'Administrator' || currentUser?.role === 'Super Admin';
     const { logAction } = useLogAction();
@@ -141,17 +131,10 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, ac
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
 
-    // Persistent Filters using useLocalStorageState
-    const [searchTerm, setSearchTerm] = useLocalStorageState(`${tableStoragePrefix}_searchTerm`, '');
-    const [regionFilter, setRegionFilter] = useLocalStorageState(`${tableStoragePrefix}_regionFilter`, 'All');
-    const [storedFlagFilter, setFlagFilter] = useLocalStorageState(`${tableStoragePrefix}_flagFilter`, flagDefaults);
-    const flagFilter = useMemo(() => ({ ...flagDefaults, ...storedFlagFilter }), [storedFlagFilter]);
-    const [areFlagFiltersOpen, setAreFlagFiltersOpen] = useState(false);
-    const [isColumnFilterOpen, setIsColumnFilterOpen] = useState(false);
-    const [ipoColumnFilters, setIpoColumnFilters] = useLocalStorageState<Record<string, string[]>>(`${tableStoragePrefix}_columnFilters`, {});
-
-    type SortKeys = keyof IPO | 'totalInvested';
-    const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'registrationDate', direction: 'descending' });
+    const [listPreferences, updateListPreferences] = useIpoListPreferences(currentUser?.id);
+    const { search: searchTerm, filters: ipoColumnFilters, optionalColumns } = listPreferences;
+    const [requestedSort, setSortConfig] = useState<IpoListSort>(IPO_DEFAULT_SORT);
+    const sortConfig = normalizeIpoListSort(requestedSort);
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
 
     const [currentCommodity, setCurrentCommodity] = useState({
@@ -172,32 +155,24 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, ac
     // React to external filters (e.g. from Chatbot)
     useEffect(() => {
         if (externalFilters) {
-            if (externalFilters.region) {
-                // Try to find exact match or normalized match
+            updateListPreferences(previous => {
                 const target = externalFilters.region;
-                if (philippineRegions.includes(target)) {
-                    setRegionFilter(target);
-                } else {
-                    // Try normalizing or finding closest match
-                    const normalized = normalizeRegionName(target);
-                    if (philippineRegions.includes(normalized)) {
-                        setRegionFilter(normalized);
-                    }
-                }
-            }
-            if (externalFilters.search) {
-                setSearchTerm(externalFilters.search);
-            }
-            if (externalFilters.ancestralDomainNo) {
-                setSearchTerm(externalFilters.ancestralDomainNo);
-            }
+                const region = target && (philippineRegions.includes(target) ? target : normalizeRegionName(target));
+                return { ...previous,
+                    search: externalFilters.ancestralDomainNo || externalFilters.search || previous.search,
+                    ...(region && philippineRegions.includes(region) ? {
+                        optionalColumns: [...previous.optionalColumns, 'region'],
+                        filters: { ...previous.filters, region: [region] },
+                    } : {}),
+                };
+            });
             
             // Clear the external filters so they don't re-apply on remount
             if (onClearExternalFilters) {
                 onClearExternalFilters();
             }
         }
-    }, [externalFilters, setRegionFilter, setSearchTerm, onClearExternalFilters]);
+    }, [externalFilters, updateListPreferences, onClearExternalFilters]);
 
     // Helper to refresh data from Supabase
     const refreshData = async () => {
@@ -298,97 +273,10 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, ac
         }
     }, [editingIpo]);
     
-    const processedIpos = useMemo(() => {
-        let filteredIpos = [...ipos];
-
-        if (regionFilter !== 'All') {
-            filteredIpos = filteredIpos.filter(ipo => ipo.region === regionFilter);
-        }
-        if ((ipoColumnFilters.region || []).length > 0) {
-            filteredIpos = filteredIpos.filter(ipo => ipoColumnFilters.region.includes(ipo.region));
-        }
-        
-        if (flagFilter.womenLed) {
-            filteredIpos = filteredIpos.filter(ipo => ipo.isWomenLed);
-        }
-        if (flagFilter.withinGida) {
-            filteredIpos = filteredIpos.filter(ipo => ipo.isWithinGida);
-        }
-        if (flagFilter.withinElcac) {
-            filteredIpos = filteredIpos.filter(ipo => ipo.isWithinElcac);
-        }
-        if (flagFilter.withScad) {
-            filteredIpos = filteredIpos.filter(ipo => ipo.isWithScad);
-        }
-        if (flagFilter.f2c2Cluster) filteredIpos = filteredIpos.filter(ipo => ipo.isF2c2Cluster === true);
-        if (flagFilter.ffedisRegistered) filteredIpos = filteredIpos.filter(ipo => ipo.isFfedisRegistered === true);
-
-        // New Filters
-        if (flagFilter.withSubprojects) {
-            const iposWithSP = new Set((subprojects || []).map(sp => sp.indigenousPeopleOrganization));
-            filteredIpos = filteredIpos.filter(ipo => iposWithSP.has(ipo.name));
-        }
-
-        if (flagFilter.withTrainings) {
-            const iposWithTr = new Set();
-            (activities || []).filter(a => a.type === 'Training').forEach(t => {
-                (t.participatingIpos || []).forEach(p => iposWithTr.add(p));
-            });
-            filteredIpos = filteredIpos.filter(ipo => iposWithTr.has(ipo.name));
-        }
-
-        const commodityFilters = ipoColumnFilters.commodities || [];
-        if (commodityFilters.length > 0) {
-            filteredIpos = filteredIpos.filter(ipo => (ipo.commodities || []).some(commodity => commodityFilters.includes(commodity.particular)));
-        }
-        const levelFilters = ipoColumnFilters.levelOfDevelopment || [];
-        if (levelFilters.length > 0) {
-            filteredIpos = filteredIpos.filter(ipo => {
-                const state = getLodEffectiveState(latestLevels[ipo.id]);
-                return levelFilters.includes(state.level ? String(state.level) : state.label);
-            });
-        }
-
-        if (searchTerm) {
-            const lowercasedSearchTerm = searchTerm.toLowerCase();
-            filteredIpos = filteredIpos.filter(ipo =>
-                ipo.name.toLowerCase().includes(lowercasedSearchTerm) ||
-                ipo.contactPerson.toLowerCase().includes(lowercasedSearchTerm) ||
-                ipo.location.toLowerCase().includes(lowercasedSearchTerm) ||
-                (ipo.ancestralDomainNo || '').toLowerCase().includes(lowercasedSearchTerm) ||
-                // Integrated Commodity Search
-                (ipo.commodities || []).some(c => 
-                    c.particular.toLowerCase().includes(lowercasedSearchTerm) ||
-                    c.type.toLowerCase().includes(lowercasedSearchTerm)
-                )
-            );
-        }
-
-        if (sortConfig !== null) {
-            filteredIpos.sort((a, b) => {
-                let aValue: any;
-                let bValue: any;
-
-                if (sortConfig.key === 'totalInvested') {
-                    aValue = calculateTotalInvestment(a.name);
-                    bValue = calculateTotalInvestment(b.name);
-                } else {
-                    aValue = a[sortConfig.key as keyof IPO];
-                    bValue = b[sortConfig.key as keyof IPO];
-                }
-                
-                if (aValue < bValue) {
-                    return sortConfig.direction === 'ascending' ? -1 : 1;
-                }
-                if (aValue > bValue) {
-                    return sortConfig.direction === 'ascending' ? 1 : -1;
-                }
-                return 0;
-            });
-        }
-
-        return filteredIpos;
-    }, [ipos, searchTerm, regionFilter, sortConfig, flagFilter, ipoColumnFilters, latestLevels, calculateTotalInvestment, subprojects, activities]);
+    const tableColumns = useMemo(() => visibleIpoColumns(optionalColumns), [optionalColumns]);
+    const columnContext = useMemo(() => createIpoColumnContext(latestLevels, subprojects || [], activities || []), [latestLevels, subprojects, activities]);
+    const processedIpos = useMemo(() => processIpoList(ipos, tableColumns, columnContext, ipoColumnFilters, searchTerm, sortConfig), [ipos, tableColumns, columnContext, ipoColumnFilters, searchTerm, sortConfig]);
+    const filterOptions = useMemo(() => new Map(tableColumns.map(column => [column.key, ipoColumnOptions(column, ipos, columnContext, ipoColumnFilters[column.key])])), [tableColumns, ipos, columnContext, ipoColumnFilters]);
 
     useEffect(() => {
         if (!isSelectionMode) return;
@@ -402,20 +290,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, ac
     // Use Shared Pagination Hook
     const { 
         currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedIpos 
-    } = usePagination(processedIpos, [searchTerm, regionFilter, flagFilter, ipoColumnFilters, sortConfig]);
+    } = usePagination(processedIpos, [searchTerm, ipoColumnFilters, sortConfig, currentUser?.id]);
 
-    const requestSort = (key: SortKeys) => {
-        let direction: 'ascending' | 'descending' = 'ascending';
-        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
-            direction = 'descending';
-        }
-        setSortConfig({ key, direction });
-    };
-
-    const handleFlagFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, checked } = e.target;
-        setFlagFilter(prev => ({ ...prev, [name]: checked }));
-    };
+    useEffect(() => { if (currentPage > totalPages) setCurrentPage(totalPages); }, [currentPage, totalPages]);
 
     // --- Multi-Delete Handlers ---
     const handleToggleSelectionMode = () => {
@@ -812,21 +689,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, ac
     
     const commonInputClasses = "form-control";
     
-    const SortableHeader: React.FC<{ sortKey: SortKeys; label: string; className?: string; }> = ({ sortKey, label, className }) => {
-      return (
-        <CanonicalSortableTableHeader
-            label={label}
-            columnKey={sortKey}
-            sortConfig={sortConfig}
-            onSort={requestSort}
-            className={className}
-        />
-      )
-    }
-
     // Filter activities for display
     const linkedTrainings = useMemo(() => (activities || []).filter(a => a.type === 'Training'), [activities]);
-    const activeFlagFilterCount = Object.values(flagFilter).filter(Boolean).length;
 
     const getWorkflowStatusBadge = (status?: string) => {
         let classes = 'status-badge status-badge--compact status-badge--neutral';
@@ -889,48 +753,16 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, ac
         }
     };
 
-    const ipoFilterFields = [
-        { key: 'region', label: 'Location', values: Array.from(new Set(ipos.map(ipo => ipo.region).filter(Boolean))).sort() },
-        { key: 'flags', label: 'Flags', values: ['Women-Led', 'GIDA', 'ELCAC', 'SCAD', 'F2C2 Cluster', 'FFEDIS Registered', 'With Subprojects', 'With Trainings'] },
-        { key: 'commodities', label: 'Commodities', values: Array.from(new Set(ipos.flatMap(ipo => (ipo.commodities || []).map(commodity => commodity.particular)).filter(Boolean))).sort() },
-        { key: 'levelOfDevelopment', label: 'Level of Development', values: ['1', '2', '3', '4', '5', 'Dropped', 'Incomplete', 'For Assessment'] }
-    ];
-    const selectedFlagNames = [
-        flagFilter.womenLed && 'Women-Led',
-        flagFilter.withinGida && 'GIDA',
-        flagFilter.withinElcac && 'ELCAC',
-        flagFilter.withScad && 'SCAD',
-        flagFilter.f2c2Cluster && 'F2C2 Cluster',
-        flagFilter.ffedisRegistered && 'FFEDIS Registered',
-        flagFilter.withSubprojects && 'With Subprojects',
-        flagFilter.withTrainings && 'With Trainings'
-    ].filter(Boolean) as string[];
-    const dialogFilters = {
-        ...ipoColumnFilters,
-        ...(regionFilter !== 'All' && !(ipoColumnFilters.region || []).length ? { region: [regionFilter] } : {}),
-        ...(selectedFlagNames.length ? { flags: selectedFlagNames } : {})
+    const applyColumns = (keys: string[]) => {
+        updateListPreferences(previous => ({ ...previous, optionalColumns: keys }));
+        if (sortConfig && !isDefaultIpoColumn(sortConfig.key) && !keys.includes(sortConfig.key)
+            && !(sortConfig.key === 'registrationDate' && sortConfig.direction === 'descending')) {
+            setSortConfig(IPO_DEFAULT_SORT);
+        }
     };
-    const applyIpoFilters = (filters: Record<string, string[]>) => {
-        const flags = filters.flags || [];
-        setFlagFilter({
-            womenLed: flags.includes('Women-Led'),
-            withinGida: flags.includes('GIDA'),
-            withinElcac: flags.includes('ELCAC'),
-            withScad: flags.includes('SCAD'),
-            f2c2Cluster: flags.includes('F2C2 Cluster'),
-            ffedisRegistered: flags.includes('FFEDIS Registered'),
-            withSubprojects: flags.includes('With Subprojects'),
-            withTrainings: flags.includes('With Trainings')
-        });
-        setRegionFilter('All');
-        const { flags: _flags, ...persistentFilters } = filters;
-        setIpoColumnFilters(persistentFilters);
-    };
-    const activeIpoFilterCount = Object.keys(dialogFilters).filter(key => dialogFilters[key]?.length).length;
 
     const renderListView = () => (
-        <div className="data-list-page">
-            <ColumnFilterDialog open={isColumnFilterOpen} fields={ipoFilterFields} filters={dialogFilters} onApply={applyIpoFilters} onClose={() => setIsColumnFilterOpen(false)} />
+        <div className="data-list-page ipo-list-page" key={currentUser?.id ?? 'anonymous'}>
             <div className="data-list-header">
                 <h2 className="data-list-title">IPO Management</h2>
                 {canEdit && <button onClick={handleAddNewClick} className="btn btn-primary"><Plus aria-hidden="true" /> Add New IPO</button>}
@@ -938,10 +770,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, ac
             <div className="data-table-card major-table-card">
                 <MajorTableToolbar
                     searchTerm={searchTerm}
-                    onSearchChange={setSearchTerm}
+                    onSearchChange={search => updateListPreferences({ search })}
                     searchPlaceholder="Search IPOs..."
-                    activeFilterCount={activeIpoFilterCount}
-                    onOpenFilters={() => setIsColumnFilterOpen(true)}
+                    filterActions={<>
+                        <IpoColumnsControl selected={optionalColumns} onApply={applyColumns} />
+                        {Object.keys(ipoColumnFilters).length > 0 && <button type="button" className="btn btn-secondary" onClick={() => updateListPreferences({ filters: {} })}><RotateCcw aria-hidden="true" />Reset Filters</button>}
+                    </>}
                     actions={isSelectionMode
                         ? <BulkSelectionBar intent="delete" count={selectedIds.length} onConfirm={() => setIsMultiDeleteModalOpen(true)} onClear={() => setSelectedIds([])} onCancel={handleToggleSelectionMode} />
                         : <>
@@ -962,21 +796,21 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, ac
                     </>}
                 />
                 <div className="data-table-scroll">
-                    <table className="data-table">
+                    <table className="data-table ipo-list-table" style={{ width: tableColumns.reduce((sum, column) => sum + column.width, isSelectionMode ? 48 : 0) }}>
+                        <colgroup>{isSelectionMode && <col style={{ width: 48 }} />}{tableColumns.map(column => <col key={column.key} style={{ width: column.width }} />)}</colgroup>
                         <thead><tr>
                             {isSelectionMode && <th className="data-table__cell--selection"><SelectionCheckbox aria-label="Select all IPOs on this page" onChange={handleSelectAll} checked={paginatedIpos.length > 0 && paginatedIpos.every(ipo => selectedIds.includes(ipo.id))} indeterminate={paginatedIpos.some(ipo => selectedIds.includes(ipo.id)) && !paginatedIpos.every(ipo => selectedIds.includes(ipo.id))} /></th>}
-                            <CanonicalSortableTableHeader label="IPO ID" columnKey="id" sortConfig={sortConfig} onSort={requestSort} />
-                            <CanonicalSortableTableHeader label="IPO Name" columnKey="name" sortConfig={sortConfig} onSort={requestSort} />
-                            <CanonicalSortableTableHeader label="Location" columnKey="location" sortConfig={sortConfig} onSort={requestSort} />
-                            <th>Flags</th><th>Commodities</th>
-                            <CanonicalSortableTableHeader label="Level of Development" columnKey="levelOfDevelopment" sortConfig={sortConfig} onSort={requestSort} />
+                            {tableColumns.map(column => <IpoColumnHeader key={column.key} column={column} options={filterOptions.get(column.key) || []} selected={ipoColumnFilters[column.key]} sort={sortConfig} onApply={(values, nextSort) => {
+                                updateListPreferences(previous => {
+                                    const filters = { ...previous.filters };
+                                    if (values === undefined) delete filters[column.key]; else filters[column.key] = values;
+                                    return { ...previous, filters };
+                                });
+                                setSortConfig(previous => previous.key === nextSort.key && previous.direction === nextSort.direction ? previous : nextSort);
+                            }} />)}
                         </tr></thead>
                         <tbody>
                             {paginatedIpos.map(ipo => {
-                                const flags = [ipo.isWomenLed && 'Women-Led', ipo.isWithinGida && 'GIDA', ipo.isWithinElcac && 'ELCAC', ipo.isWithScad && 'SCAD', ipo.isF2c2Cluster === true && 'F2C2 Cluster', ipo.isFfedisRegistered === true && 'FFEDIS Registered'].filter(Boolean) as string[];
-                                const commodities = (ipo.commodities || []).map(commodity => commodity.particular).filter(Boolean);
-                                const flagPreview = flags.length ? `${flags[0]}${flags.length > 1 ? ` +${flags.length - 1}` : ''}` : '—';
-                                const commodityPreview = commodities.length ? `${commodities[0]}${commodities.length > 1 ? ` +${commodities.length - 1}` : ''}` : '—';
                                 return <tr
                                     key={ipo.id}
                                     className={isSelectionMode ? (selectedIds.includes(ipo.id) ? 'data-table__row--selected data-table__row--selected-danger' : undefined) : 'data-table__row--interactive'}
@@ -986,20 +820,17 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, ac
                                     onKeyDown={isSelectionMode ? undefined : event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectIpo(ipo); } }}
                                 >
                                     {isSelectionMode && <td className="data-table__cell--selection"><SelectionCheckbox aria-label={`Select ${ipo.name}`} checked={selectedIds.includes(ipo.id)} onChange={() => handleSelectRow(ipo.id)} /></td>}
-                                    <td className="data-table__cell--mono">{ipo.id}</td>
-                                    <td className="data-table__cell--primary"><TruncatedTableCell value={ipo.name} /></td>
-                                    <td><TruncatedTableCell value={ipo.location} /></td>
-                                    <td><TruncatedTableCell className="status-badge status-badge--compact status-badge--info" value={flagPreview} fullText={flags.join(', ') || 'No flags'} /></td>
-                                    <td><TruncatedTableCell value={commodityPreview} fullText={commodities.join(', ') || 'No commodities'} /></td>
-                                    <td>
-                                        {(() => {
+                                    {tableColumns.map(column => {
+                                        const display = ipoColumnDisplay(column, ipo, columnContext);
+                                        if (column.kind === 'lod') {
                                             const state = getLodEffectiveState(latestLevels[ipo.id]);
-                                            return <span className={`data-table-level lod-table-state--${state.kind}`}>{state.label}</span>;
-                                        })()}
-                                    </td>
+                                             return <td key={column.key}><span title={state.label} className={`data-table-level lod-table-state--${state.kind}`}>{state.label}</span></td>;
+                                        }
+                                        return <td key={column.key} className={column.key === 'id' ? 'data-table__cell--mono' : column.key === 'name' ? 'data-table__cell--primary' : undefined}><TruncatedTableCell className={column.key === 'flags' ? 'status-badge status-badge--compact status-badge--info' : undefined} value={display.text} fullText={display.fullText} /></td>;
+                                    })}
                                 </tr>;
                             })}
-                            {paginatedIpos.length === 0 && <tr><td className="data-table__empty-cell" colSpan={isSelectionMode ? 7 : 6}>No IPOs match the current filters.</td></tr>}
+                            {paginatedIpos.length === 0 && <tr><td className="data-table__empty-cell" colSpan={tableColumns.length + (isSelectionMode ? 1 : 0)}>No IPOs match the current filters.</td></tr>}
                         </tbody>
                     </table>
                 </div>
@@ -1302,6 +1133,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, onIposSaved, subprojects, ac
             {view === 'list' ? renderListView() : renderFormView()}
         </div>
     );
+};
+
+const IPOs: React.FC<IPOsProps> = props => {
+    const { currentUser } = useAuth();
+    // Reset transient sorting, selection and open drafts as well as preferences on account changes.
+    return <IpoManagement key={currentUser?.id ?? 'anonymous'} {...props} />;
 };
 
 export default IPOs;
