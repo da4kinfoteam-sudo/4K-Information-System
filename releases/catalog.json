@@ -1,8 +1,32 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "ipo-list-customization",
+  "currentReleaseId": "gad-list-pimme-refinement",
   "releases": [
+    {
+      "id": "gad-list-pimme-refinement",
+      "version": "1.8.1",
+      "kind": "fix",
+      "title": "GAD PIMME list and compact table refinements",
+      "releaseDate": "2026-11-19",
+      "pr": 104,
+      "sections": {
+        "Added": [
+          "Latest PIMME shows each Operating Unit's most recent valid completed assessment classification and year.",
+          "Year headers support ascending and descending score sorting, with a return to the default Operating Unit order."
+        ],
+        "Improved": [
+          "Summary Year sits beside the page title, while compact table headers match the IPO list.",
+          "Edit Table uses the same searchable, responsive column chooser in GAD and IPO, with Apply and Cancel controls.",
+          "Removed the redundant assessment-cycle line and descriptions beneath Operating Unit names to keep rows compact."
+        ],
+        "Fixed": [
+          "Latest PIMME falls back past incomplete or invalid newer assessments and preserves valid zero scores without changing historical summary cards.",
+          "Score sorting uses numeric values before pagination, keeps unavailable scores last and clears safely when its year column is removed."
+        ],
+        "Affected Pages": ["Gender and Development Assessment List", "IPO List", "System Information"]
+      }
+    },
     {
       "id": "ipo-list-customization",
       "version": "1.8.0",

@@ -1,35 +1,12 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Columns3, RotateCcw } from 'lucide-react';
+import { ArrowDown, ArrowUp, RotateCcw } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { EditTableControl } from '../ui/EditTableControl';
 import { IPO_DEFAULT_SORT, IPO_LIST_COLUMNS, IPO_NOT_RECORDED, isDefaultIpoColumn, isIpoSortableColumn, normalizeIpoListSort, type IpoListColumn, type IpoListSort } from '../../lib/ipoListColumns';
 
 export function IpoColumnsControl({ selected, onApply }: { selected: string[]; onApply: (keys: string[]) => void }) {
-    const [open, setOpen] = useState(false);
-    const [draft, setDraft] = useState(selected);
-    const [search, setSearch] = useState('');
-    const searchRef = useRef<HTMLInputElement>(null);
-    const groups = [...new Set(IPO_LIST_COLUMNS.map(column => column.group))];
-    const visible = IPO_LIST_COLUMNS.filter(column => `${column.label} ${column.group}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
-    return <Popover modal open={open} onOpenChange={next => { setOpen(next); if (next) { setDraft([...selected]); setSearch(''); } }}>
-        <PopoverTrigger asChild><button type="button" className="btn btn-secondary" title="Edit Table"><Columns3 aria-hidden="true" />Edit Table</button></PopoverTrigger>
-        <PopoverContent align="end" collisionPadding={8} className="ipo-columns-menu" aria-label="Edit IPO Table" onOpenAutoFocus={event => { event.preventDefault(); searchRef.current?.focus(); }}>
-            <input ref={searchRef} type="search" className="form-control" aria-label="Search columns" value={search} onChange={event => setSearch(event.target.value)} />
-            <div className="ipo-columns-menu__options custom-scrollbar">
-                {groups.map(group => {
-                    const columns = visible.filter(column => column.group === group);
-                    return columns.length > 0 && <fieldset key={group}><legend>{group}</legend>{columns.map(column => {
-                        const locked = isDefaultIpoColumn(column.key);
-                        return <label key={column.key} title={column.label}><input type="checkbox" className="form-checkbox" checked={locked || draft.includes(column.key)} disabled={locked} onChange={event => setDraft(previous => event.target.checked ? [...previous, column.key] : previous.filter(key => key !== column.key))} /><span>{column.label}</span></label>;
-                    })}</fieldset>;
-                })}
-                {!visible.length && <p>No matching columns.</p>}
-            </div>
-            <div className="ipo-list-menu-footer">
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDraft([])}>Reset Columns</button>
-                <div><button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen(false)}>Cancel</button><button type="button" className="btn btn-primary btn-sm" onClick={() => { onApply(draft); setOpen(false); }}>Apply</button></div>
-            </div>
-        </PopoverContent>
-    </Popover>;
+    return <EditTableControl label="Edit IPO Table" selected={selected} onApply={onApply}
+        columns={IPO_LIST_COLUMNS.map(column => ({ key: column.key, label: column.label, group: column.group, locked: isDefaultIpoColumn(column.key) }))} />;
 }
 
 interface IpoColumnHeaderProps {
