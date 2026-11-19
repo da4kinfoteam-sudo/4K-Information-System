@@ -30,6 +30,22 @@ export const GAD_PIMME_CLASSIFICATIONS = [
 
 export type GadPimmeClassification = typeof GAD_PIMME_CLASSIFICATIONS[number];
 
+export const getGadPimmeCompletedScore = (assessment?: {
+    status?: unknown;
+    answered_count?: unknown;
+    total_score?: unknown;
+} | null): number | null => {
+    const number = (value: unknown) => {
+        if (typeof value !== 'number' && typeof value !== 'string') return null;
+        if (typeof value === 'string' && !value.trim()) return null;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    };
+    if (assessment?.status !== 'Completed' || number(assessment.answered_count) !== GAD_PIMME_QUESTION_COUNT) return null;
+    const score = number(assessment.total_score);
+    return score !== null && score >= 0 && score <= GAD_PIMME_MAX_SCORE ? score : null;
+};
+
 export const getGadPimmeClassification = (score: number): GadPimmeClassification => {
     const normalizedScore = Number.isFinite(Number(score))
         ? Math.max(0, Math.min(GAD_PIMME_MAX_SCORE, Number(score)))

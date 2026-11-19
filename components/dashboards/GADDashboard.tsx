@@ -13,7 +13,7 @@ import {
 } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-    GAD_PIMME_CLASSIFICATIONS, GadPimmeClassification, getGadPimmeClassification,
+    GAD_PIMME_CLASSIFICATIONS, GadPimmeClassification, getGadPimmeClassification, getGadPimmeCompletedScore,
 } from '../../lib/gadPimmeScoring';
 import { buildGadPimmeDetailPath } from '../../lib/gadPimmeAccess';
 import {
@@ -138,11 +138,7 @@ const normalizeAssessments = (data: unknown): GadAssessmentSummary[] => {
 
 const getAssessmentState = (assessment?: GadAssessmentSummary): AssessmentState => {
     if (!assessment) return 'For Assessment';
-    return assessment.status === 'Completed' && assessment.answered_count === 22
-        && assessment.total_score !== null
-        && assessment.total_score >= 0 && assessment.total_score <= 20
-        ? 'Completed'
-        : 'Incomplete';
+    return getGadPimmeCompletedScore(assessment) !== null ? 'Completed' : 'Incomplete';
 };
 
 const GADDashboardContent: React.FC<GADDashboardProps> = ({

@@ -1,14 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, CheckCircle2, Clock3, Columns3, Search, TriangleAlert } from 'lucide-react';
-import { operatingUnits, ouToRegionMap } from '../../constants';
+import { ArrowDown, ArrowUp, Building2, CheckCircle2, Clock3, Search, TriangleAlert } from 'lucide-react';
+import { operatingUnits } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { supabase } from '../../supabaseClient';
-import { getGadPimmeListStatus } from '../../lib/gadPimmeScoring';
+import { getGadPimmeClassification, getGadPimmeCompletedScore, getGadPimmeListStatus } from '../../lib/gadPimmeScoring';
 import { getVisibleGadPimmeOperatingUnits } from '../../lib/gadPimmeAccess';
 import { DataTablePagination, LoadingState } from '../ui/enterprise';
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { getGadPimmeListYears, getGadPimmeSummaryYears, normalizeGadPimmeListState, scopeGadPimmeListAssessments, summarizeGadPimmeList, type GadPimmeListState } from '../../lib/gadPimmeList';
+import { EditTableControl } from '../ui/EditTableControl';
+import { getGadPimmeListYears, getGadPimmeSummaryYears, getLatestGadPimmeAssessments, normalizeGadPimmeListState, scopeGadPimmeListAssessments, sortGadPimmeOperatingUnits, summarizeGadPimmeList, type GadPimmeListState } from '../../lib/gadPimmeList';
 import type { GadPimmeStoredSignatories } from '../../lib/gadPimmeSignatories';
 
 export interface GadPimmeAssessmentRecord extends GadPimmeStoredSignatories {
@@ -33,10 +33,6 @@ interface GadPimmePageProps {
     onSelectAssessment: (operatingUnit: string, year: number) => void;
 }
 
-const getOuDescription = (operatingUnit: string) => operatingUnit === 'NPMO'
-    ? 'National Program Management Office'
-    : ouToRegionMap[operatingUnit] || '';
-
 const GadPimmePage: React.FC<GadPimmePageProps> = ({ onSelectAssessment }) => {
     const { currentUser, getVisibilityScope } = useAuth();
     const visibilityScope = getVisibilityScope('Gender and Development');
@@ -56,7 +52,6 @@ const GadPimmeList: React.FC<GadPimmePageProps & { userId?: number; visibleOus: 
     const [storedState, setStoredState] = useLocalStorageState<unknown>(`gad-pimme-list:${userId ?? 'anonymous'}`, () => normalizeGadPimmeListState(null, currentYear));
     const state = useMemo(() => normalizeGadPimmeListState(storedState, currentYear), [storedState, currentYear]);
     const [data, setData] = useState({ rows: [] as GadPimmeAssessmentRecord[], loading: true, loaded: false, error: '' });
-    const [columnsOpen, setColumnsOpen] = useState(false);
     const years = useMemo(() => getGadPimmeListYears(currentYear), [currentYear]);
     const visibleYears = useMemo(() => [currentYear, ...state.additionalYears].sort((a, b) => b - a), [currentYear, state.additionalYears]);
     const assessments = useMemo(() => scopeGadPimmeListAssessments(data.rows, visibleOus, currentYear), [data.rows, visibleOus, currentYear]);
@@ -106,6 +101,7 @@ const GadPimmeList: React.FC<GadPimmePageProps & { userId?: number; visibleOus: 
     }, [userId, currentYear, visibleOus]);
 
     const byOuYear = useMemo(() => new Map(assessments.map(item => [`${item.operating_unit}:${item.year}`, item])), [assessments]);
+    const latestByOu = useMemo(() => getLatestGadPimmeAssessments(assessments, currentYear), [assessments, currentYear]);
     const statusFor = (ou: string, year: number) => getGadPimmeListStatus(byOuYear.get(`${ou}:${year}`));
     const filteredOus = visibleOus.filter(ou => {
         if (state.search && !ou.toLowerCase().includes(state.search.trim().toLowerCase())) return false;
@@ -114,8 +110,10 @@ const GadPimmeList: React.FC<GadPimmePageProps & { userId?: number; visibleOus: 
     });
     const totalPages = Math.max(1, Math.ceil(filteredOus.length / state.pageSize));
     const page = state.summaryYear !== summaryYear ? 1 : Math.min(state.page, totalPages);
-    const pageOus = filteredOus.slice((page - 1) * state.pageSize, page * state.pageSize);
+    const pageOus = sortGadPimmeOperatingUnits(filteredOus, byOuYear, state.sort).slice((page - 1) * state.pageSize, page * state.pageSize);
     const updateState = (patch: Partial<GadPimmeListState>, resetPage = false) => setStoredState(previous => ({ ...normalizeGadPimmeListState(previous, currentYear), ...patch, ...(resetPage ? { page: 1 } : {}) }));
+    const sortYear = (year: number) => updateState({ sort: state.sort?.year !== year ? { year, direction: 'ascending' }
+        : state.sort.direction === 'ascending' ? { year, direction: 'descending' } : null }, true);
     useEffect(() => {
         const next = { ...state, summaryYear, page: data.loaded ? page : state.page };
         if (JSON.stringify(next) !== JSON.stringify(storedState)) setStoredState(next);
@@ -133,22 +131,17 @@ const GadPimmeList: React.FC<GadPimmePageProps & { userId?: number; visibleOus: 
     return (
         <div className="data-list-page gad-pimme-list-page">
             <header className="gad-pimme-list-header">
-                <h1>Gender and Development</h1>
-                <p>GAD PIMME checklist status per operating unit. Select a year to open the assessment detail.</p>
-                <div className="gad-pimme-list-meta">
-                    <span>{visibleOus.length} operating units</span>
-                    <span aria-hidden="true">&bull;</span>
-                    <span>Assessment cycle {years.at(-1)} - {years[0]}</span>
+                <div className="gad-pimme-list-heading">
+                    <h1>Gender and Development</h1>
+                    <label className="gad-pimme-year-select">
+                        <span className="form-label">Summary Year</span>
+                        <select value={summaryYear} aria-label="Summary Year" disabled={!data.loaded || loading} onChange={event => updateState({ summaryYear: Number(event.target.value) }, true)}>
+                            {summaryOptions.map(year => <option key={year} value={year}>{year}</option>)}
+                        </select>
+                    </label>
                 </div>
+                <p>GAD PIMME checklist status per operating unit. Select a year to open the assessment detail.</p>
             </header>
-            <div className="gad-pimme-summary-controls">
-                <label className="gad-pimme-year-select">
-                    <span className="form-label">Summary Year</span>
-                    <select value={summaryYear} aria-label="Summary Year" disabled={!data.loaded || loading} onChange={event => updateState({ summaryYear: Number(event.target.value) }, true)}>
-                        {summaryOptions.map(year => <option key={year} value={year}>{year}</option>)}
-                    </select>
-                </label>
-            </div>
             <section className="gad-pimme-list-kpis" aria-label={`GAD PIMME summary for ${summaryYear}`} aria-busy={loading}>
                 {summaryCards.map(card => {
                     const Icon = card.icon;
@@ -180,30 +173,32 @@ const GadPimmeList: React.FC<GadPimmePageProps & { userId?: number; visibleOus: 
                             <option value="For Assessment">For Assessment</option>
                         </select>
                     </label>
-                    <Popover open={columnsOpen} onOpenChange={setColumnsOpen}>
-                        <PopoverTrigger asChild><button type="button" className="btn btn-secondary gad-pimme-column-control" title="Year columns" aria-label="Year columns"><Columns3 size={16} aria-hidden="true" /></button></PopoverTrigger>
-                        <PopoverContent align="end" collisionPadding={8} className="gad-pimme-year-columns-menu" aria-label="Year columns">
-                            <div className="gad-pimme-year-columns-menu__options" role="group" aria-label="Visible year columns">
-                                {years.map(year => <label key={year}>
-                                    <input type="checkbox" className="form-checkbox" aria-label={`Show ${year}`} checked={visibleYears.includes(year)} disabled={year === currentYear}
-                                        onChange={event => updateState({ additionalYears: event.target.checked ? [...state.additionalYears, year] : state.additionalYears.filter(value => value !== year) })} />
-                                    <span>{year}</span>
-                                </label>)}
-                            </div>
-                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => updateState({ additionalYears: [] })}>Reset Columns</button>
-                        </PopoverContent>
-                    </Popover>
+                    <EditTableControl label="Edit GAD Table" selected={state.additionalYears.map(String)}
+                        columns={[{ key: 'ou', label: 'Operating Unit', group: 'Pinned Columns', locked: true }, { key: 'latest', label: 'Latest PIMME', group: 'Pinned Columns', locked: true },
+                            ...years.map(year => ({ key: String(year), label: String(year), group: 'Assessment Years', locked: year === currentYear }))]}
+                        onApply={keys => {
+                            const additionalYears = keys.map(Number);
+                            const removesSort = state.sort && state.sort.year !== currentYear && !additionalYears.includes(state.sort.year);
+                            updateState({ additionalYears, ...(removesSort ? { sort: null } : {}) }, !!removesSort);
+                        }} />
                 </div>
                 {error && <div className="notice notice--error" role="alert"><p>{error}</p></div>}
                 {loading && !data.loaded ? <LoadingState title="Loading GAD PIMME assessments" message="Preparing annual Operating Unit records." /> : data.loaded ? (
                     <>
                         <div className="gad-pimme-table-scroll" aria-busy={loading}>
                             <table className="gad-pimme-table" style={{ '--gad-pimme-year-count': visibleYears.length } as React.CSSProperties}>
-                                <colgroup><col className="gad-pimme-ou-column" />{visibleYears.map(year => <col key={year} className="gad-pimme-year-column" />)}</colgroup>
-                                <thead><tr><th className="gad-pimme-ou-column">Operating Unit</th>{visibleYears.map(year => <th key={year}>{year}</th>)}</tr></thead>
+                                <colgroup><col className="gad-pimme-ou-column" /><col className="gad-pimme-latest-column" />{visibleYears.map(year => <col key={year} className="gad-pimme-year-column" />)}</colgroup>
+                                <thead><tr><th scope="col" className="gad-pimme-ou-column">Operating Unit</th><th scope="col">Latest PIMME</th>{visibleYears.map(year => <th scope="col" key={year} aria-sort={state.sort?.year === year ? state.sort.direction : 'none'}>
+                                    <button type="button" className="gad-pimme-year-sort" onClick={() => sortYear(year)} aria-label={`Sort ${year} score`} title={`Sort ${year} score${state.sort?.year === year ? ` (${state.sort.direction})` : ''}`}>
+                                        {year}{state.sort?.year === year && (state.sort.direction === 'ascending' ? <ArrowUp size={12} aria-hidden="true" /> : <ArrowDown size={12} aria-hidden="true" />)}
+                                    </button>
+                                </th>)}</tr></thead>
                                 <tbody>
-                                    {pageOus.map(ou => (
-                                        <tr key={ou} className="data-table__row--interactive" tabIndex={0} role="link"
+                                    {pageOus.map(ou => {
+                                        const latest = latestByOu.get(ou);
+                                        const latestScore = getGadPimmeCompletedScore(latest);
+                                        const latestLabel = latest && latestScore !== null ? `${getGadPimmeClassification(latestScore)} (${latest.year})` : 'No Completed Assessment';
+                                        return <tr key={ou} className="data-table__row--interactive" tabIndex={0} role="link"
                                             aria-label={`Open ${ou} GAD PIMME assessment for ${summaryYear}`}
                                             onClick={() => onSelectAssessment(ou, summaryYear)}
                                             onKeyDown={event => {
@@ -214,20 +209,21 @@ const GadPimmeList: React.FC<GadPimmePageProps & { userId?: number; visibleOus: 
                                             }}>
                                             <td className="gad-pimme-ou-column">
                                                 <strong title={ou}>{ou}</strong>
-                                                {getOuDescription(ou) && <span title={getOuDescription(ou)}>{getOuDescription(ou)}</span>}
                                             </td>
+                                            <td className="gad-pimme-latest-column"><span title={latestScore !== null ? `${latestLabel} - ${latestScore.toFixed(2)} / 20` : latestLabel}>{latestLabel}</span></td>
                                             {visibleYears.map(year => {
                                                 const assessment = byOuYear.get(`${ou}:${year}`);
                                                 const cellStatus = getGadPimmeListStatus(assessment);
+                                                const score = getGadPimmeCompletedScore(assessment);
                                                 return <td key={year} onClick={event => event.stopPropagation()}>
                                                     <button type="button" aria-label={`Open ${ou} GAD PIMME assessment for ${year}`} className={`gad-pimme-year-link gad-pimme-year-link--${cellStatus.toLowerCase().replaceAll(' ', '-')}`} onClick={() => onSelectAssessment(ou, year)}>
-                                                        {cellStatus === 'Completed' ? `${Number(assessment.total_score).toFixed(2)} / 20` : cellStatus}
+                                                        {cellStatus === 'Completed' ? score === null ? 'No Valid Score' : `${score.toFixed(2)} / 20` : cellStatus}
                                                     </button>
                                                 </td>;
                                             })}
-                                        </tr>
-                                    ))}
-                                    {!pageOus.length && <tr><td className="gad-pimme-table__empty" colSpan={visibleYears.length + 1}>No Operating Units match the current filters.</td></tr>}
+                                        </tr>;
+                                    })}
+                                    {!pageOus.length && <tr><td className="gad-pimme-table__empty" colSpan={visibleYears.length + 2}>No Operating Units match the current filters.</td></tr>}
                                 </tbody>
                             </table>
                         </div>
