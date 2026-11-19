@@ -27,6 +27,8 @@
     "test:dashboard-scope-ui": "node scripts/run-dashboard-scope-ui-check.mjs",
     "test:ipo-indicators": "node scripts/run-ipo-indicator-check.mjs",
     "test:ipo-indicators-ui": "node scripts/run-ipo-indicator-ui-check.mjs",
+    "test:ipo-list-columns": "node scripts/run-ipo-list-columns-check.mjs",
+    "test:ipo-list-columns-ui": "node scripts/run-ipo-list-columns-ui-check.mjs",
     "test:report-scope": "node scripts/run-report-scope-check.mjs",
     "test:report-scope-ui": "node scripts/run-report-scope-ui-check.mjs",
     "test:financial-breakdown": "node scripts/run-financial-breakdown-hierarchy-check.mjs",

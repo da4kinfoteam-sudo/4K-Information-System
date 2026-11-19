@@ -1,8 +1,33 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "gad-pimme-list-year-controls",
+  "currentReleaseId": "ipo-list-customization",
   "releases": [
+    {
+      "id": "ipo-list-customization",
+      "version": "1.8.0",
+      "kind": "feature",
+      "title": "Customizable IPO tables and header filters",
+      "releaseDate": "2026-11-19",
+      "pr": 103,
+      "sections": {
+        "Added": [
+          "Edit Table lets users add profile, membership and FFEDIS registration columns while keeping the six default columns visible.",
+          "Searchable column-header filters and sorting controls work together with the table search."
+        ],
+        "Improved": [
+          "The Indicators column brings Women-Led, GIDA, ELCAC, SCAD, F2C2 Cluster and FFEDIS registration together.",
+          "Column choices and supported filters are remembered separately for each user in the current browser.",
+          "Compact headers match the Subprojects list; responsive menus use clear reset controls and a single inset search focus highlight."
+        ],
+        "Fixed": [
+          "LOD sorting follows the assessment result displayed in the table, and Location and Region filters remain distinct.",
+          "Removing an optional column clears its filter, account changes reset transient table state, and legacy preferences migrate safely.",
+          "Sort and filter drafts apply together; cancelling or dismissing a popup leaves the table unchanged."
+        ],
+        "Affected Pages": ["IPO List", "System Information"]
+      }
+    },
     {
       "id": "gad-pimme-list-year-controls",
       "version": "1.7.0",

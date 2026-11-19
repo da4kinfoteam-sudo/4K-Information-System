@@ -155,7 +155,7 @@ interface MajorTableToolbarProps extends React.HTMLAttributes<HTMLDivElement> {
     onSearchChange: (value: string) => void;
     searchPlaceholder?: string;
     activeFilterCount?: number;
-    onOpenFilters: () => void;
+    onOpenFilters?: () => void;
     filterActions?: React.ReactNode;
     actions?: React.ReactNode;
 }
@@ -178,11 +178,11 @@ export const MajorTableToolbar: React.FC<MajorTableToolbarProps> = ({
                 <span className="sr-only">Search table</span>
                 <input type="search" value={searchTerm} onChange={event => onSearchChange(event.target.value)} placeholder={searchPlaceholder} />
             </label>
-            <button type="button" className={cn('btn btn-secondary major-table-filter-button', activeFilterCount > 0 && 'is-active')} onClick={onOpenFilters}>
+            {onOpenFilters && <button type="button" className={cn('btn btn-secondary major-table-filter-button', activeFilterCount > 0 && 'is-active')} onClick={onOpenFilters}>
                 <Filter aria-hidden="true" />
                 <span>Filter</span>
                 {activeFilterCount > 0 && <span className="major-table-filter-button__count" aria-label={`${activeFilterCount} active column filters`}>{activeFilterCount}</span>}
-            </button>
+            </button>}
             {filterActions}
         </div>
         {actions && <div className="major-table-toolbar__actions">{actions}</div>}
