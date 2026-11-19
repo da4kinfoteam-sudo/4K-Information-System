@@ -9,7 +9,7 @@
       "kind": "fix",
       "title": "GAD PIMME list and compact table refinements",
       "releaseDate": "2026-11-19",
-      "pr": null,
+      "pr": 104,
       "sections": {
         "Added": [
           "Latest PIMME shows each Operating Unit's most recent valid completed assessment classification and year.",
