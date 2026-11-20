@@ -36,6 +36,8 @@ import CommodityMappingPage from './components/resources/CommodityMappingPage';
 import LODPage from './components/LOD/LODPage';
 import LODDetailsRoute from './components/LOD/LODDetailsRoute';
 import GadPimmePage from './components/GAD/GadPimmePage';
+import SubmitTicketPage from './components/resources/SubmitTicketPage';
+import DocumentaryRepositoryPage from './components/resources/DocumentaryRepositoryPage';
 import GadPimmeDetailsRoute from './components/GAD/GadPimmeDetailsRoute';
 import { buildGadPimmeDetailPath } from './lib/gadPimmeAccess';
 import { requestAppNavigation } from './lib/navigationGuards';
@@ -74,6 +76,7 @@ import {
     resolveDashboardPage,
     resolveProgramManagementPage,
     resolveReferencePage,
+    type AppBreadcrumb,
 } from './lib/appNavigation';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
@@ -196,7 +199,7 @@ const createDefaultReportsPageState = (ownOu?: string | null, isLockedToOwnOu = 
 };
 
 const AppContent: React.FC = () => {
-    const { currentUser, hasAccess, getVisibilityScope, isAuthReady, refreshUser, refreshUsersList, refreshPermissions } = useAuth();
+    const { currentUser, hasAccess, getVisibilityScope, isAuthReady, refreshUser, refreshUsersList, refreshPermissions, rolesConfigs } = useAuth();
     const { getStatusDecision } = useDcfPolicyGuard();
     // Initialize Sidebar state based on screen width (Open on Desktop by default)
     const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 768);
@@ -206,6 +209,9 @@ const AppContent: React.FC = () => {
     const currentRoute = useMemo(() => parseAppRoute(currentPage), [currentPage]);
     const routePath = currentRoute.path;
     const routeParams = currentRoute.params;
+    const resourceScopeKey=JSON.stringify([currentUser?.id,currentUser?.role,currentUser?.operatingUnit,currentUser?.permissions_override,rolesConfigs]);
+    const [resourceCrumbs,setResourceCrumbs]=useState<{route:string;scope:string;items:AppBreadcrumb[]}|null>(null);
+    const handleResourceBreadcrumbs=useCallback((items:AppBreadcrumb[])=>setResourceCrumbs(items.length?{route:currentPage,scope:resourceScopeKey,items:items.map((item,index)=>item.path&&index>1?{...item,path:appendPathParams(item.path,getCurrentSourceParams())}:item)}:null),[currentPage,resourceScopeKey]);
     const isDarkMode = themeMode === 'dark';
     const reportsVisibilityScope = getVisibilityScope('Reports');
     const isReportsLockedToOwnOu = reportsVisibilityScope === 'Own OU';
@@ -704,6 +710,7 @@ const AppContent: React.FC = () => {
 
     useEffect(() => {
         if (!isAuthReady) return;
+        if (routePath === '/submit-ticket' || routePath.startsWith('/submit-ticket/') || routePath === '/documentary-repository' || routePath.startsWith('/documentary-repository/')) return;
         if (routePath === '/' || isDashboardPagePath(routePath) || isProgramManagementPagePath(routePath)
             || ['/reports', '/subprojects', '/activities', '/trainings', '/other-activities', '/accomplishment/physical', '/accomplishment/financial'].includes(routePath)) return;
         ensureDataScope();
@@ -1111,6 +1118,7 @@ const AppContent: React.FC = () => {
         const activeOtherProgramExpense = resolveRouteItem(selectedOtherExpense, visibleOtherExpenses);
         const activeStaffingRequirement = resolveRouteItem(selectedStaffingReq, visibleStaffingReqs);
 
+        if(resourceCrumbs?.route===currentPage&&resourceCrumbs.scope===resourceScopeKey)return resourceCrumbs.items;
         return resolveAppBreadcrumbs({
             path: routePath,
             params: routeParams,
@@ -1153,6 +1161,9 @@ const AppContent: React.FC = () => {
         currentUser?.role,
         routeParams,
         routePath,
+        resourceCrumbs,
+        resourceScopeKey,
+        currentPage,
         selectedActivity,
         selectedIpo,
         selectedLodYear,
@@ -2513,6 +2524,13 @@ const AppContent: React.FC = () => {
                 }
             case '/gender-and-development':
                 return <GadPimmePage onSelectAssessment={handleSelectGadPimmeAssessment} />;
+            case '/submit-ticket':
+            case '/submit-ticket/detail':
+                return <SubmitTicketPage id={routePath.endsWith('/detail') ? routeParams.get('id') || 'invalid' : null} onNavigate={navigateTo}/>;
+            case '/documentary-repository':
+            case '/documentary-repository/detail':
+            case '/documentary-repository/file':
+                return <DocumentaryRepositoryPage id={routePath==='/documentary-repository'?null:routeParams.get('id')||'invalid'} fileId={routePath.endsWith('/file')?routeParams.get('fileId')||'invalid':null} deadlineView={routeParams.get('view')==='deadlines'} onNavigate={path=>navigateTo(appendPathParams(path,getCurrentSourceParams()))} onBreadcrumbs={handleResourceBreadcrumbs}/>;
             case '/gender-and-development/detail':
                 {
                     const routeOu = routeParams.get('ou');

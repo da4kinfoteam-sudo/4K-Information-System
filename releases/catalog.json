@@ -1,8 +1,34 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "gad-list-pimme-refinement",
+  "currentReleaseId": "documentary-repository-submit-ticket",
   "releases": [
+    {
+      "id": "documentary-repository-submit-ticket",
+      "version": "1.9.0",
+      "kind": "feature",
+      "title": "Documentary Repository and Submit Ticket",
+      "releaseDate": "2026-11-20",
+      "pr": 105,
+      "sections": {
+        "Added": [
+          "Documentary Repository organizes official files and required OU submissions with deadlines, signed-document declarations, versioned receipts and submission tracking.",
+          "Private previews and original downloads support Word, Excel, PDF and image files without public document links.",
+          "Submit Ticket records user reports and requests with administrator responses, assignment, priority and status history.",
+          "Awards reportorial inputs support an explicit Repository source, on-time and late credit, evidence review and retained finalization snapshots."
+        ],
+        "Improved": [
+          "Homepage deadlines link to exact submission folders and retain access to overdue requirements through the repository.",
+          "Compact responsive Resources tables use Edit Table, internal scrolling and padded pagination.",
+          "Resources permissions distinguish cross-OU document viewing, own-OU submission and private requester tickets."
+        ],
+        "Fixed": [
+          "Confirmed saves and same-request retries prevent duplicate submissions and tickets after an uncertain response.",
+          "Repository-backed Program Management credit remains eligible without physical completion, while existing Manual calculations and financial criteria are preserved."
+        ],
+        "Affected Pages": ["Documentary Repository", "Submit Ticket", "Homepage", "Awards and Rankings Dashboard", "System Management", "User Control Center", "System Information"]
+      }
+    },
     {
       "id": "gad-list-pimme-refinement",
       "version": "1.8.1",

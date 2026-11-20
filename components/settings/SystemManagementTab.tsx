@@ -4,6 +4,9 @@ import React, { useState, useMemo } from 'react';
 import { Deadline } from '../../constants';
 import { supabase } from '../../supabaseClient';
 import { ConfirmDialog, SortableTableHeader } from '../ui/enterprise';
+import { useAuth } from '../../contexts/AuthContext';
+import { resourceAccess } from '../../lib/resources';
+import { FolderOpen } from 'lucide-react';
 
 interface SystemManagementTabProps {
     deadlines: Deadline[];
@@ -15,6 +18,7 @@ const commonInputClasses = "form-control";
 const SystemManagementTab: React.FC<SystemManagementTabProps> = ({ 
     deadlines, setDeadlines 
 }) => {
+    const {currentUser,rolesConfigs}=useAuth();
     // Modal State
     const [isDeadlineModalOpen, setIsDeadlineModalOpen] = useState(false);
     
@@ -129,6 +133,7 @@ const SystemManagementTab: React.FC<SystemManagementTabProps> = ({
             <section className="form-stack">
                 <header className="section-heading system-management__header">
                     <h3 className="section-heading__title">System Deadlines</h3><div className="system-management__actions">
+                        {resourceAccess(currentUser,rolesConfigs,'Documentary Repository')&&<a className="btn btn-secondary" href="#/documentary-repository?view=deadlines"><FolderOpen className="btn-symbol" aria-hidden="true"/>Repository Deadlines</a>}
                         {selectedDeadlines.length > 0 && (
                             <button 
                                 onClick={() => setDeleteRequested(true)}

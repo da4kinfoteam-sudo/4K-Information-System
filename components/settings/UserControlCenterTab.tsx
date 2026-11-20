@@ -3,6 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDcfPolicy } from '../../contexts/DcfPolicyContext';
 import { RoleConfig, appModules, UserRole } from '../../constants';
+import { RESOURCE_MODULES, type ResourceModule } from '../../lib/resources';
 import { Save, AlertTriangle, Info, Check, ChevronDown, RotateCcw, ShieldCheck } from 'lucide-react';
 import {
     canEditDcfSection,
@@ -22,6 +23,8 @@ import {
 } from '../../lib/dcfPolicy';
 
 const allRoles: UserRole[] = ['Super Admin', 'Administrator', 'Management', 'Focal - User', 'RFO - User', 'User', 'Guest'];
+const isResourceModule=(module:string)=>RESOURCE_MODULES.includes(module as ResourceModule);
+const hasManageControl=(module:string)=>module==='Level of Development'||isResourceModule(module);
 type RolePermissionField = 'can_view' | 'can_edit' | 'can_delete' | 'can_manage' | 'can_transfer_budget_items';
 
 const isGuestWriteField = (role: string, field: RolePermissionField) => (
@@ -104,7 +107,7 @@ const UserControlCenterTab: React.FC = () => {
                                 ...existing,
                                 can_edit: role === 'Guest' ? false : existing.can_edit,
                                 can_delete: role === 'Guest' ? false : existing.can_delete,
-                                can_manage: module === 'Level of Development' && role === 'Super Admin'
+                                can_manage: hasManageControl(module) && role === 'Super Admin'
                                     ? true
                                     : !!existing.can_manage,
                                 can_transfer_budget_items: ['Subprojects', 'Activities'].includes(module)
@@ -117,12 +120,12 @@ const UserControlCenterTab: React.FC = () => {
                             fullSet.push({
                                 role: role as string,
                                 module,
-                                can_view: true,
-                                can_edit: ['Super Admin', 'Administrator'].includes(role),
+                                can_view: !isResourceModule(module) || role !== 'Guest',
+                                can_edit: isResourceModule(module) ? role !== 'Guest' : ['Super Admin', 'Administrator'].includes(role),
                                 can_delete: ['Super Admin', 'Administrator'].includes(role),
-                                can_manage: module === 'Level of Development' && ['Super Admin', 'Administrator'].includes(role),
+                                can_manage: hasManageControl(module) && ['Super Admin', 'Administrator'].includes(role),
                                 can_transfer_budget_items: ['Subprojects', 'Activities'].includes(module) && role === 'Super Admin',
-                                visibility_scope: ['Super Admin', 'Administrator', 'Management'].includes(role) ? 'All OUs' : 'Own OU'
+                                visibility_scope: isResourceModule(module) || ['Super Admin', 'Administrator', 'Management'].includes(role) ? 'All OUs' : 'Own OU'
                             });
                         }
                     });
@@ -192,7 +195,7 @@ const UserControlCenterTab: React.FC = () => {
         // Safety Profile for Super Admin User Control Center Edit logic
         // We ensure Super Admins at least have full rights to everything.
         const superAdminDeficits = pendingConfigs.filter(c => c.role === 'Super Admin' && (
-            !c.can_view || !c.can_edit || !c.can_delete || (c.module === 'Level of Development' && !c.can_manage) ||
+            !c.can_view || !c.can_edit || !c.can_delete || (hasManageControl(c.module) && !c.can_manage) ||
             (['Subprojects', 'Activities'].includes(c.module) && !c.can_transfer_budget_items)
         ));
         if (superAdminDeficits.length > 0) {
@@ -226,7 +229,7 @@ const UserControlCenterTab: React.FC = () => {
             can_view: !!c.can_view,
             can_edit: c.role === 'Guest' ? false : !!c.can_edit,
             can_delete: c.role === 'Guest' ? false : !!c.can_delete,
-            can_manage: c.module === 'Level of Development' && c.role !== 'Guest' ? !!c.can_manage : false,
+            can_manage: hasManageControl(c.module) && c.role !== 'Guest' && (!isResourceModule(c.module) || ['Super Admin','Administrator'].includes(c.role)) ? !!c.can_manage : false,
             can_transfer_budget_items: ['Subprojects', 'Activities'].includes(c.module)
                 ? c.role === 'Super Admin' || (c.role !== 'Guest' && !!c.can_transfer_budget_items)
                 : false,
@@ -368,7 +371,20 @@ const UserControlCenterTab: React.FC = () => {
                 {roleControlOpen && <div className="settings-accordion__content">
                     <div className="data-table-scroll role-permissions-scroll"><table className="data-table role-permissions-table"><thead><tr><th className="data-table__sticky-left">User Roles</th><th>OU Visibility</th>{appModules.map(module => <th key={module}>{module}</th>)}</tr></thead><tbody>
                         {allRoles.map(role => <tr key={role}><td className="data-table__sticky-left data-table__cell--primary">{role}</td><td>{(() => { const roleConfig = pendingConfigs.find(c => c.role === role); const isSuperAdmin = role === 'Super Admin'; const scope = roleConfig?.visibility_scope || 'Own OU'; return <div className="role-scope"><button onClick={() => !isSuperAdmin && handleVisibilityToggle(role)} disabled={isSuperAdmin} className={`status-badge ${scope === 'All OUs' ? 'status-badge--completed' : 'status-badge--neutral'}`}>{scope}</button><small>{scope === 'All OUs' ? 'Can view everything' : 'Restricted to own OU'}</small></div>; })()}</td>
-                            {appModules.map(module => { const config = pendingConfigs.find(c => c.role === role && c.module === module); if (!config) return <td key={module} />; const isSuperAdmin = role === 'Super Admin'; const displayConfig = role === 'Guest' ? {...config,can_edit:false,can_delete:false,can_manage:false,can_transfer_budget_items:false}:config; return <td key={module}><div className="permission-toggle-stack"><span>View {renderToggle(displayConfig.can_view,isSuperAdmin,`${role} ${module} view`,()=>!isSuperAdmin&&handleToggle(role,module,'can_view'))}</span><span>Edit {renderToggle(displayConfig.can_edit,isSuperAdmin||isGuestWriteField(role,'can_edit'),`${role} ${module} edit`,()=>!isSuperAdmin&&!isGuestWriteField(role,'can_edit')&&handleToggle(role,module,'can_edit'),'edit')}</span><span>Delete {renderToggle(displayConfig.can_delete,isSuperAdmin||isGuestWriteField(role,'can_delete'),`${role} ${module} delete`,()=>!isSuperAdmin&&!isGuestWriteField(role,'can_delete')&&handleToggle(role,module,'can_delete'),'delete')}</span>{module === 'Level of Development' && <span>Admin controls {renderToggle(!!displayConfig.can_manage,isSuperAdmin||isGuestWriteField(role,'can_manage'),`${role} ${module} admin controls`,()=>!isSuperAdmin&&!isGuestWriteField(role,'can_manage')&&handleToggle(role,module,'can_manage'),'edit')}</span>}{['Subprojects','Activities'].includes(module) && <span>Transfer budget items {renderToggle(!!displayConfig.can_transfer_budget_items,isSuperAdmin||role==='Guest',`${role} ${module} transfer budget items`,()=>!isSuperAdmin&&role!=='Guest'&&handleToggle(role,module,'can_transfer_budget_items'),'edit')}</span>}</div></td>; })}
+                            {appModules.map(module => {
+                                const config = pendingConfigs.find(c => c.role === role && c.module === module);
+                                if (!config) return <td key={module} />;
+                                const isSuperAdmin = role === 'Super Admin';
+                                const manageDisabled=isSuperAdmin||isGuestWriteField(role,'can_manage')||(isResourceModule(module)&&role!=='Administrator');
+                                const displayConfig = role === 'Guest' ? {...config,can_edit:false,can_delete:false,can_manage:false,can_transfer_budget_items:false}:config;
+                                return <td key={module}><div className="permission-toggle-stack">
+                                    <span>View {renderToggle(displayConfig.can_view,isSuperAdmin,`${role} ${module} view`,()=>!isSuperAdmin&&handleToggle(role,module,'can_view'))}</span>
+                                    <span>Edit {renderToggle(displayConfig.can_edit,isSuperAdmin||isGuestWriteField(role,'can_edit'),`${role} ${module} edit`,()=>!isSuperAdmin&&!isGuestWriteField(role,'can_edit')&&handleToggle(role,module,'can_edit'),'edit')}</span>
+                                    <span>Delete {renderToggle(displayConfig.can_delete,isSuperAdmin||isGuestWriteField(role,'can_delete'),`${role} ${module} delete`,()=>!isSuperAdmin&&!isGuestWriteField(role,'can_delete')&&handleToggle(role,module,'can_delete'),'delete')}</span>
+                                    {hasManageControl(module) && <span>Admin controls {renderToggle(!!displayConfig.can_manage,manageDisabled,`${role} ${module} admin controls`,()=>!manageDisabled&&handleToggle(role,module,'can_manage'),'edit')}</span>}
+                                    {['Subprojects','Activities'].includes(module) && <span>Transfer budget items {renderToggle(!!displayConfig.can_transfer_budget_items,isSuperAdmin||role==='Guest',`${role} ${module} transfer budget items`,()=>!isSuperAdmin&&role!=='Guest'&&handleToggle(role,module,'can_transfer_budget_items'),'edit')}</span>}
+                                </div></td>;
+                            })}
                         </tr>)}
                     </tbody></table></div>
                     <div className="notice notice--info"><Info className="btn-symbol" /><div><strong>How role control works</strong><p>Changes affect all users with that role. Super Admin always retains full access, while user-specific overrides supersede these defaults.</p></div></div>

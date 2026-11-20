@@ -28,7 +28,8 @@ assert(!formatReleaseNotes(catalog.releases[0]).includes('Action Required'));
 const pendingCatalog = structuredClone(catalog); Object.assign(pendingCatalog.releases[0], { releaseDate: null, pr: null });
 assert.throws(() => createReleaseBuild({ root: process.cwd(), env: { VERCEL: '1', VERCEL_ENV: 'production', VERCEL_PROJECT_ID: 'prj_Bf1RGjcI06RWOaSlAlacJU6aG7o3', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40) }, catalog: pendingCatalog }), /incomplete/);
 assert.throws(() => createReleaseBuild({ root: process.cwd(), env: { VERCEL: '1', VERCEL_ENV: 'preview', VERCEL_PROJECT_ID: 'unrecognized' } }), /explicitly/);
-const readyCatalog = structuredClone(catalog); Object.assign(readyCatalog.releases[0], { releaseDate: catalog.releases[0].releaseDate || '2026-10-20', pr: 999 });
+// A synthetic promotion date must not precede published history when the current entry is still local.
+const readyCatalog = structuredClone(catalog); Object.assign(readyCatalog.releases[0], { releaseDate: catalog.releases.find(release=>release.releaseDate)?.releaseDate || '2026-10-20', pr: 999 });
 const production = createReleaseBuild({ root: process.cwd(), env: { VERCEL: '1', VERCEL_ENV: 'production', VERCEL_PROJECT_ID: 'prj_Bf1RGjcI06RWOaSlAlacJU6aG7o3', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40) }, catalog: readyCatalog });
 assert.equal(production.manifest.environment, 'production');
 assert.equal(production.manifest.pr, 999);

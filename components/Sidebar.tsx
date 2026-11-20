@@ -27,6 +27,7 @@ import {
     navigationBranchMatchesPath,
     navigationItemMatchesPath,
 } from '../lib/appNavigation';
+import { RESOURCE_MODULES, resourceAccess, type ResourceModule } from '../lib/resources';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -58,7 +59,7 @@ const navIconMap: Record<string, React.ReactNode> = {
 type ExpandedGroupsByUser = Record<string, Record<string, boolean>>;
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, setCurrentPage }) => {
-    const { currentUser, hasAccess } = useAuth();
+    const { currentUser, hasAccess, rolesConfigs } = useAuth();
     const navRef = useRef<HTMLElement>(null);
     const [sessionExpansion, setSessionExpansion] = useState<Record<string, boolean>>({});
     const [expandedGroupsByUser, setExpandedGroupsByUser] = useLocalStorageState<ExpandedGroupsByUser>('sidebar_navigation_groups', {});
@@ -68,7 +69,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
     const canViewItem = (item: AppNavigationItem): boolean => {
         if (item.hiddenFor?.includes(currentUser?.role || '')) return false;
         if (item.allowedRoles && !item.allowedRoles.includes(currentUser?.role || '')) return false;
-        if (item.module && !hasAccess(item.module, 'view')) return false;
+        if (item.module && !(RESOURCE_MODULES.includes(item.module as ResourceModule) ? resourceAccess(currentUser,rolesConfigs,item.module as ResourceModule) : hasAccess(item.module, 'view'))) return false;
         return true;
     };
 

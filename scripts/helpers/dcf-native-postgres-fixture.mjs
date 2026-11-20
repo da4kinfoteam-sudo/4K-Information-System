@@ -9,13 +9,13 @@ import path from 'node:path';
 
 const execute=promisify(execFile);
 const runtime=path.join(tmpdir(),'4kis-revision-postgres-runtime');
-const bin=path.join(runtime,'node_modules/@embedded-postgres/windows-x64/native/bin');
 
 // Isolated test server only: generated TEMP cluster, random loopback port,
 // explicit fixture credentials and mandatory teardown. Never reads DB env URLs.
-export async function createNativePostgresFixture() {
+export async function createNativePostgresFixture({driverRuntime=runtime,postgresRuntime=runtime}={}) {
     assert.equal(process.platform,'win32','Install the matching native fixture runtime before using another platform');
-    const require=createRequire(path.join(runtime,'package.json'));
+    const require=createRequire(path.join(driverRuntime,'package.json'));
+    const bin=path.join(postgresRuntime,'node_modules/@embedded-postgres/windows-x64/native/bin');
     const { Client,types }=require('pg');
     types.setTypeParser(20,value=>Number(value));
     types.setTypeParser(1700,value=>Number(value));

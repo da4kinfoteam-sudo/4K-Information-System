@@ -1019,7 +1019,7 @@ export function settingsRedirectUrl(status: "connected" | "error", message?: str
   return url.toString();
 }
 
-async function connectedDrive() {
+export async function connectedDrive() {
   const connection = await getActiveConnection();
   if (!connection) throw new Error("Google Drive storage is not connected. Ask an Admin to reconnect Google Drive storage.");
   let accessToken: string;
