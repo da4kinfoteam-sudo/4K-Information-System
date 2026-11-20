@@ -206,6 +206,8 @@ export const appNavigationStructure: readonly AppNavigationItem[] = [
             { id: 'marketing-database', name: 'Marketing Database', kind: 'link', href: '/marketing-database', module: 'Marketing Database' },
             { id: 'level-of-development', name: 'Level of Development', kind: 'link', href: '/level-of-development', module: 'Level of Development' },
             { id: 'gender-and-development', name: 'Gender and Development', kind: 'link', href: '/gender-and-development', module: 'Gender and Development' },
+            { id: 'documentary-repository', name: 'Documentary Repository', kind: 'link', href: '/documentary-repository', module: 'Documentary Repository', activeMatchPaths: ['/documentary-repository/detail','/documentary-repository/file'] },
+            { id: 'submit-ticket', name: 'Submit Ticket', kind: 'link', href: '/submit-ticket', module: 'Submit Ticket', activeMatchPaths: ['/submit-ticket/detail'] },
             { id: 'commodity-mapping', name: 'Commodity Mapping', kind: 'link', href: '/commodity-mapping', module: 'Commodity Mapping' },
             {
                 id: 'references-group',
@@ -642,6 +644,11 @@ export const resolveAppBreadcrumbs = ({
     }
 
     if (path === '/gender-and-development') return withRoot({ label: 'Gender and Development' });
+    if (path === '/submit-ticket') return withRoot({ label: 'Submit Ticket' });
+    if (path === '/submit-ticket/detail') return withRoot({ label: 'Submit Ticket', path: '/submit-ticket' }, { label: 'Ticket' });
+    if (path === '/documentary-repository') return withRoot({ label: 'Documentary Repository' });
+    if (path === '/documentary-repository/detail') return withRoot({ label: 'Documentary Repository', path: '/documentary-repository' }, { label: 'Folder' });
+    if (path === '/documentary-repository/file') return withRoot({ label: 'Documentary Repository', path: '/documentary-repository' }, { label: 'Folder', path: contextualPath('/documentary-repository/detail?id='+encodeURIComponent(params?.get('id')||''),params) }, { label: 'Document' });
     if (path === '/gender-and-development/detail') {
         const operatingUnit = params?.get('ou') || context.gadOperatingUnit || 'Operating Unit';
         const year = Number.isFinite(selectedYear) && selectedYear > 0 ? selectedYear : context.gadYear;

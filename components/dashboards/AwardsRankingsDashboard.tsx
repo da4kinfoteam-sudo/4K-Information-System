@@ -27,6 +27,8 @@ import {
     normalizeAwardSettings,
 } from '../../lib/awardRankings';
 import { IPO, OfficeRequirement, OtherActivity, OtherProgramExpense, StaffingRequirement, Subproject, Training, operatingUnits } from '../../constants';
+import { AwardReportorialInputs,useAwardReportorial } from '../resources/AwardReportorialInputs';
+import { ResourceErrorState } from '../resources/ResourceControls';
 
 interface AwardsRankingsDashboardProps {
     data: {
@@ -223,6 +225,7 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
     const isAdmin = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
     const effectiveYear = Number.isFinite(Number(selectedYear)) ? Number(selectedYear) : new Date().getFullYear();
     const scopedOus = operatingUnits.filter(ou => !selectedOus || selectedOus.includes(ou));
+    const reportorial = useAwardReportorial(effectiveYear,scopedOus,isAdmin);
     const [controllerOpen, setControllerOpen] = useState(false);
     const [quarterDetailMode, setQuarterDetailMode] = useState<QuarterDetailMode>('financial');
     const [quarterDetailPeriod, setQuarterDetailPeriod] = useState<QuarterDetailPeriod>('All');
@@ -282,8 +285,8 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
     }, [effectiveYear, isAdmin, JSON.stringify(scopedOus)]);
 
     const awardsData = useMemo(
-        () => calculateAwardsDashboardData(data, selectedYear, settings, manualScores),
-        [data, manualScores, selectedYear, settings]
+        () => calculateAwardsDashboardData(data, selectedYear, settings, manualScores,reportorial.periods||undefined),
+        [data, manualScores, selectedYear, settings,reportorial.periods]
     );
 
     const hasChanges = !settingsEqual(settings, draftSettings) || !manualEqual(manualScores, draftManualScores);
@@ -312,6 +315,7 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
     const quarterDetailTitle = `${quarterDetailMode === 'financial' ? 'Quarter Financial Details' : 'Quarter Physical Details'}${quarterDetailPeriod === 'All' ? '' : ` - ${quarterDetailPeriod}`}`;
 
     const updateManual = (period: AwardManualScore['period'], ou: string, field: ManualField, value: string) => {
+        if ((field==='reportorial_required'||field==='reportorial_submitted')&&reportorial.periods?.some(item=>item.quarter===period&&item.source==='Repository')) return;
         setDraftManualScores(current => ensureManualRows(current, effectiveYear, scopedOus).map(row => {
             if (row.period !== period || row.operating_unit !== ou) return row;
             if (field === 'remarks') return { ...row, remarks: value };
@@ -357,6 +361,7 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
     };
 
     const saveController = async () => {
+        if(!reportorial.periods||reportorial.error)return;
         if (!supabase) {
             setError('Supabase is not configured. Awards controller cannot be saved.');
             return;
@@ -408,6 +413,7 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
     };
 
     const exportWorkbook = () => {
+        if(!reportorial.periods||reportorial.error)return;
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(awardsData.annual.overall.map(row => ({
             Rank: row.rank,
@@ -515,11 +521,23 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
             'IPOs Assisted': row.metrics.iposAssisted || 0,
             'Reports Submitted': row.metrics.reportorialSubmitted || 0,
             'Reports Required': row.metrics.reportorialRequired || 0,
+            'Reportorial Source': reportorial.periods?.find(period=>period.quarter===row.period)?.source || 'Manual',
+            'Reportorial Compliance (%)': row.metrics.reportorialCompliance || 0,
+            'On-Time Reports': row.metrics.reportorialRepository ? row.metrics.reportorialOnTime : '',
+            'Late Reports': row.metrics.reportorialRepository ? row.metrics.reportorialLate : '',
+            'Missing Reports': row.metrics.reportorialRepository ? row.metrics.reportorialMissing : '',
+            'Credited Units': row.metrics.reportorialRepository ? row.metrics.reportorialCreditedUnits : '',
             'National Activities Attended': row.metrics.nationalAttended || 0,
             'National Activities Required': row.metrics.nationalRequired || 0,
             'Targets Due': row.metrics.targetsDue || 0,
             'Targets Completed': row.metrics.targetsCompleted || 0,
         }))), 'Quarter Physical Details');
+        const reportorialRows=reportorial.periods.flatMap(period=>period.source==='Repository'?(period.summary?.rows||[]).map(row=>({
+            Year:period.reporting_year,Quarter:period.quarter,Source:period.source,Inputs:period.state==='Finalized'?'Finalized':'Provisional',Cutoff:period.summary?.cutoff,'Rule Version':period.summary?.rule_version,
+            OU:row.operating_unit,Required:row.required,'On Time':row.on_time,Late:row.late,Missing:row.missing,'Credited Units':row.credited_units,'Compliance (%)':row.compliance??'Not Applicable',
+        })):[]);
+        XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(reportorialRows),'Reportorial Inputs');
+        XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(reportorial.periods.flatMap(period=>(period.summary?.evidence||[]).map(row=>({Year:period.reporting_year,Quarter:period.quarter,Inputs:period.state==='Finalized'?'Finalized':'Provisional',Cutoff:period.summary?.cutoff,OU:row.operating_unit,Requirement:row.subject,Deadline:row.due_at,'Submitted At':row.submitted_at||'','Credit Units':row.credit??'Waived'})))),'Reportorial Evidence');
         XLSX.writeFile(wb, `Awards_Rankings_FY${awardsData.effectiveYear}.xlsx`);
     };
 
@@ -531,6 +549,8 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
             </section>
         );
     }
+
+    if(!reportorial.periods||reportorial.error)return <section className="dashboard-panel award-panel"><header className="dashboard-panel__header"><h3 className="dashboard-panel__title">Awards and Rankings</h3></header>{reportorial.loading?<p role="status" className="award-empty-note">Loading reportorial inputs...</p>:<ResourceErrorState error={reportorial.error||'Reportorial inputs are unavailable.'} retry={reportorial.refresh}/>}</section>;
 
     const annualWinner = awardsData.annual.overall[0];
     const financialWinner = awardsData.annual.financial[0];
@@ -564,6 +584,8 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
                     </button>
                 </div>
             </section>
+
+            <AwardReportorialInputs state={reportorial}/>
 
             {controllerOpen && (
                 <section id="award-controller" className="award-controller dashboard-panel">
@@ -673,8 +695,8 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
                                         .map(row => (
                                             <tr key={`${row.period}-${row.operating_unit}`}>
                                                 <td className="data-table__emphasis">{row.operating_unit}</td>
-                                                <td className="data-table__numeric"><input type="number" value={row.reportorial_required} onChange={event => updateManual(row.period, row.operating_unit, 'reportorial_required', event.target.value)} /></td>
-                                                <td className="data-table__numeric"><input type="number" value={row.reportorial_submitted} onChange={event => updateManual(row.period, row.operating_unit, 'reportorial_submitted', event.target.value)} /></td>
+                                                <td className="data-table__numeric">{reportorial.periods.find(period=>period.quarter===row.period)?.source==='Repository'?<span title="From Documentary Repository">{reportorial.periods.find(period=>period.quarter===row.period)?.summary?.rows.find(total=>total.operating_unit===row.operating_unit)?.required||0}</span>:<input type="number" value={row.reportorial_required} onChange={event => updateManual(row.period, row.operating_unit, 'reportorial_required', event.target.value)} />}</td>
+                                                <td className="data-table__numeric">{reportorial.periods.find(period=>period.quarter===row.period)?.source==='Repository'?<span title="From Documentary Repository">{(()=>{const total=reportorial.periods.find(period=>period.quarter===row.period)?.summary?.rows.find(total=>total.operating_unit===row.operating_unit);return (total?.on_time||0)+(total?.late||0);})()}</span>:<input type="number" value={row.reportorial_submitted} onChange={event => updateManual(row.period, row.operating_unit, 'reportorial_submitted', event.target.value)} />}</td>
                                                 <td className="data-table__numeric"><input type="number" value={row.national_activities_required} onChange={event => updateManual(row.period, row.operating_unit, 'national_activities_required', event.target.value)} /></td>
                                                 <td className="data-table__numeric"><input type="number" value={row.national_activities_attended} onChange={event => updateManual(row.period, row.operating_unit, 'national_activities_attended', event.target.value)} /></td>
                                                 <td><input type="text" value={row.remarks || ''} onChange={event => updateManual(row.period, row.operating_unit, 'remarks', event.target.value)} /></td>
@@ -863,6 +885,7 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
                                     <th className="data-table__numeric">Subprojects</th>
                                     <th className="data-table__numeric">IPOs Assisted</th>
                                     <th className="data-table__numeric">Reports</th>
+                                    <th className="data-table__numeric">On Time</th><th className="data-table__numeric">Late</th><th className="data-table__numeric">Missing</th><th className="data-table__numeric">Credited Units</th><th className="data-table__numeric">Compliance</th>
                                     <th className="data-table__numeric">National Attendance</th>
                                     <th className="data-table__numeric">Targets</th>
                                 </tr>
@@ -882,11 +905,12 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
                                         <td className="data-table__numeric">{row.metrics.subprojectsProvided ?? '-'}</td>
                                         <td className="data-table__numeric">{row.metrics.iposAssisted ?? '-'}</td>
                                         <td className="data-table__numeric">{row.metrics.reportorialRequired ? `${row.metrics.reportorialSubmitted || 0} / ${row.metrics.reportorialRequired}` : '-'}</td>
+                                        <td className="data-table__numeric">{row.metrics.reportorialRepository?row.metrics.reportorialOnTime:'-'}</td><td className="data-table__numeric">{row.metrics.reportorialRepository?row.metrics.reportorialLate:'-'}</td><td className="data-table__numeric">{row.metrics.reportorialRepository?row.metrics.reportorialMissing:'-'}</td><td className="data-table__numeric">{row.metrics.reportorialRepository?row.metrics.reportorialCreditedUnits:'-'}</td><td className="data-table__numeric">{row.component==='programManagement'?(row.metrics.reportorialRequired?formatPercent(row.metrics.reportorialCompliance):'Not Applicable'):'-'}</td>
                                         <td className="data-table__numeric">{row.metrics.nationalRequired ? `${row.metrics.nationalAttended || 0} / ${row.metrics.nationalRequired}` : '-'}</td>
                                         <td className="data-table__numeric">{`${row.metrics.targetsCompleted || 0} / ${row.metrics.targetsDue || 0}`}</td>
                                     </tr>
                                 )) : (
-                                    <tr><td colSpan={14} className="text-center">No active quarter data to display.</td></tr>
+                                    <tr><td colSpan={19} className="text-center">No active quarter data to display.</td></tr>
                                 )}
                             </tbody>
                         </table>

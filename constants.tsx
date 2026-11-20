@@ -100,6 +100,8 @@ export const appModules = [
     'Marketing Database',
     'Level of Development',
     'Gender and Development',
+    'Documentary Repository',
+    'Submit Ticket',
     'Commodity Mapping',
     'References',
     'System Management'

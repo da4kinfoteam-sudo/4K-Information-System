@@ -4,6 +4,11 @@
 # working directory name when running `supabase init`.
 project_id = "4K-Information-System"
 
+[functions.resources]
+# Main's custom account credentials are verified by the Resources session bridge.
+# An anonymous project key or caller user_id never authenticates a Resources operation.
+verify_jwt = false
+
 [api]
 enabled = true
 # Port to use for the API URL.

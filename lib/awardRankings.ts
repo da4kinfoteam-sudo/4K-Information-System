@@ -11,6 +11,7 @@ import {
 import { collectFinancialLineItems } from './financialAggregation';
 import { isTransferAccomplishmentActive } from './budgetItemTransferRules';
 import { targetScheduleMonths } from './budgetTargetSchedules';
+import type { ReportorialPeriod } from './resources';
 
 export type AwardPeriod = 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'Year End';
 export type AwardQuarter = Exclude<AwardPeriod, 'Year End'>;
@@ -391,7 +392,8 @@ const buildQuarterPhysical = (
     year: number,
     quarter: AwardQuarter,
     settings: AwardRankingSettings,
-    manualMap: Map<string, AwardManualScore>
+    manualMap: Map<string, AwardManualScore>,
+    reportorialPeriods?: readonly ReportorialPeriod[]
 ): AwardQuarterResult['physicalComponents'] => {
     const socialPrepActivities = [...data.trainings, ...data.otherActivities]
         .filter(activity => recordYearMatches(activity.fundingYear, year) && activity.component === 'Social Preparation');
@@ -477,15 +479,18 @@ const buildQuarterPhysical = (
     const programMetrics = awardOperatingUnits(data).map(ou => {
         const manual = getManual(manualMap, year, quarter, ou);
         const completion = getQuarterCompletionRate(recordsByOu.programManagement.get(ou) || [], year, quarter);
-        const reportorialRequired = toNumber(manual.reportorial_required);
-        const reportorialSubmitted = toNumber(manual.reportorial_submitted);
+        const repository = reportorialPeriods?.find(period => period.quarter === quarter && period.source === 'Repository');
+        const total = repository?.summary?.rows.find(row => row.operating_unit === ou);
+        const reportorialRequired = repository ? total?.required || 0 : toNumber(manual.reportorial_required);
+        const reportorialSubmitted = repository ? (total?.on_time || 0) + (total?.late || 0) : toNumber(manual.reportorial_submitted);
         const nationalRequired = toNumber(manual.national_activities_required);
         const nationalAttended = toNumber(manual.national_activities_attended);
         return {
             ou,
             reportorialRequired,
             reportorialSubmitted,
-            reportorialCompliance: safeRate(reportorialSubmitted, reportorialRequired),
+            reportorialCompliance: repository ? total?.compliance || 0 : safeRate(reportorialSubmitted, reportorialRequired),
+            ...(repository ? { reportorialRepository: 1, reportorialOnTime: total?.on_time || 0, reportorialLate: total?.late || 0, reportorialMissing: total?.missing || 0, reportorialCreditedUnits: total?.credited_units || 0 } : {}),
             nationalRequired,
             nationalAttended,
             nationalAttendance: safeRate(nationalAttended, nationalRequired),
@@ -518,12 +523,13 @@ const buildQuarterPhysical = (
 
     const rankComponent = <T extends { ou: string; completionRate: number }>(
         rows: T[],
-        getScore: (row: T) => number
+        getScore: (row: T) => number,
+        allowsReportorialCredit: (row:T) => boolean = () => false
     ): AwardComponentScore[] => rankRows(rows, getScore, (rank, score) => getQuarterRankPoints(settings, rank, score)).map(row => ({
         ou: row.ou,
         rank: row.rank,
         score: row.score,
-        points: row.completionRate <= 0 ? settings.quarterlyZeroCompletionPoints : row.points,
+        points: row.completionRate <= 0 && !allowsReportorialCredit(row) ? settings.quarterlyZeroCompletionPoints : row.points,
         completionRate: row.completionRate,
         metrics: Object.fromEntries(Object.entries(row).filter(([key]) => !['ou', 'rank', 'score', 'points'].includes(key)).map(([key, value]) => [key, toNumber(value)])),
     }));
@@ -532,7 +538,7 @@ const buildQuarterPhysical = (
         socialPrep: rankComponent(socialPrepMetrics, scoreSocialPrep),
         productionLivelihood: rankComponent(plMetrics, scoreProductionLivelihood),
         marketingEnterprise: rankComponent(marketingMetrics, scoreMarketing),
-        programManagement: rankComponent(programMetrics, scoreProgram),
+        programManagement: rankComponent(programMetrics, scoreProgram, row => row.reportorialRepository === 1 && (row.reportorialCreditedUnits || 0) > 0),
     };
 };
 
@@ -593,7 +599,8 @@ const buildQuarterResult = (
     quarter: AwardQuarter,
     isActive: boolean,
     settings: AwardRankingSettings,
-    manualMap: Map<string, AwardManualScore>
+    manualMap: Map<string, AwardManualScore>,
+    reportorialPeriods?: readonly ReportorialPeriod[]
 ): AwardQuarterResult => {
     if (!isActive) {
         return {
@@ -610,7 +617,7 @@ const buildQuarterResult = (
             financial: [],
         };
     }
-    const physicalComponents = buildQuarterPhysical(data, year, quarter, settings, manualMap);
+    const physicalComponents = buildQuarterPhysical(data, year, quarter, settings, manualMap, reportorialPeriods);
     const physicalOverallBase = awardOperatingUnits(data).map(ou => ({
         ou,
         componentPoints: Object.values(physicalComponents).reduce((sum, rows) => sum + (rows.find(row => row.ou === ou)?.points || 0), 0),
@@ -838,15 +845,31 @@ export const calculateAwardsDashboardData = (
     data: AwardsInputData,
     selectedYear: string,
     settingsInput: unknown,
-    manualScores: AwardManualScore[]
+    manualScores: AwardManualScore[],
+    reportorialPeriods?: readonly ReportorialPeriod[]
 ): AwardsDashboardData => {
     const effectiveYear = getFiscalYear(selectedYear);
+    if (reportorialPeriods) validateAwardReportorialPeriods(reportorialPeriods, effectiveYear);
     const settings = normalizeAwardSettings(settingsInput);
     const manualMap = makeManualMap(manualScores);
     const activeQuarters = getActiveQuarterSet(effectiveYear);
-    const quarters = QUARTERS.map(quarter => buildQuarterResult(data, effectiveYear, quarter, activeQuarters.has(quarter), settings, manualMap));
+    const quarters = QUARTERS.map(quarter => buildQuarterResult(data, effectiveYear, quarter, activeQuarters.has(quarter), settings, manualMap, reportorialPeriods));
     const annual = buildAnnualResults(data, effectiveYear, settings, quarters, manualMap);
     return { effectiveYear, quarters, annual };
 };
 
 export const awardQuarters = QUARTERS;
+
+export function validateAwardReportorialPeriods(periods:readonly ReportorialPeriod[], year:number) {
+    if (periods.length !== 4 || QUARTERS.some(quarter => periods.filter(period => period.quarter === quarter && period.reporting_year === year).length !== 1)) throw new Error('Reportorial source information is incomplete. Refresh before calculating awards.');
+    for (const period of periods) {
+        if (!['Manual','Repository'].includes(period.source) || !['Open','Finalized'].includes(period.state)) throw new Error('Reportorial source information is invalid.');
+        if (period.source !== 'Repository') continue;
+        if (!period.summary || !Array.isArray(period.summary.rows) || !Array.isArray(period.summary.evidence) || !Number.isFinite(Date.parse(period.summary.cutoff)) || period.summary.rule_version !== 'on-time-1-late-0.5-v1') throw new Error('Repository reportorial evidence is unavailable.');
+        const seen = new Set<string>();
+        for (const row of period.summary.rows) {
+            if (!operatingUnits.includes(row.operating_unit as typeof operatingUnits[number]) || seen.has(row.operating_unit) || [row.required,row.on_time,row.late,row.missing].some(value=>!Number.isInteger(value)||value<0) || row.required !== row.on_time+row.late+row.missing || row.credited_units !== row.on_time+row.late*.5 || (row.required===0 ? row.compliance!==null : typeof row.compliance!=='number' || Math.abs(row.compliance-100*row.credited_units/row.required)>1e-7)) throw new Error('Repository reportorial totals are invalid.');
+            seen.add(row.operating_unit);
+        }
+    }
+}

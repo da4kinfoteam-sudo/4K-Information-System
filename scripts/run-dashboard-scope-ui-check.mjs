@@ -13,6 +13,8 @@ const artifacts = await mkdtemp(path.join(tmpdir(), '4kis-dashboard-filters-'));
 const serve = process.argv.includes('--serve');
 const independentTargets = process.argv.includes('--independent-targets');
 const mocks = {
+    // Filter regression only; the protected Resources gateway/SQL has separate end-to-end fixtures.
+    'lib/resources': `export * from '/lib/resources.ts';export const createResourcesClient=()=>({query:async(resource,args)=>resource==='reportorial'?{periods:['Q1','Q2','Q3','Q4'].map(quarter=>({reporting_year:args.reporting_year,quarter,source:'Manual',state:'Open',version:0}))}:{rows:[],total:0},dispose(){}});`,
     'contexts/AuthContext': `const hasAccess=()=>true,getVisibilityScope=module=>window.fixture.scopes[module]||'All';export const useAuth=()=>({currentUser:window.fixture.user,hasAccess,getVisibilityScope});`,
     'supabaseClient': `export const supabase={from(table){const filters=[];const query={select(){return query},order(){return query},maybeSingle(){return Promise.resolve({data:null,error:null})},eq(key,value){filters.push(row=>row[key]===value);return query},in(key,values){filters.push(row=>values.includes(row[key]));return query},gte(){return query},or(){filters.push(row=>!row.fundSourceUid);return query},range(){return Promise.resolve({data:(table==='activities'?window.fixture.activities:[]).filter(row=>filters.every(filter=>filter(row))),error:null})},lte(){return Promise.resolve({data:[],error:null})}};return query}};`,
     'lib/googleDriveStorage': `export const getDriveFileDisplayName=file=>file.name||'';export const getIpoDriveImageUrl=()=>'';export const listHomepageGalleryFeed=async(actor,scope)=>{window.fixture.gallery.push(scope);return []};`,

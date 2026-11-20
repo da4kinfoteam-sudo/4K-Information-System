@@ -2,6 +2,7 @@
 // Author: 4K 
 import { getActivityDisplayTitle, escapeActivityHtml } from '../lib/activityTitles';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import StatCard from './StatCard';
 import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, ouToRegionMap, SystemSettings } from '../constants';
 import { Subproject, IPO, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, RefFundSource } from '../constants';
@@ -17,7 +18,6 @@ import { dashboardDataScope, dashboardScopeKey, matchesDashboardScope, selectedV
 import { listHomepageGalleryFeed, HomepageGalleryFeedItem } from '../lib/googleDriveStorage';
 import { supabase } from '../supabaseClient';
 import { CalendarDays, ChevronLeft, ChevronRight, Ellipsis, X } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import {
     ContentCard,
     EmptyState,
@@ -28,6 +28,8 @@ import {
     StatusIndicator,
 } from './ui/enterprise';
 import HomepageGalleryFeed from './ui/HomepageGalleryFeed';
+import HomepageDeadlineList from './resources/HomepageDeadlineList';
+import {resourceAccess} from '../lib/resources';
 
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
 declare const L: any;
@@ -253,6 +255,30 @@ interface PanelMenuItem {
 
 const PanelActionMenu: React.FC<{ label: string; items: PanelMenuItem[] }> = ({ label, items }) => {
     const [open, setOpen] = useState(false);
+    const trigger = useRef<HTMLButtonElement>(null);
+    const menu = useRef<HTMLDivElement>(null);
+    const [position, setPosition] = useState({ top: 0, right: 8 });
+    useEffect(() => {
+        if (!open) return;
+        menu.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+        const closeOutside = (event: PointerEvent) => {
+            if (!menu.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) setOpen(false);
+        };
+        const escape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') { setOpen(false); trigger.current?.focus(); }
+        };
+        const close = () => setOpen(false);
+        document.addEventListener('pointerdown', closeOutside);
+        document.addEventListener('keydown', escape);
+        window.addEventListener('resize', close);
+        window.addEventListener('scroll', close, true);
+        return () => {
+            document.removeEventListener('pointerdown', closeOutside);
+            document.removeEventListener('keydown', escape);
+            window.removeEventListener('resize', close);
+            window.removeEventListener('scroll', close, true);
+        };
+    }, [open]);
 
     const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
@@ -271,13 +297,15 @@ const PanelActionMenu: React.FC<{ label: string; items: PanelMenuItem[] }> = ({ 
     };
 
     return (
-        <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <button type="button" className="dashboard-panel-menu__trigger" aria-label={label}>
+        <>
+                <button ref={trigger} type="button" className="dashboard-panel-menu__trigger" aria-label={label} aria-haspopup="menu" aria-expanded={open} data-state={open?'open':'closed'} onClick={() => {
+                    const rect = trigger.current!.getBoundingClientRect();
+                    setPosition({ top: Math.min(rect.bottom + 4, window.innerHeight - items.length * 44 - 24), right: Math.max(8, window.innerWidth - rect.right) });
+                    setOpen(value => !value);
+                }}>
                     <Ellipsis aria-hidden="true" />
                 </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="dashboard-panel-menu">
+            {open && createPortal(<div ref={menu} className="popover-content dashboard-panel-menu" style={{position:'fixed',top:Math.max(8,position.top),right:position.right,maxWidth:'calc(100vw - 16px)',zIndex:100}}>
                 <div role="menu" aria-label={label} onKeyDown={handleMenuKeyDown}>
                     {items.map(item => (
                         <button
@@ -287,14 +315,15 @@ const PanelActionMenu: React.FC<{ label: string; items: PanelMenuItem[] }> = ({ 
                             onClick={() => {
                                 item.onSelect();
                                 setOpen(false);
+                                trigger.current?.focus();
                             }}
                         >
                             {item.label}
                         </button>
                     ))}
                 </div>
-            </PopoverContent>
-        </Popover>
+            </div>, document.body)}
+        </>
     );
 };
 
@@ -408,7 +437,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     officeReqs, staffingReqs, otherProgramExpenses,
     onSelectSubproject, onSelectActivity, onSelectIpo, navigateTo, externalFilters, onDataScopeChange, fundSources = []
 }) => {
-    const { currentUser, getVisibilityScope, hasAccess } = useAuth();
+    const { currentUser, getVisibilityScope, hasAccess, rolesConfigs } = useAuth();
     
     // Check Reports & Dashboards visibility scope
     const visibilityScope = getVisibilityScope('Dashboards');
@@ -1029,6 +1058,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <PanelActionMenu
                             label="Upcoming deadlines menu"
                             items={[
+                                ...(resourceAccess(currentUser,rolesConfigs,'Documentary Repository')?[{label:'View all deadlines',onSelect:()=>navigateTo('/documentary-repository?view=deadlines')}]:[]),
                                 { label: 'View all activities', onSelect: () => navigateTo('/activities') },
                                 ...(canManageDeadlines
                                     ? [{ label: 'Manage deadlines', onSelect: () => navigateTo('/settings?tab=system') }]
@@ -1037,28 +1067,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         />
                     )}
                 />
-                <div className="dashboard-schedule-grid">
-                    <div>
-                        {upcomingDeadlines.length > 0 ? (
-                            <ul className="dashboard-list">
-                                {upcomingDeadlines.map(deadline => (
-                                    <li
-                                        key={deadline.id}
-                                        className={`dashboard-list__item dashboard-deadline-row ${isWithinDeadlineWindow(deadline.date) ? 'dashboard-list__item--urgent' : ''}`}
-                                    >
-                                        <span className="dashboard-deadline-row__icon" aria-hidden="true">
-                                            <CalendarDays />
-                                        </span>
-                                        <span className="dashboard-deadline-row__content">
-                                            <span className="dashboard-list__name">{deadline.name}</span>
-                                        </span>
-                                        <time className="dashboard-list__date" dateTime={deadline.date}>{formatFeedDate(deadline.date, deadline.date)}</time>
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : <p className="dashboard-empty">No upcoming deadlines.</p>}
-                    </div>
-                </div>
+                <HomepageDeadlineList legacy={upcomingDeadlines} navigateTo={navigateTo} formatLegacyDate={value=>formatFeedDate(value,value)} isLegacyUrgent={isWithinDeadlineWindow}/>
             </ContentCard>
 
             <MapCard className="dashboard-panel dashboard-panel--map">
