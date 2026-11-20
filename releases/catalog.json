@@ -8,8 +8,8 @@
       "version": "1.9.0",
       "kind": "feature",
       "title": "Documentary Repository and Submit Ticket",
-      "releaseDate": null,
-      "pr": null,
+      "releaseDate": "2026-11-20",
+      "pr": 105,
       "sections": {
         "Added": [
           "Documentary Repository organizes official files and required OU submissions with deadlines, signed-document declarations, versioned receipts and submission tracking.",
