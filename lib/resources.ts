@@ -30,6 +30,7 @@ export interface RepositoryEntry {
     assigned_count?:number;can_manage?:boolean;can_submit?:boolean;assignments?:RepositoryAssignment[];
     supporting_file_count?:number;
     own_status?:string|null;
+    storage_year?:number|null;single_document?:boolean|null;storage_sync_pending?:boolean;storage_sync_error?:string;
 }
 export interface RepositoryAssignment {
     id:string;entry_id:string;operating_unit:string;waived:boolean;waiver_reason:string|null;version:number;
@@ -132,8 +133,14 @@ export function createResourcesClient({url,apiKey,credentials,fetcher=fetch}: {
         }
         return status;
     };
-    return {query,mutate,upload,download:(fileId:string,signal?:AbortSignal)=>send({action:'file_content',file_id:fileId},signal,true) as Promise<Blob>,
-        cleanup:(fileId:string)=>send({action:'upload_cleanup',file_id:fileId}),maxBatch:RESOURCE_MAX_BATCH,
+    const awards=<T>(operation:string,args:Record<string,unknown>,signal?:AbortSignal):Promise<T>=>{
+        const requestId=typeof args.requestId==='string'?args.requestId:null,key='awards:'+requestId,payload=JSON.stringify({operation,args});
+        if(requestId){const current=inFlight.get(key);if(current){if(current.payload!==payload)throw new ResourcesClientError('A pending Awards request cannot be reused for different changes.',409);return current.promise as Promise<T>;}}
+        const promise=send({action:'awards',operation,args},signal).finally(()=>{if(requestId)inFlight.delete(key);});
+        if(requestId)inFlight.set(key,{payload,promise});return promise as Promise<T>;
+    };
+    return {query,mutate,awards,upload,download:(fileId:string,signal?:AbortSignal)=>send({action:'file_content',file_id:fileId},signal,true) as Promise<Blob>,
+        cleanup:(fileId:string)=>send({action:'upload_cleanup',file_id:fileId}),syncEntry:(entryId:string)=>send({action:'entry_sync',entry_id:entryId}) as Promise<{storage_sync_pending:boolean}>,maxBatch:RESOURCE_MAX_BATCH,
         dispose:()=>{generation++;session=null;verifying=null;inFlight.clear();},
         actor:()=>session?.actor || null};
 }

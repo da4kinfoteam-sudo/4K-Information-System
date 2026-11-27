@@ -24,7 +24,7 @@ export function RepositorySubmission({client,entry,assignment,onClose,onChanged,
             <RepositoryFiles client={client} entry={entry} assignmentId={assignment.id} reason={onBehalf?reason.trim()||undefined:''} allowUpload={!!accepting} onNavigate={onNavigate} onChanged={refresh} selected={selected} onSelect={accepting&&!action.saving?setSelected:undefined}/>
             {accepting&&entry.requires_signed&&<label className="repository-check repository-check--attestation"><input type="checkbox" className="form-checkbox" checked={signed} disabled={action.saving} onChange={event=>setSigned(event.target.checked)}/>The required signed documents are included.</label>}
             <ResourceErrorState error={action.error}/>
-            <details open={historyOpen} onToggle={event=>setHistoryOpen(event.currentTarget.open)}><summary>Submission History</summary><ResourceErrorState error={history.error} retry={history.refresh}/>{historyOpen&&<ResourceTable<SubmissionReceipt> columns={[
+            <details open={historyOpen} onToggle={event=>setHistoryOpen(event.currentTarget.open)}><summary>Submission History</summary><ResourceErrorState error={history.error} retry={history.refresh}/>{historyOpen&&<ResourceTable<SubmissionReceipt> compactHeaders columns={[
                 {key:'version',label:'Version',locked:true,width:90,render:row=><ResourceText value={row.version}/>},
                 {key:'date',label:'Submitted At',locked:true,width:220,render:row=><ResourceText value={resourceDate(row.submitted_at)}/>},
                 {key:'by',label:'Submitted By',default:true,width:200,render:row=><ResourceText value={row.submitted_by_name}/>},

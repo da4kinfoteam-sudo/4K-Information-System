@@ -1,8 +1,34 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "documentary-repository-submit-ticket",
+  "currentReleaseId": "repository-awards-lod-refinement",
   "releases": [
+    {
+      "id": "repository-awards-lod-refinement",
+      "version": "1.9.1",
+      "kind": "fix",
+      "title": "Repository, Awards and IPO LOD refinements",
+      "releaseDate": "2026-11-27",
+      "pr": null,
+      "sections": {
+        "Added": [
+          "Awards annual results support configurable cutoffs, retained finalized results, historical versions, restore and undo.",
+          "Level of Development Monitoring summarizes IPO assessment levels by Operating Unit or province, with independent year selection and Excel downloads."
+        ],
+        "Improved": [
+          "Documentary Repository uses scrollable folder forms, compact OU selection and column-header filtering and sorting without Edit Table controls.",
+          "Standalone documents have a combined upload form and direct protected previews; new uploads are organized by year and subject beneath the configured Drive parent.",
+          "Awards controls use a tabbed dialog, restored performance cards and separate compact, scrollable financial and physical tables.",
+          "Awards Excel downloads include the official logo, extraction date, formatted financial values and complete tables on individual worksheets."
+        ],
+        "Fixed": [
+          "Repository uploads retain recoverable requests after interruptions and report storage failures without exposing sensitive details.",
+          "Finalized Awards results remain unchanged by later encoding, while annual carry preserves the matching unfinished targets and remaining financial basis.",
+          "High-performing IPOs include Level 5 only; LOD progression excludes unassessed states and component charts compare attainment against each assessment's configured weight."
+        ],
+        "Affected Pages": ["Documentary Repository", "Awards and Rankings Dashboard", "IPO Level of Development Dashboard", "System Information"]
+      }
+    },
     {
       "id": "documentary-repository-submit-ticket",
       "version": "1.9.0",

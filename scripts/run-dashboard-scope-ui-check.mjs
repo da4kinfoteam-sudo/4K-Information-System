@@ -13,6 +13,7 @@ const artifacts = await mkdtemp(path.join(tmpdir(), '4kis-dashboard-filters-'));
 const serve = process.argv.includes('--serve');
 const independentTargets = process.argv.includes('--independent-targets');
 const mocks = {
+    'components/dashboards/AwardsRankingsDashboard': `import React from 'react';export default function Awards(props){window.fixture.awardsProps=props;return React.createElement('h3',null,'Awards And Rankings')}`,
     // Filter regression only; the protected Resources gateway/SQL has separate end-to-end fixtures.
     'lib/resources': `export * from '/lib/resources.ts';export const createResourcesClient=()=>({query:async(resource,args)=>resource==='reportorial'?{periods:['Q1','Q2','Q3','Q4'].map(quarter=>({reporting_year:args.reporting_year,quarter,source:'Manual',state:'Open',version:0}))}:{rows:[],total:0},dispose(){}});`,
     'contexts/AuthContext': `const hasAccess=()=>true,getVisibilityScope=module=>window.fixture.scopes[module]||'All';export const useAuth=()=>({currentUser:window.fixture.user,hasAccess,getVisibilityScope});`,
@@ -54,6 +55,7 @@ const server = await createServer({ configFile: false, root: process.cwd(), cach
         name: 'dashboard-scope-offline', enforce: 'pre',
         resolveId(id) {
             if (id === '/dashboard-scope-harness.tsx') return '\0dashboard-scope-harness.tsx';
+            if (id.endsWith('/AwardsRankingsDashboard')) return '\0mock-components/dashboards/AwardsRankingsDashboard';
             for (const key of Object.keys(mocks)) if (id.replace(/\\/g, '/').endsWith('/' + key)) return '\0mock-' + key;
             if (id.endsWith('/IPOLevelDashboard')) return '\0lod-independent';
         },
@@ -146,8 +148,13 @@ try {
     await page.getByRole('heading', { name: 'Financial Summary', exact: true }).waitFor();
     await go('Physical');
     await go('Farm Productivity and Income');
+    const requestsBeforeAwards=await page.evaluate(()=>window.fixture.requests.length);
     await go('Awards and Rankings');
-    await page.getByRole('combobox', { name: 'Annual View', exact: true }).selectOption('2027');
+    await page.getByRole('combobox', { name: 'Awards Year', exact: true }).selectOption('2027');
+    assert.equal(await panel.getByRole('button',{name:'Fund Year',exact:true}).innerText(),'All Fund Years');
+    assert.equal(await page.evaluate(()=>window.fixture.requests.length),requestsBeforeAwards,'Awards uses protected captured sources, not a second FY-scoped business-table fetch');
+    assert.equal(await page.evaluate(()=>window.fixture.awardsProps.selectedYear),'2027');
+    assert.equal(await page.evaluate(()=>window.fixture.awardsProps.scope.sourceFundYears),null,'Awards Year never narrows the source Fund Year cohort implicitly');
     await go('home');
     await page.evaluate(() => window.fixture.mode = 'error');
     await choose('Fund Year', ['2027']); await apply();

@@ -23,7 +23,7 @@ export function useAwardReportorial(year:number,ous:readonly string[],enabled:bo
     return {...query,...result,client,canManage:resourceAccess(currentUser,rolesConfigs,'Documentary Repository','manage'),error:!allowed?'Repository access is required to verify reportorial source information.':query.error||result.error};
 }
 
-type ReportorialState=ReturnType<typeof useAwardReportorial>;
+export type ReportorialState=ReturnType<typeof useAwardReportorial>;
 type Snapshot={id:string;version:number;cutoff:string;actor_name:string;reason:string;created_at:string;rule_version:string};
 function Evidence({period,client,onClose}:{period:ReportorialPeriod;client:ReportorialState['client'];onClose:()=>void}){
     const [ou,setOu]=useState(''),[page,setPage]=useState(1),[size,setSize]=useState(10);
@@ -32,7 +32,7 @@ function Evidence({period,client,onClose}:{period:ReportorialPeriod;client:Repor
     return <ResourceModal title={`${period.quarter} ${period.reporting_year} Reportorial Evidence`} onClose={onClose} wide>
         <div className="modal-card__body resources-form-stack">
             <dl className="repository-detail-meta"><div><dt>Inputs</dt><dd>{period.state==='Finalized'?'Finalized':'Provisional'}</dd></div><div><dt>Cutoff</dt><dd>{resourceDate(period.summary?.cutoff)}</dd></div><div><dt>Rule</dt><dd>On Time 100% / Late 50%</dd></div></dl>
-            <ResourceTable<ReportorialEvidence & {id:string}> preferences="award-reportorial-evidence-v1" columns={[
+            <ResourceTable<ReportorialEvidence & {id:string}> allowColumnEditing preferences="award-reportorial-evidence-v1" columns={[
                 {key:'ou',label:'OU',locked:true,width:120,render:(row:ReportorialEvidence)=><ResourceText value={row.operating_unit}/>},
                 {key:'subject',label:'Requirement',locked:true,width:310,render:row=><a className="resources-record-link" title={row.subject} href={`#/documentary-repository/detail?id=${encodeURIComponent(row.entry_id)}&source=dashboard&sourceView=awards-rankings`}>{row.subject}</a>},
                 {key:'due',label:'Deadline',default:true,width:210,render:row=>resourceDate(row.due_at)},
@@ -45,7 +45,7 @@ function Evidence({period,client,onClose}:{period:ReportorialPeriod;client:Repor
     </ResourceModal>;
 }
 
-export function AwardReportorialInputs({state}:{state:ReportorialState}){
+export function AwardReportorialInputs({state,embedded=false}:{state:ReportorialState;embedded?:boolean}){
     const [edit,setEdit]=useState<{period:ReportorialPeriod;action:'reportorial_source'|'reportorial_finalize'|'reportorial_reopen'}|null>(null),[evidence,setEvidence]=useState<ReportorialPeriod|null>(null),[source,setSource]=useState('Manual'),[reason,setReason]=useState('');
     const action=useResourceAction(state.client);
     const open=(period:ReportorialPeriod,kind:NonNullable<typeof edit>['action'])=>{action.clearError();setReason('');setSource(period.source);setEdit({period,action:kind});};
@@ -54,7 +54,7 @@ export function AwardReportorialInputs({state}:{state:ReportorialState}){
         const result=await action.run(edit.action,{reporting_year:edit.period.reporting_year,quarter:edit.period.quarter,reason:reason.trim(),...(edit.action==='reportorial_source'?{source}:{})},edit.period.version);
         if(result){setEdit(null);state.refresh();}
     };
-    return <section className="dashboard-panel award-panel award-reportorial-inputs"><header className="dashboard-panel__header"><h3 className="dashboard-panel__title">Reportorial Inputs</h3><button className="btn btn-secondary btn-icon" title="Refresh Reportorial Inputs" aria-label="Refresh Reportorial Inputs" onClick={state.refresh}><RefreshCw aria-hidden="true"/></button></header>
+    return <section className={embedded?'award-reportorial-inputs award-reportorial-inputs--embedded':'dashboard-panel award-panel award-reportorial-inputs'}><header className="dashboard-panel__header">{!embedded&&<h3 className="dashboard-panel__title">Reportorial Inputs</h3>}<button type="button" className="btn btn-secondary btn-icon" title="Refresh Reportorial Inputs" aria-label="Refresh Reportorial Inputs" onClick={state.refresh}><RefreshCw aria-hidden="true"/></button></header>
         <div className="resources-table-scroll"><table className="data-table resources-table"><thead><tr><th>Quarter</th><th>Source</th><th>Inputs</th><th>Cutoff</th><th>Actions</th></tr></thead><tbody>{state.periods?.map(period=><tr key={period.quarter}><td>{period.quarter}</td><td>{period.source}</td><td>{period.source==='Manual'?'Manual':period.state==='Finalized'?'Finalized':'Provisional'}</td><td>{resourceDate(period.summary?.cutoff)}</td><td><div className="resources-row-actions">{period.source==='Repository'&&<button className="btn btn-secondary btn-sm" onClick={()=>setEvidence(period)}><Eye aria-hidden="true"/>View Evidence</button>}{state.canManage&&<>{period.state!=='Finalized'&&<button className="btn btn-secondary btn-sm" onClick={()=>open(period,'reportorial_source')}>Change Source</button>}{period.source==='Repository'&&<button className="btn btn-secondary btn-sm" onClick={()=>open(period,period.state==='Finalized'?'reportorial_reopen':'reportorial_finalize')}>{period.state==='Finalized'?'Reopen':'Finalize'}</button>}</>}</div></td></tr>)}</tbody></table></div>
         {evidence&&<Evidence period={evidence} client={state.client} onClose={()=>setEvidence(null)}/>}
         {edit&&<ResourceModal title={edit.action==='reportorial_source'?'Change Reportorial Source':edit.action==='reportorial_finalize'?'Finalize Reportorial Inputs':'Reopen Reportorial Inputs'} busy={action.saving} onClose={()=>setEdit(null)}>

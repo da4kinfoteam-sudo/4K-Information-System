@@ -2,7 +2,7 @@ import { ResourceError, resourceJson, resourceSafeError, resourceUuid } from './
 
 type Rpc = (name: string, args: Record<string, unknown>) => Promise<unknown>;
 type Storage = (action: string, session: string, request: Request, data: Record<string, unknown>) => Promise<Response | unknown>;
-type Dependencies = { rpc: Rpc; storage?: Storage; origins: string[] };
+type Dependencies = { rpc: Rpc; storage?: Storage; awards?:(operation:string,session:string,args:unknown)=>Promise<unknown>; origins: string[] };
 
 const mutations = new Set([
   'entry_save','entry_publish','entry_state','assignment_waive','file_reserve','submission_submit',
@@ -10,7 +10,7 @@ const mutations = new Set([
   'reportorial_source','reportorial_finalize','reportorial_reopen','session_end'
 ]);
 
-export function createResourcesHandler({rpc,storage,origins}: Dependencies) {
+export function createResourcesHandler({rpc,storage,awards,origins}: Dependencies) {
   return async (request: Request) => {
     const origin = request.headers.get('origin');
     const allowed = !origin || origins.includes(origin);
@@ -37,6 +37,10 @@ export function createResourcesHandler({rpc,storage,origins}: Dependencies) {
       }
       const session = request.headers.get('x-resource-session') || '';
       if (!/^[a-f0-9]{64}$/.test(session)) throw new ResourceError('Verify your account to continue.',401,'SESSION_REQUIRED');
+      if(action==='awards'&&awards){
+        if(typeof body.operation!=='string')throw new ResourceError('Choose an Awards operation.');
+        return json(await awards(body.operation,session,body.args));
+      }
       if (action === 'read') {
         if (typeof body.resource !== 'string') throw new ResourceError('Choose a resource.');
         return json(await rpc('resource_read',{p_session:session,p_resource:body.resource,p_args:body.args || {}}));
@@ -46,9 +50,14 @@ export function createResourcesHandler({rpc,storage,origins}: Dependencies) {
         const data = body.data;
         if (!data || typeof data !== 'object' || Array.isArray(data)) throw new ResourceError('Provide the record changes.');
         if (body.version != null && (!Number.isInteger(body.version) || Number(body.version) < 0)) throw new ResourceError('Invalid record version.');
-        return json(await rpc('resource_mutate',{p_session:session,p_action:body.mutation,p_data:data,p_request_id:resourceUuid(body.request_id),p_expected_version:body.version ?? null}));
+        const result=await rpc('resource_mutate',{p_session:session,p_action:body.mutation,p_data:data,p_request_id:resourceUuid(body.request_id),p_expected_version:body.version ?? null}) as Record<string,unknown>;
+        if(body.mutation==='entry_save'&&storage&&typeof result.id==='string'){
+          try{return json({...result,...await storage('entry_sync',session,request,{entry_id:result.id}) as object});}
+          catch(error){return json({...result,storage_sync_pending:true,storage_sync_error:resourceSafeError(error).message});}
+        }
+        return json(result);
       }
-      if (typeof action === 'string' && ['upload_begin','upload_chunk','upload_status','upload_cleanup','file_content'].includes(action) && storage) {
+      if (typeof action === 'string' && ['entry_sync','upload_begin','upload_chunk','upload_status','upload_cleanup','file_content'].includes(action) && storage) {
         const result = await storage(action,session,request,body);
         if (result instanceof Response) {
           const merged = new Headers(result.headers); for (const [name,value] of Object.entries(headers)) merged.set(name,value);

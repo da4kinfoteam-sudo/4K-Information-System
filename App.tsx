@@ -2528,9 +2528,10 @@ const AppContent: React.FC = () => {
             case '/submit-ticket/detail':
                 return <SubmitTicketPage id={routePath.endsWith('/detail') ? routeParams.get('id') || 'invalid' : null} onNavigate={navigateTo}/>;
             case '/documentary-repository':
+            case '/documentary-repository/upload':
             case '/documentary-repository/detail':
             case '/documentary-repository/file':
-                return <DocumentaryRepositoryPage id={routePath==='/documentary-repository'?null:routeParams.get('id')||'invalid'} fileId={routePath.endsWith('/file')?routeParams.get('fileId')||'invalid':null} deadlineView={routeParams.get('view')==='deadlines'} onNavigate={path=>navigateTo(appendPathParams(path,getCurrentSourceParams()))} onBreadcrumbs={handleResourceBreadcrumbs}/>;
+                return <DocumentaryRepositoryPage id={routePath==='/documentary-repository'||routePath.endsWith('/upload')?null:routeParams.get('id')||'invalid'} uploadView={routePath.endsWith('/upload')} parentId={routeParams.get('parentId')} fileId={routePath.endsWith('/file')?routeParams.get('fileId')||'invalid':null} deadlineView={routeParams.get('view')==='deadlines'} onNavigate={path=>navigateTo(appendPathParams(path,getCurrentSourceParams()))} onBreadcrumbs={handleResourceBreadcrumbs}/>;
             case '/gender-and-development/detail':
                 {
                     const routeOu = routeParams.get('ou');

@@ -1,13 +1,13 @@
-import {
+import type {
     IPO,
     OfficeRequirement,
-    operatingUnits,
     OtherActivity,
     OtherProgramExpense,
     StaffingRequirement,
     Subproject,
     Training,
 } from '../constants';
+import { operatingUnits } from './operatingUnits';
 import { collectFinancialLineItems } from './financialAggregation';
 import { isTransferAccomplishmentActive } from './budgetItemTransferRules';
 import { targetScheduleMonths } from './budgetTargetSchedules';
@@ -144,6 +144,25 @@ export interface AwardsInputData {
     staffingReqs: StaffingRequirement[];
     otherProgramExpenses: OtherProgramExpense[];
     ipos: IPO[];
+}
+
+interface AwardCompletionMetric {ou:string;targetsDue:number;targetsCompleted:number;completionRate:number;}
+export interface AwardQuarterPhysicalMetrics {
+    socialPrep:Array<AwardCompletionMetric & {activitiesConducted:number;iposTrained:number}>;
+    productionLivelihood:Array<AwardCompletionMetric & {trainingsConducted:number;subprojectsProvided:number;iposAssisted:number}>;
+    marketingEnterprise:Array<AwardCompletionMetric & {activitiesConducted:number;iposAssisted:number}>;
+    programManagement:Array<AwardCompletionMetric & {
+        reportorialRequired:number;reportorialSubmitted:number;reportorialCompliance:number;
+        nationalRequired:number;nationalAttended:number;nationalAttendance:number;
+        reportorialRepository?:number;reportorialOnTime?:number;reportorialLate?:number;
+        reportorialMissing?:number;reportorialCreditedUnits?:number;
+    }>;
+}
+export interface AwardQuarterFinancialMetric {ou:string;allocation:number;obligation:number;disbursement:number;}
+export interface AwardAnnualMetricBasis {
+    financial:Array<AwardQuarterFinancialMetric & {disbursementVsAllotmentRate:number;disbursementVsObligationRate:number}>;
+    physical:Array<{ou:string;physicalCompletionRate:number}>;
+    counts:{iposAssisted:Array<{ou:string;value:number;target:number}>;trainings:Array<{ou:string;value:number}>;subprojects:Array<{ou:string;value:number}>};
 }
 
 const awardOperatingUnits = (data: AwardsInputData) => data.operatingUnitScope
@@ -500,6 +519,11 @@ const buildQuarterPhysical = (
         };
     });
 
+    return scoreAwardQuarterPhysicalMetrics({socialPrep:socialPrepMetrics,productionLivelihood:plMetrics,marketingEnterprise:marketingMetrics,programManagement:programMetrics},settings);
+};
+
+export const scoreAwardQuarterPhysicalMetrics = (metrics:AwardQuarterPhysicalMetrics,settings:AwardRankingSettings):AwardQuarterResult['physicalComponents'] => {
+    const {socialPrep:socialPrepMetrics,productionLivelihood:plMetrics,marketingEnterprise:marketingMetrics,programManagement:programMetrics}=metrics;
     const scoreSocialPrep = (row: typeof socialPrepMetrics[number]) =>
         normalizeCountScore(row.activitiesConducted, Math.max(...socialPrepMetrics.map(item => item.activitiesConducted), 0), settings.quarterlyPhysicalWeights.socialPrep.activitiesConducted)
         + normalizeCountScore(row.iposTrained, Math.max(...socialPrepMetrics.map(item => item.iposTrained), 0), settings.quarterlyPhysicalWeights.socialPrep.iposTrained)
@@ -579,6 +603,14 @@ const buildQuarterFinancial = (
         return { ou, allocation, obligation, disbursement, obligationRate, disbursementRate, weightedScore };
     });
 
+    return scoreAwardQuarterFinancialMetrics(rows,settings);
+};
+
+export const scoreAwardQuarterFinancialMetrics = (metrics:readonly AwardQuarterFinancialMetric[],settings:AwardRankingSettings):AwardQuarterResult['financial'] => {
+    const rows=metrics.map(row=>{
+        const obligationRate=safeRate(row.obligation,row.allocation),disbursementRate=safeRate(row.disbursement,row.allocation);
+        return {...row,obligationRate,disbursementRate,weightedScore:(disbursementRate/100)*settings.quarterlyFinancialWeights.disbursementVsAllotment+(obligationRate/100)*settings.quarterlyFinancialWeights.obligationVsAllotment};
+    });
     return rankRows(rows, row => row.weightedScore, (rank, score) => getQuarterRankPoints(settings, rank, score))
         .map(row => ({
             ou: row.ou,
@@ -748,11 +780,12 @@ const buildAnnualResults = (
     year: number,
     settings: AwardRankingSettings,
     quarters: AwardQuarterResult[],
-    manualMap: Map<string, AwardManualScore>
+    manualMap: Map<string, AwardManualScore>,
+    basis?:AwardAnnualMetricBasis
 ): AwardAnnualResult => {
-    const financialBuckets = buildAnnualFinancialBuckets(data, year);
+    const financialBuckets = basis?.financial || buildAnnualFinancialBuckets(data, year);
     const physicalRecords = getOuPhysicalRecords(data, year);
-    const physicalRows = awardOperatingUnits(data).map(ou => ({
+    const physicalRows = basis?.physical || awardOperatingUnits(data).map(ou => ({
         ou,
         physicalCompletionRate: getAnnualCompletionRate(physicalRecords.get(ou) || [], year).rate,
     }));
@@ -825,7 +858,7 @@ const buildAnnualResults = (
             + row.breakdown.physicalCompletionBand,
     })));
 
-    const counts = buildAnnualCounts(data, year, manualMap);
+    const counts = {...buildAnnualCounts(data, year, manualMap),...basis?.counts};
     const rankCount = (items: Array<{ ou: string; value: number; target?: number }>) =>
         rankRows(items, item => item.value, (_rank, score) => score)
             .map(item => ({ ou: item.ou, rank: item.rank, score: item.score, points: item.points, target: item.target }));
@@ -846,19 +879,32 @@ export const calculateAwardsDashboardData = (
     selectedYear: string,
     settingsInput: unknown,
     manualScores: AwardManualScore[],
-    reportorialPeriods?: readonly ReportorialPeriod[]
+    reportorialPeriods?: readonly ReportorialPeriod[],
+    referenceDate?:Date
 ): AwardsDashboardData => {
     const effectiveYear = getFiscalYear(selectedYear);
     if (reportorialPeriods) validateAwardReportorialPeriods(reportorialPeriods, effectiveYear);
     const settings = normalizeAwardSettings(settingsInput);
     const manualMap = makeManualMap(manualScores);
-    const activeQuarters = getActiveQuarterSet(effectiveYear);
+    const activeQuarters = getActiveQuarterSet(effectiveYear,referenceDate);
     const quarters = QUARTERS.map(quarter => buildQuarterResult(data, effectiveYear, quarter, activeQuarters.has(quarter), settings, manualMap, reportorialPeriods));
     const annual = buildAnnualResults(data, effectiveYear, settings, quarters, manualMap);
     return { effectiveYear, quarters, annual };
 };
 
 export const awardQuarters = QUARTERS;
+
+export const scoreAwardAnnualMetrics = (ous:string[],year:number,settings:AwardRankingSettings,manual:AwardManualScore[],quarters:AwardQuarterResult[],basis:AwardAnnualMetricBasis):AwardAnnualResult => {
+    const data: AwardsInputData={operatingUnitScope:ous,subprojects:[],trainings:[],otherActivities:[],officeReqs:[],staffingReqs:[],otherProgramExpenses:[],ipos:[]};
+    return buildAnnualResults(data,year,settings,quarters,makeManualMap(manual),basis);
+};
+
+export const scoreAwardConsistencyQuarter = (ous:string[],period:AwardQuarter,physical:AwardQuarterPhysicalMetrics,financial:AwardQuarterFinancialMetric[],settings:AwardRankingSettings):AwardQuarterResult => {
+    const physicalComponents=scoreAwardQuarterPhysicalMetrics(physical,settings);
+    const rows=ous.map(ou=>({ou,componentPoints:Object.values(physicalComponents).reduce((sum,values)=>sum+(values.find(row=>row.ou===ou)?.points||0),0)}));
+    const physicalOverall=rankRows(rows,row=>row.componentPoints,(rank,score)=>getQuarterRankPoints(settings,rank,score)).map(row=>({...row,rankPoints:row.points,points:row.componentPoints}));
+    return {period,isActive:true,statusLabel:'Cutoff-Eligible Contributions',physicalComponents,physicalOverall,financial:scoreAwardQuarterFinancialMetrics(financial,settings)};
+};
 
 export function validateAwardReportorialPeriods(periods:readonly ReportorialPeriod[], year:number) {
     if (periods.length !== 4 || QUARTERS.some(quarter => periods.filter(period => period.quarter === quarter && period.reporting_year === year).length !== 1)) throw new Error('Reportorial source information is incomplete. Refresh before calculating awards.');

@@ -29,7 +29,7 @@ try {
       create table deadlines(id bigint primary key,name text,date date); insert into deadlines values(1,'Legacy deadline','2025-03-31');
       create table award_manual_scores(id bigint primary key,reportorial_required integer,reportorial_submitted integer); insert into award_manual_scores values(1,3,2);`);
     const baseline = await one(`select (select jsonb_agg(to_jsonb(d)) from deadlines d) deadlines,(select jsonb_agg(to_jsonb(a)) from award_manual_scores a) awards,(select jsonb_agg(to_jsonb(r)) from roles_config r) roles`);
-    for (const name of ['202611200001_resources_foundation.sql', '202611200002_resources_workflows.sql', '202611200003_resources_reads.sql', '202611200004_resources_storage.sql']) {
+    for (const name of ['202611200001_resources_foundation.sql', '202611200002_resources_workflows.sql', '202611200003_resources_reads.sql', '202611200004_resources_storage.sql', '202611230001_repository_table_reads.sql', '202611250001_repository_storage_workflow.sql']) {
         await db.exec(await readFile('supabase/migrations/' + name, 'utf8'));
     }
     await check('additive installation preserves legacy data and existing role rows', async () => {

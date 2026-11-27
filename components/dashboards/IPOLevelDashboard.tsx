@@ -7,7 +7,6 @@ import {
     ChevronDown,
     Download,
     Gauge,
-    MapPin,
     Minus,
     RefreshCw,
     Search,
@@ -40,6 +39,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { parseLocation } from '../LocationPicker';
 import { getLodEffectiveState } from '../../lib/lodScoring';
 import { subscribeToLodDataChanges } from '../../lib/lodDataSync';
+import {averageLodComponent,buildLodProgression,indexLodAssessments} from '../../lib/lodDashboard';
+import LodMonitoringSummary from './LodMonitoringSummary';
+const regionToOu=new Map(Object.entries(ouToRegionMap).map(([ou,region])=>[region,ou]));
 
 interface IPOLevelDashboardProps {
     onSelectLodIpo?: (ipo: IPO, year?: number) => void;
@@ -88,7 +90,6 @@ interface LodDashboardRow {
     status: ProgressionStatus;
     isHighPerforming: boolean;
     isAtRisk: boolean;
-    isReadyForScaleUp: boolean;
     history: { year: number; level: number }[];
     effectiveState: ReturnType<typeof getLodEffectiveState>;
     questionnaireConfig: LodQuestionnaireVersion['config'];
@@ -235,16 +236,6 @@ const fetchPagedLodReferenceRows = async (tableName: string, fields: string, ord
     }
 
     return rows;
-};
-
-const STATUS_COLORS: Record<ProgressionStatus, string> = {
-    Improved: '#16a34a',
-    Maintained: '#2563eb',
-    Declined: '#dc2626',
-    'New / No Baseline': '#f59e0b',
-    'Needs Assessment': '#94a3b8',
-    Incomplete: INCOMPLETE_COLOR,
-    Dropped: DROPPED_COLOR,
 };
 
 const STATUS_TEXT_CLASS: Record<ProgressionStatus, string> = {
@@ -412,7 +403,7 @@ const buildSparklinePoints = (history: { year: number; level: number }[]) => {
 
 const getInsightToneClass = (status: 'green' | 'blue' | 'orange' | 'red' | 'gray') => `lod-insight lod-insight--${status}`;
 
-const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo }) => {
+const IPOLevelDashboardView: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo }) => {
     const { currentUser, getVisibilityScope } = useAuth();
     const visibilityScope = getVisibilityScope('Level of Development');
     const ownRegion = currentUser?.operatingUnit ? ouToRegionMap[currentUser.operatingUnit] : '';
@@ -538,7 +529,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
 
     const model = useMemo(() => {
         const visibleIpoIds = new Set(data.ipos.map(ipo => Number(ipo.id)));
-        const visibleAssessments = data.assessments.filter(assessment => visibleIpoIds.has(Number(assessment.ipo_id)));
+        const visibleAssessments = [...indexLodAssessments(data.assessments.filter(assessment => visibleIpoIds.has(Number(assessment.ipo_id)))).values()].flatMap(years=>[...years.values()]);
         const availableYears = Array.from(
             new Set(visibleAssessments.map(assessment => Number(assessment.year)).filter(year => Number.isFinite(year)))
         ).sort((a: number, b: number) => b - a);
@@ -594,16 +585,6 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
             const previousSections = previousQuestionnaireConfig.sections.filter(section => section.is_active !== false);
             const componentScores = getComponentScores(currentAssessment, currentSections, currentMaps.questionsBySection, currentMaps.choicesByQuestion, answersByAssessmentQuestion);
             const previousComponentScores = getComponentScores(previousAssessment, previousSections, previousMaps.questionsBySection, previousMaps.choicesByQuestion, answersByAssessmentQuestion);
-            const requiredScaleUpSections = currentSections.filter(section => {
-                const sectionWeight = Number(section.weight) || 0;
-                const questionCount = currentMaps.questionsBySection.get(section.id)?.length || 0;
-                return sectionWeight > 0 && questionCount > 0;
-            });
-            const scaleUpComponentsPass = requiredScaleUpSections.length > 0 && requiredScaleUpSections.every(section => {
-                const score = componentScores[section.id];
-                if (!score || score.percent === null || score.percent === undefined) return false;
-                return score.percent >= 60;
-            });
             const history = ipoAssessments
                 .slice()
                 .sort((a, b) => Number(a.year) - Number(b.year))
@@ -637,14 +618,8 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
                 componentScores,
                 previousComponentScores,
                 status,
-                isHighPerforming: currentLevel !== null && currentLevel >= 4,
+                isHighPerforming: currentLevel === 5,
                 isAtRisk: status === 'Declined' || (currentLevel !== null && currentLevel <= 1),
-                isReadyForScaleUp: Boolean(
-                    currentLevel !== null &&
-                    currentLevel >= 3 &&
-                    status !== 'Declined' &&
-                    scaleUpComponentsPass
-                ),
                 history,
                 effectiveState,
                 questionnaireConfig,
@@ -704,20 +679,6 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
         const maintained = filteredRows.filter(row => row.status === 'Maintained').length;
         const highPerforming = filteredRows.filter(row => row.isHighPerforming).length;
         const atRisk = filteredRows.filter(row => row.isAtRisk).length;
-        const readyForScaleUp = filteredRows.filter(row => row.isReadyForScaleUp).length;
-        const provinceGroups = new Map<string, number[]>();
-
-        assessedRows.forEach(row => {
-            if (row.currentLevel === null) return;
-            const values = provinceGroups.get(row.province) || [];
-            values.push(row.currentLevel);
-            provinceGroups.set(row.province, values);
-        });
-
-        const topProvince = Array.from(provinceGroups.entries())
-            .map(([province, values]) => ({ province, average: average(values) || 0, count: values.length }))
-            .sort((a, b) => b.average - a.average || b.count - a.count)[0] || null;
-
         return {
             assessedTotal,
             avgLevel,
@@ -726,8 +687,6 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
             maintained,
             highPerforming,
             atRisk,
-            readyForScaleUp,
-            topProvince,
         };
     }, [assessedRows, filteredRows]);
 
@@ -774,70 +733,12 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
         ];
     }, [assessedRows, droppedRows.length, filteredRows.length, forAssessmentRows.length, incompleteRows.length]);
 
-    const progressionByYear = useMemo(() => {
-        const includedIpoIds = new Set(filteredRows.map(row => Number(row.ipo.id)));
-        const years = Array.from(new Set([
-            ...model.availableYears,
-            ...(yearFilter !== 'All' && Number.isFinite(Number(yearFilter)) ? [Number(yearFilter)] : []),
-        ])).sort((a, b) => a - b);
-        const yearGroups = new Map<number, { year: number; level1: number; level2: number; level3: number; level4: number; level5: number; forAssessment: number; incomplete: number; dropped: number; levels: number[] }>();
-
-        years.forEach(year => {
-            const group = { year, level1: 0, level2: 0, level3: 0, level4: 0, level5: 0, forAssessment: 0, incomplete: 0, dropped: 0, levels: [] as number[] };
-
-            includedIpoIds.forEach(ipoId => {
-                const assessment = model.assessmentsByIpo.get(ipoId)?.find(item => Number(item.year) === year) || null;
-                const state = getLodEffectiveState(assessment);
-                const level = state.level;
-
-                if (level === null) {
-                    if (state.kind === 'dropped') group.dropped += 1;
-                    else if (state.kind === 'incomplete') group.incomplete += 1;
-                    else group.forAssessment += 1;
-                    return;
-                }
-
-                group[`level${level}` as 'level1'] += 1;
-                group.levels.push(level);
-            });
-
-            yearGroups.set(year, group);
-        });
-
-        return Array.from(yearGroups.values())
-            .sort((a, b) => a.year - b.year)
-            .map(group => ({
-                year: group.year,
-                level1: group.level1,
-                level2: group.level2,
-                level3: group.level3,
-                level4: group.level4,
-                level5: group.level5,
-                forAssessment: group.forAssessment,
-                incomplete: group.incomplete,
-                dropped: group.dropped,
-                average: Number((average(group.levels) || 0).toFixed(2)),
-            }));
-    }, [filteredRows, model.assessmentsByIpo, model.availableYears, yearFilter]);
-
-    const componentAverages = useMemo(() => {
-        return model.sections.map(section => {
-            const weightedValues = assessedRows
-                .map(row => row.componentScores[section.id]?.weighted)
-                .filter((value): value is number => value !== null && value !== undefined);
-            const percentValues = assessedRows
-                .map(row => row.componentScores[section.id]?.percent)
-                .filter((value): value is number => value !== null && value !== undefined);
-            return {
-                id: section.id,
-                component: section.title,
-                score: average(weightedValues),
-                percent: average(percentValues),
-                weight: Number(section.weight) || 0,
-                count: weightedValues.length,
-            };
-        });
-    }, [assessedRows, model.sections]);
+    const progressionByYear = useMemo(() => buildLodProgression(filteredRows.map(row=>Number(row.ipo.id)),model.visibleAssessments),[filteredRows,model.visibleAssessments]);
+    const summaryRegistry=useMemo(()=>model.rows.map(row=>({id:Number(row.ipo.id),region:row.region,province:parseLocation(row.ipo.location||'').province||'Unspecified Province',provinceFilterValue:row.province})),[model.rows]);
+    const componentAverages = useMemo(() => model.sections.map(section=>({
+        id:section.id,component:section.title,weight:Number(section.weight)||0,
+        ...averageLodComponent(assessedRows.map(row=>row.componentScores[section.id])),
+    })),[assessedRows,model.sections]);
 
     const componentGapAnalysis = useMemo(() => {
         const componentsWithUtilization = componentAverages.map(component => ({
@@ -942,43 +843,6 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
         }).sort((a, b) => (b.gap || 0) - (a.gap || 0));
     }, [assessedRows, componentGapAnalysis, model.answersByAssessmentQuestion, model.choicesByQuestion, model.questionsBySection, model.sections]);
 
-    const regionalAverages = useMemo(() => {
-        const regionGroups = new Map<string, number[]>();
-        assessedRows.forEach(row => {
-            if (row.currentLevel === null) return;
-            const values = regionGroups.get(row.region) || [];
-            values.push(row.currentLevel);
-            regionGroups.set(row.region, values);
-        });
-
-        return Array.from(regionGroups.entries())
-            .map(([region, values]) => ({ region, score: average(values) || 0, count: values.length }))
-            .sort((a, b) => b.score - a.score || b.count - a.count);
-    }, [assessedRows]);
-
-    const provinceAverages = useMemo(() => {
-        const provinceGroups = new Map<string, number[]>();
-        assessedRows.forEach(row => {
-            if (row.currentLevel === null) return;
-            const values = provinceGroups.get(row.province) || [];
-            values.push(row.currentLevel);
-            provinceGroups.set(row.province, values);
-        });
-
-        return Array.from(provinceGroups.entries())
-            .map(([province, values]) => ({ province, score: average(values) || 0, count: values.length }))
-            .sort((a, b) => b.score - a.score || b.count - a.count)
-            .slice(0, 8);
-    }, [assessedRows]);
-
-    const statusDistribution = useMemo(() => {
-        const statuses: ProgressionStatus[] = ['Improved', 'Maintained', 'Declined', 'New / No Baseline', 'Incomplete', 'Dropped', 'Needs Assessment'];
-        return statuses.map(status => ({
-            status,
-            count: filteredRows.filter(row => row.status === status).length,
-        }));
-    }, [filteredRows]);
-
     const insights = useMemo(() => {
         const strongest = componentAverages
             .filter(component => component.score !== null && component.weight > 0)
@@ -986,7 +850,6 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
         const weakest = componentAverages
             .filter(component => component.score !== null && component.weight > 0)
             .sort((a, b) => ((a.score || 0) / a.weight) - ((b.score || 0) / b.weight))[0] || null;
-        const topRegion = regionalAverages[0] || null;
 
         const componentDeltas = model.sections.map(section => {
             const deltas = filteredRows
@@ -1016,10 +879,6 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
                 tone: 'orange' as const,
                 text: `${weakest.component} is the weakest component with an average score of ${formatComponentScore(weakest.score, weakest.weight)}.`,
             } : null,
-            topRegion ? {
-                tone: 'blue' as const,
-                text: `${topRegion.region} has the highest regional average LOD score at ${formatScore(topRegion.score)}.`,
-            } : null,
             componentDeltas ? {
                 tone: (componentDeltas.delta || 0) >= 0 ? 'green' as const : 'red' as const,
                 text: `${componentDeltas.component} is the fastest moving component with a ${componentDeltas.delta && componentDeltas.delta >= 0 ? '+' : ''}${formatScore(componentDeltas.delta)} change.`,
@@ -1029,7 +888,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
                 text: `${metrics.atRisk} IPOs are currently tagged as at-risk.`,
             },
         ].filter((item): item is { tone: 'green' | 'blue' | 'orange' | 'red' | 'gray'; text: string } => Boolean(item));
-    }, [componentAverages, filteredRows, metrics.assessedTotal, metrics.atRisk, metrics.declined, metrics.improved, model.sections, regionalAverages]);
+    }, [componentAverages, filteredRows, metrics.assessedTotal, metrics.atRisk, metrics.declined, metrics.improved, model.sections]);
 
     const searchedRows = useMemo(() => {
         const query = searchTerm.trim().toLowerCase();
@@ -1126,7 +985,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
     componentAverages.forEach(component => {
         componentTickLabels.set(component.component, {
             lines: wrapLabel(component.component, 15),
-            score: formatComponentScore(component.score, component.weight),
+            score: component.percent===null?'':`${component.percent.toFixed(1)}%`,
         });
     });
 
@@ -1299,9 +1158,8 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
                 {renderMetricCard('IPOs Improved', metrics.improved.toLocaleString(), `${percent(metrics.improved, metrics.assessedTotal)} of assessed`, <TrendingUp />, 'green')}
                 {renderMetricCard('IPOs Declined', metrics.declined.toLocaleString(), `${percent(metrics.declined, metrics.assessedTotal)} of assessed`, <TrendingDown />, 'red')}
                 {renderMetricCard('IPOs Maintained', metrics.maintained.toLocaleString(), `${percent(metrics.maintained, metrics.assessedTotal)} of assessed`, <Minus />, 'blue')}
-                {renderMetricCard('High-Performing IPOs', metrics.highPerforming.toLocaleString(), 'At Level 4 or 5', <Award />, 'purple')}
+                {renderMetricCard('High-Performing IPOs', metrics.highPerforming.toLocaleString(), 'At Level 5', <Award />, 'purple')}
                 {renderMetricCard('At-Risk IPOs', metrics.atRisk.toLocaleString(), 'Level 1 or declining', <AlertTriangle />, 'orange')}
-                {renderMetricCard('Top Province', metrics.topProvince?.province || 'No Data', metrics.topProvince ? `Avg LOD ${formatScore(metrics.topProvince.average)}` : 'No assessed IPOs', <MapPin />, 'gray')}
             </section>
 
             <section className="lod-dashboard-grid lod-dashboard-grid--three">
@@ -1363,16 +1221,13 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
                                     <XAxis dataKey="year" tick={{ fontSize: 11 }} />
                                     <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={32} />
                                     <Tooltip />
-                                    <Bar stackId="levels" dataKey="forAssessment" name="For Assessment" fill={FOR_ASSESSMENT_COLOR} />
-                                    <Bar stackId="levels" dataKey="incomplete" name="Incomplete" fill={INCOMPLETE_COLOR} />
-                                    <Bar stackId="levels" dataKey="dropped" name="Dropped" fill={DROPPED_COLOR} />
                                     {[1, 2, 3, 4, 5].map(level => (
                                         <Bar key={level} stackId="levels" dataKey={`level${level}`} name={LEVEL_LABELS[level]} fill={LEVEL_COLORS[level]} />
                                     ))}
                                 </BarChart>
                             </ResponsiveContainer>
                             <div className="lod-chart-legend lod-chart-legend--inline">
-                                {levelDistribution.map(item => (
+                                {levelDistribution.filter(item=>typeof item.level==='number').map(item => (
                                     <div key={item.key} className="lod-legend-row">
                                         <span style={{ background: item.color }}></span>
                                         <p>{item.name}</p>
@@ -1393,24 +1248,24 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
                     <div className="dashboard-panel__header">
                         <h4 className="dashboard-panel__title">LOD Component Average Scores</h4>
                     </div>
-                    {componentAverages.some(component => component.score !== null) ? (
+                    {componentAverages.some(component => component.percent !== null) ? (
                         <div className="lod-component-score-layout">
-                            <div className="lod-radar-chart-shell">
+                            <div className="lod-radar-chart-shell" role="img" aria-label={`Component attainment: ${componentAverages.filter(component=>component.percent!==null).map(component=>`${component.component} ${component.percent!.toFixed(2)}%`).join(', ')}`}>
                                 <ResponsiveContainer width="100%" height={390}>
                                     <RadarChart
-                                        data={componentAverages.map(component => ({
+                                        data={componentAverages.filter(component=>component.percent!==null).map(component => ({
                                             component: component.component,
                                             fullName: component.component,
-                                            score: Number((component.score || 0).toFixed(2)),
-                                            label: formatComponentScore(component.score, component.weight),
+                                            score: component.percent,
+                                            label: `${component.percent!.toFixed(2)}% (${component.minWeight===component.maxWeight?formatComponentScore(component.score,component.minWeight):`Average Earned ${formatScore(component.score)}; Maximum Weights ${component.minWeight}-${component.maxWeight}`})`,
                                         }))}
                                         margin={radarChartMargin}
                                         outerRadius={isCompactChartViewport ? '58%' : '64%'}
                                     >
                                         <PolarGrid />
                                         <PolarAngleAxis dataKey="component" tick={renderComponentRadarTick} />
-                                        <PolarRadiusAxis angle={90} domain={[0, Math.max(1, ...componentAverages.map(component => component.weight || 0))]} tick={false} axisLine={false} />
-                                        <Radar name="Weighted Score" dataKey="score" stroke="#2563eb" fill="#3b82f6" fillOpacity={0.22} />
+                                        <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
+                                        <Radar name="Component Attainment (%)" dataKey="score" stroke="#2563eb" fill="#3b82f6" fillOpacity={0.22} />
                                         <Tooltip formatter={(_value: number, _name: string, props: any) => [props.payload.label, props.payload.fullName]} />
                                     </RadarChart>
                                 </ResponsiveContainer>
@@ -1422,31 +1277,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
                 </article>
             </section>
 
-            <section className="lod-dashboard-grid lod-dashboard-grid--three">
-                <article className="dashboard-panel lod-chart-card">
-                    <div className="dashboard-panel__header">
-                        <h4 className="dashboard-panel__title">Top Provinces by Average LOD</h4>
-                    </div>
-                    {provinceAverages.length > 0 ? (
-                        <div className="lod-rank-list">
-                            {provinceAverages.map(item => (
-                                <div key={item.province} className="lod-rank-row">
-                                    <div>
-                                        <strong>{item.province}</strong>
-                                        <span>{item.count} assessed IPOs</span>
-                                    </div>
-                                    <div className="lod-rank-bar">
-                                        <span style={{ width: `${Math.min(100, (item.score / 5) * 100)}%` }}></span>
-                                    </div>
-                                    <b>{formatScore(item.score)}</b>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="dashboard-empty dashboard-empty--center">No Data</p>
-                    )}
-                </article>
-
+            <section className="lod-dashboard-grid lod-dashboard-grid--two">
                 <article className="dashboard-panel lod-chart-card">
                     <div className="dashboard-panel__header">
                         <h4 className="dashboard-panel__title">LOD Component Gap Analysis</h4>
@@ -1499,77 +1330,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
                 </article>
             </section>
 
-            <section className="lod-dashboard-grid lod-dashboard-grid--three">
-                <article className="dashboard-panel lod-chart-card">
-                    <div className="dashboard-panel__header">
-                        <h4 className="dashboard-panel__title">LOD Average Score by Region</h4>
-                    </div>
-                    {regionalAverages.length > 0 ? (
-                        <div className="lod-rank-list lod-rank-list--region">
-                            <div className="lod-average-benchmark">Philippine Average: <strong>{formatScore(metrics.avgLevel)}</strong></div>
-                            {regionalAverages.map(item => (
-                                <div key={item.region} className="lod-rank-row">
-                                    <div>
-                                        <strong>{item.region}</strong>
-                                        <span>{item.count} IPOs</span>
-                                    </div>
-                                    <div className="lod-rank-bar">
-                                        <span style={{ width: `${Math.min(100, (item.score / 5) * 100)}%` }}></span>
-                                    </div>
-                                    <b>{formatScore(item.score)}</b>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="dashboard-empty dashboard-empty--center">No Data</p>
-                    )}
-                </article>
-
-                <article className="dashboard-panel lod-chart-card">
-                    <div className="dashboard-panel__header">
-                        <h4 className="dashboard-panel__title">IPOs by Progression Status</h4>
-                    </div>
-                    {filteredRows.length > 0 ? (
-                        <div className="lod-donut-layout">
-                            <ResponsiveContainer width="100%" height={250}>
-                                <PieChart>
-                                    <Pie data={statusDistribution.filter(item => item.count > 0)} dataKey="count" nameKey="status" innerRadius={64} outerRadius={96}>
-                                        {statusDistribution.filter(item => item.count > 0).map(item => (
-                                            <Cell key={item.status} fill={STATUS_COLORS[item.status]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip formatter={(value: number, name: string) => [`${value} IPOs`, name]} />
-                                </PieChart>
-                            </ResponsiveContainer>
-                            <div className="lod-chart-legend">
-                                {statusDistribution.map(item => (
-                                    <div key={item.status} className="lod-legend-row">
-                                        <span style={{ background: STATUS_COLORS[item.status] }}></span>
-                                        <p>{item.status}</p>
-                                        <strong>{item.count}</strong>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ) : (
-                        <p className="dashboard-empty dashboard-empty--center">No Data</p>
-                    )}
-                </article>
-
-                <article className="dashboard-panel lod-scale-card">
-                    <div className="dashboard-panel__header">
-                        <h4 className="dashboard-panel__title">IPOs Ready for Scale-Up</h4>
-                    </div>
-                    <div className="lod-scale-gauge" style={{ '--ready-pct': `${Math.min(100, metrics.assessedTotal > 0 ? (metrics.readyForScaleUp / metrics.assessedTotal) * 100 : 0)}%` } as React.CSSProperties}>
-                        <div>
-                            <Gauge />
-                            <strong>{metrics.readyForScaleUp.toLocaleString()}</strong>
-                            <span>{percent(metrics.readyForScaleUp, metrics.assessedTotal)} of assessed IPOs</span>
-                        </div>
-                    </div>
-                    <p className="lod-scale-note">Current LOD level must be at least 3, not declining, and every weighted section with questions must have answered data scoring at least 60% of its section weight.</p>
-                </article>
-            </section>
+            <LodMonitoringSummary registry={summaryRegistry} assessments={model.visibleAssessments} availableYears={model.availableYears} ownOu={visibilityScope==='Own OU'} ownRegion={ownRegion} regionToOu={regionToOu} region={regionFilter} province={provinceFilter} disabled={loading||!!fetchError}/>
 
             <section className="data-table-card lod-monitoring-card" aria-labelledby="lod-monitoring-table-title">
                 <div className="data-table-toolbar">
@@ -1742,4 +1503,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ onSelectLodIpo })
     );
 };
 
-export default IPOLevelDashboard;
+export default function IPOLevelDashboard(props:IPOLevelDashboardProps){
+    const {currentUser,getVisibilityScope}=useAuth();
+    return <IPOLevelDashboardView key={JSON.stringify([currentUser?.id,currentUser?.operatingUnit,getVisibilityScope('Level of Development')])} {...props}/>;
+}

@@ -44,6 +44,12 @@ try{
         const file=await seed.mutate('file_reserve',{entry_id:missing.entry_id,assignment_id:missing.assignment_id,file_name:'lease.pdf',mime_type:'application/pdf',file_size:12,reason:'Native on-behalf upload'});await a.exec('begin');const lease=await call(a,'resource_upload_claim',{p_session:root,p_file_id:file.id});const pending=outcome(call(b,'resource_upload_claim',{p_session:root,p_file_id:file.id}));
         try{await waiting();await a.exec('commit');const result=await pending;assert(!result.ok);assert.equal(result.error.code,'40001');assert.equal((await db.query('select upload_lease_id from repository_files where id=$1',[file.id])).rows[0].upload_lease_id,lease.upload_lease_id);}finally{await a.exec('rollback');await pending;}
     });
+    await check('different requests reserving one standalone document serialize without a lock-upgrade deadlock',async()=>{
+        const entry=await seed.mutate('entry_save',{kind:'File',subject:'Native standalone document',reporting_year:2026});
+        const data={entry_id:entry.id,file_name:'one.pdf',mime_type:'application/pdf',file_size:12};
+        await a.exec('begin');const first=await mutate(a,root,'file_reserve',data);const pending=outcome(mutate(b,root,'file_reserve',data));
+        try{await waiting();await a.exec('commit');const result=await pending;assert(!result.ok);assert.equal(result.error.code,'23505');assert.equal((await db.query('select count(*)::int n from repository_files where entry_id=$1',[entry.id])).rows[0].n,1);assert.equal((await db.query('select id from repository_files where entry_id=$1',[entry.id])).rows[0].id,first.id);}finally{await a.exec('rollback');await pending;}
+    });
     await check('permission revocation while a retry waits is rechecked before exposing its cached result',async()=>{
         const id=randomUUID(),data={subject:'Revoked retry',category:'Other',description:'Disposable cache proof'};await mutate(db,user,'ticket_create',data,null,id);await a.exec('begin');await a.query("select pg_advisory_xact_lock(hashtextextended('resource-request:2:'||$1,0))",[id]);const pending=outcome(mutate(b,user,'ticket_create',data,null,id));
         try{await waiting();await db.query('update users set permissions_override=$1 where id=2',[{'Submit Ticket':{can_edit:false}}]);await a.exec('commit');const result=await pending;assert(!result.ok,'A cached response must not bypass a permission change during the lock wait');assert.equal(result.error.code,'42501');}finally{await a.exec('rollback');await pending;}
