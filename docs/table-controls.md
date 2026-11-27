@@ -1,6 +1,6 @@
 # Edit Table Controls
 
-Use `components/ui/EditTableControl.tsx` when adding configurable columns to a table. IPO and GAD are the reference consumers. Reuse the component and its `styles/main.css` rules rather than copying a page-specific chooser or introducing another visual variant.
+Add configurable columns only when explicitly requested. Do not add Edit Table automatically to new tables. When requested, use `components/ui/EditTableControl.tsx`; IPO and GAD are the reference consumers. Reuse the component and its `styles/main.css` rules rather than copying a page-specific chooser or introducing another visual variant. Resources tables default to fixed declared columns; the existing approved ticket list explicitly opts in with `allowColumnEditing`. Awards keeps fixed columns and display-only header filters/sorting. Repository tables ignore obsolete visibility preferences without deleting unrelated storage.
 
 ## Contract
 

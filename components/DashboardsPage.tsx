@@ -53,13 +53,15 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
         references, records: sourceRecords,
         registryOnly: activeTab === 'SCAD',
         visibilityModule: activeTab === 'GAD' ? 'Gender and Development' : undefined,
-        enabled: activeTab !== 'IPO Level of Development' && activeTab !== 'Nutrition',
+        enabled: activeTab !== 'IPO Level of Development' && activeTab !== 'Nutrition' && activeTab !== 'Awards and Rankings',
         onDataScopeChange,
     });
+    const awardsFilters=useDashboardScopeFilters({storageKey:'awards_source_scope',references,records:sourceRecords,enabled:false});
+    const [awardsYear,setAwardsYear]=useState(String(new Date().getFullYear()));
     const [requestedAnnualYear, setAnnualYear] = useState(String(new Date().getFullYear()));
     const annualYears = selectionValues(dcfFilters.applied.years) || dcfFilters.availableYears;
     const viewYear = annualYears.includes(requestedAnnualYear) ? requestedAnnualYear : annualYears.slice().sort().at(-1) || '';
-    const isAnnual = activeTab === 'GAD' || activeTab === 'Awards and Rankings';
+    const isAnnual = activeTab === 'GAD';
     const scope = isAnnual ? annualScope(dcfFilters.applied, viewYear) : dcfFilters.applied;
     const selectedYear = selectionScalar(scope.years), selectedOu = selectionScalar(scope.operatingUnits);
     const selectedTier = selectionScalar(scope.tiers), selectedFundType = selectionScalar(scope.fundTypes);
@@ -116,64 +118,6 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
         };
     }, [props, dcfFilters.key, viewYear, activeTab]);
 
-    const awardsData = useMemo(() => {
-        const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
-        const sanitizeExpenses = (items: any[] | undefined) => (items || []).filter(i => i);
-
-        let data = {
-            subprojects: props.subprojects.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
-            ipos: props.ipos.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
-            trainings: props.trainings.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
-            otherActivities: props.otherActivities.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
-            officeReqs: props.officeReqs.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
-            staffingReqs: props.staffingReqs.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
-            otherProgramExpenses: props.otherProgramExpenses.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
-        };
-
-        if (selectedYear !== 'All') {
-            data.subprojects = data.subprojects.filter(p => p.fundingYear?.toString() === selectedYear);
-            data.trainings = data.trainings.filter(t => t.fundingYear?.toString() === selectedYear);
-            data.otherActivities = data.otherActivities.filter(a => a.fundingYear?.toString() === selectedYear);
-            data.officeReqs = data.officeReqs.filter(i => i.fundYear?.toString() === selectedYear);
-            data.staffingReqs = data.staffingReqs.filter(i => i.fundYear?.toString() === selectedYear);
-            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.fundYear?.toString() === selectedYear);
-        }
-
-        if (selectedTier !== 'All') {
-            data.subprojects = data.subprojects.filter(p => p.tier === selectedTier);
-            data.trainings = data.trainings.filter(t => t.tier === selectedTier);
-            data.otherActivities = data.otherActivities.filter(a => a.tier === selectedTier);
-            data.officeReqs = data.officeReqs.filter(i => i.tier === selectedTier);
-            data.staffingReqs = data.staffingReqs.filter(i => i.tier === selectedTier);
-            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.tier === selectedTier);
-        }
-
-        if (selectedFundType !== 'All') {
-            data.subprojects = data.subprojects.filter(p => p.fundType === selectedFundType);
-            data.trainings = data.trainings.filter(t => t.fundType === selectedFundType);
-            data.otherActivities = data.otherActivities.filter(a => a.fundType === selectedFundType);
-            data.officeReqs = data.officeReqs.filter(i => i.fundType === selectedFundType);
-            data.staffingReqs = data.staffingReqs.filter(i => i.fundType === selectedFundType);
-            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.fundType === selectedFundType);
-        }
-
-        const matches = (record: any) => matchesDashboardScope(record, scope, references);
-        data.subprojects = data.subprojects.filter(matches);
-        data.trainings = data.trainings.filter(matches);
-        data.otherActivities = data.otherActivities.filter(matches);
-        data.officeReqs = data.officeReqs.filter(matches);
-        data.staffingReqs = data.staffingReqs.filter(matches);
-        data.otherProgramExpenses = data.otherProgramExpenses.filter(matches);
-
-        return {
-            ...data,
-            operatingUnitScope: selectedOus,
-            subprojects: data.subprojects.map(p => ({ ...p, details: sanitizeDetails(p.details) })),
-            trainings: data.trainings.map(t => ({ ...t, expenses: sanitizeExpenses(t.expenses) })),
-            otherActivities: data.otherActivities.map(a => ({ ...a, expenses: sanitizeExpenses(a.expenses) })),
-            staffingReqs: data.staffingReqs.map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
-        };
-    }, [props, dcfFilters.key, viewYear, activeTab]);
 
     return (
         <div className="data-list-page dashboards-page">
@@ -181,14 +125,15 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                 <h2 className="data-list-title">Strategic Dashboard</h2>
             </div>
             {activeTab !== 'IPO Level of Development' && activeTab !== 'Nutrition' && (
-                <DashboardScopeFilterPanel filters={dcfFilters} />
+                <DashboardScopeFilterPanel filters={activeTab==='Awards and Rankings'?awardsFilters:dcfFilters} />
             )}
 
             {isAnnual && (dcfFilters.applied.years.mode === 'all' || annualYears.length > 1) && <label className="dashboard-annual-view"><span>Annual View</span><select className="form-control" aria-label="Annual View" value={viewYear} onChange={event => setAnnualYear(event.target.value)}>{annualYears.slice().sort().reverse().map(year => <option key={year}>{year}</option>)}</select></label>}
+            {activeTab==='Awards and Rankings'&&<label className="dashboard-annual-view"><span>Awards Year</span><select className="form-control" aria-label="Awards Year" value={awardsYear} onChange={event=>setAwardsYear(event.target.value)}>{[...new Set([...awardsFilters.availableYears,awardsYear])].sort().reverse().map(year=><option key={year}>{year}</option>)}</select></label>}
             {dcfFilters.error && activeTab !== 'IPO Level of Development' && activeTab !== 'Nutrition' && <div className="notice notice--warning" role="alert"><p>{dcfFilters.error}</p><button type="button" className="btn btn-secondary" onClick={dcfFilters.retry}>Retry</button></div>}
             {dcfFilters.loading && <LoadingState title="Loading dashboard" />}
 
-            <div className="dashboard-tab-content">{(activeTab === 'IPO Level of Development' || activeTab === 'Nutrition' || (!dcfFilters.loading && !dcfFilters.error)) && <>
+            <div className="dashboard-tab-content">{(activeTab === 'IPO Level of Development' || activeTab === 'Nutrition' || activeTab === 'Awards and Rankings' || (!dcfFilters.loading && !dcfFilters.error)) && <>
                 {activeTab === 'Physical' && (
                     <PhysicalDashboard 
                         data={filteredData} 
@@ -261,11 +206,8 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                 )}
                 {activeTab === 'Awards and Rankings' && (
                     <AwardsRankingsDashboard
-                        data={awardsData}
-                        selectedOus={selectedOus}
-                        selectedYear={selectedYear}
-                        selectedTier={selectedTier}
-                        selectedFundType={selectedFundType}
+                        selectedYear={awardsYear}
+                        scope={{ous:selectionValues(awardsFilters.applied.operatingUnits)||null,tiers:selectionValues(awardsFilters.applied.tiers)||null,fundTypes:selectionValues(awardsFilters.applied.fundTypes)||null,fundSources:selectionValues(awardsFilters.applied.fundSources)||null,sourceFundYears:selectionValues(awardsFilters.applied.years)||null}}
                     />
                 )}
             </>}</div>

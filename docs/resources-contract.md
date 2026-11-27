@@ -1,6 +1,18 @@
 # Resources Contract
 
-Local implementation for the approved Documentary Repository and Submit Ticket goal. No migration, Edge Function deployment, production scoring activation or promotion is authorized by this document.
+Base Resources implementation was promoted as v1.9.0/PR105 on2026-11-20. The2026-11-23 Repository refinement is local-only and requires `202611230001_repository_table_reads.sql` before frontend promotion. This document does not authorize migration execution, deployment or scoring activation.
+
+## Upload Recovery And Document Workflow (Local Only, 2026-11-25)
+
+The new adapter supersedes the separate-root placement described in the deployed baseline below. It reuses the active connection's existing IPO master `root_folder_id`, then `Documentary Repository / Year / Subject / [assignment OU] / Original`. A subject folder belongs to the immutable entry, not its name. Hash identities include connection/master/kind/actual parent/entry or assignment; duplicate subjects cannot merge entries. Logical UI parent relationships remain unchanged; each entry is placed beneath its own reporting/storage year, not forced beneath another entry's year. File/Folder creation defaults Year to the Philippine calendar year. Required folders use Reporting Year. Existing NULL years remain NULL on unrelated saves; first placement uses the immutable creation year when no reporting year exists.
+
+Unapplied `202611250001_repository_storage_workflow.sql` adds nullable placement/single-document and mapping/name-lease metadata, service-only storage helpers and narrow entry read/snapshot extensions. No backfill, seed, existing business-record update or file move runs on installation. New File entries accept one active upload; legacy NULL-classified File entries retain their multiple originals. An advisory transaction lock serializes different reservation requests without upgrading the shared entry lock. Placement year freezes at confirmed subject-folder registration. Metadata edits queue a name-only PATCH of the mapped subject folder; entry-save success is retained if Drive synchronization fails, with a pending flag and an explicit Retry. Rename failure releases its lease, and lost acknowledgements reconcile without creating another folder or revision.
+
+Owner-only effective ACLs are checked at the configured master, branch and descendants. Validation stops only at the persisted verified boundary, not an arbitrary inaccessible ancestor. Shared/incompatible masters fail closed with administrator guidance; there are no ACL edits, new master roots, outside-parent fallback or OAuth scope changes. Legacy registered originals retain their exact IDs/folders and a separate path proving their old application root is a direct My Drive child before checking its descendants. No legacy bulk migration/rename is performed. Sanitized diagnostics contain only operation, status and allowlisted Google reason; no tokens, contents, file names or resumable URLs. The exact live Google rejection remains unconfirmed.
+
+`/documentary-repository/upload` is a dedicated Subject/Description/Year/Audience/single-file form, with memory-only draft/request/file state, pause/resume and response-loss retry. Description reuses instructions. Confirmed entry identity survives navigation into its canonical detail route; no intermediate folder editor or file table is displayed. Unknown create/reserve outcomes retain the original request; upload success requires Ready registration. Publishing remains explicit. Standalone detail routes directly render protected original previews; legacy multi-file entries require an explicit bounded/paged selector. Refresh of interrupted uploads discovers the server intent and asks for the original fingerprint-matching file. Existing file routes and validated return context remain valid. No public viewer or browser Drive credentials are used.
+
+Focused storage/workflow, document UI and native reservation cases are in `run-repository-storage-workflow-check.mjs`, `run-repository-document-ui-check.mjs` and `run-resources-concurrency-check.mjs`. The complete sequential Resources runner includes these plus existing submission/preview/Awards/IPO/report/dashboard checks. Evidence and limitations are tracked in the 2026-11-25 vault implementation audit. Production requires the Nov23 and Nov25 additive migrations, then the changed Resources endpoint, then dependent frontend, all under separate authorization. Hosted private-account checks remain deferred, not certified by local simulated Drive.
 
 ## Identity
 
@@ -17,6 +29,16 @@ Only service_role may execute the new SQL API. Edge Functions verify the opaque 
 
 External transport must not expose service_role credentials. Opaque session proofs are never treated as trusted merely because they appear in a request header: the stored token hash, expiry, credential fingerprint and permissions are checked on every request.
 
+### Repository Table Reads (Local Refinement, 2026-11-23)
+
+`resource_read(session,'entries',args)` accepts fixed column keys `subject/kind/state/year/due/assigned/own/updated`, `sort_key`, `sort_direction` (ascending/descending) and `filters`. Each filter has `{mode:'include'|'exclude',values:string[]}`; omitted means All, empty include means None, and exclusions preserve All across paginated choices. At most100 individual values per column; unknown keys/modes and non-string values are rejected. Year/assignment sorting is numeric, timestamps are chronological, NULLs sort last, and ID is the stable final tie-breaker. Default stays Updated At descending.
+
+Supplying `facet_key` on the same protected read returns distinct `{value,label}` rows and total, at most50 per page. `facet_search` is bounded and debounced in the UI. The facet ignores its own applied column filter while respecting the other filters, global search, current verified actor/audience and supplied parent. No raw business-record download is used to populate choices. Updated At choices group Philippine calendar dates; Deadline choices are Upcoming/Overdue/No Deadline. Legacy scalar read arguments remain compatible.
+
+Embedded Folder Contents always supplies parent_id, including search/filter/facet queries. Root global search and Required Folder/assigned-submission/dated-requirement discovery retain their existing cross-folder behavior within authorization. Root Type/Deadline/My Submission facets additionally consider visible nested requirements, so those discovery choices remain reachable even when no matching requirement is in the root record page. Explicit embedded UUID parents never receive this expansion. Include/exclude selections derive the same discovery scope; applying one column never silently replaces another column filter. The corrective migration replaces only the entries read branch and adds a service-only read helper; other read branches, function security/grants, mutations and business rows are unchanged. No Edge Function change is required.
+
+Repository and Awards tables use fixed declared columns. Repository ignores retired visibility preferences. Edit Table is opt-in for explicitly approved consumers such as the existing tickets list; do not add it by default. Header menus reuse IPO styling with draft Apply/Cancel/dismissal, capped internal scrolling and native labels. Folder editor body uses a real constrained scroll wrapper with fixed title/footer. Assigned/Audience selectors are independently bounded tables; Select All excludes waived assignments and never changes audience or restores waivers.
+
 ## Business Rules
 
 - Both links follow Gender and Development under Resources. Published repository content supports authorized cross-OU reads; only assigned-own-OU users or explicit administrator on-behalf actions can submit. Draft files remain restricted. Tickets are requester-only or administrator-managed, independent of broad OU visibility.
@@ -24,7 +46,7 @@ External transport must not expose service_role credentials. Opaque session proo
 - Deadline dates become inclusive Asia/Manila end-of-day instants. Scores use 1 on time, 0.5 late and 0 missing/invalid. Denominator contains due, published/non-cancelled/non-waived assignments only.
 - Reportorial source is Manual by default. New Repository modes are explicit per reporting year/quarter. Finalization freezes only reportorial evidence; reopening is reasoned and preserves old snapshots. Nothing updates award_manual_scores or existing deadlines.
 - Repository-backed Program Management with positive report credit must not lose all rank points solely from zero physical completion. Other guards/formulas remain unchanged.
-- Subject/code columns are compact and single-line. Instructions, comments and previews may wrap. Reuse the shared Edit Table chooser and existing main.css patterns.
+- Subject/code columns are compact and single-line. Instructions, comments and previews may wrap. Reuse existing main.css patterns; add the shared Edit Table chooser only when explicitly requested.
 
 ## Storage Gate
 
@@ -40,7 +62,7 @@ Official references reviewed 2026-11-20: [Drive resumable uploads](https://devel
 
 ## Transport Configuration
 
-The prepared `resources` Edge Function accepts POST only, no-store responses and explicitly allowlisted browser origins (`RESOURCE_ALLOWED_ORIGINS`, comma-separated exact origins; defaults to APP_BASE_URL/SITE_URL). Set the production exact origin rather than wildcard. Browser anon API keys identify the Supabase project only; all confidential operations require the server-verified opaque session. The function must be deployed with gateway JWT verification disabled for this custom credential bridge; doing so does not disable application-level SQL authentication. This endpoint is not deployed yet.
+The `resources` Edge Function accepts POST only, no-store responses and explicitly allowlisted browser origins (`RESOURCE_ALLOWED_ORIGINS`, comma-separated exact origins; defaults to APP_BASE_URL/SITE_URL). Set the production exact origin rather than wildcard. Browser anon API keys identify the Supabase project only; all confidential operations require the server-verified opaque session. The function is deployed with gateway JWT verification disabled for this custom credential bridge; doing so does not disable application-level SQL authentication. The base endpoint deployed with v1.9.0; the local table-read correction does not redeploy it. Full live private-account testing remains separate from deployment verification.
 
 ## Verification And Remaining Work
 

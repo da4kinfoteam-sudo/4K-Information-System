@@ -26,7 +26,7 @@ function TicketList({client,onNavigate}:{client:ResourcesClient;onNavigate:(path
     ];
     return <div className="data-list-page resources-page"><header className="page-header"><h1>Submit Ticket</h1>{resourceAccess(currentUser,rolesConfigs,'Submit Ticket','edit')&&<button type="button" className="btn btn-primary" onClick={()=>setCreating(true)}><Plus aria-hidden="true"/>Submit Ticket</button>}</header>
         <ResourceErrorState error={query.error} retry={query.refresh}/>
-        <ResourceTable columns={columns} rows={query.data?.rows||[]} total={query.data?.total||0} page={page} pageSize={size} loading={query.loading} onPage={setPage} onPageSize={value=>{setSize(value);setPage(1);}} preferences={`resource-ticket-columns:${currentUser?.id}`} toolbar={<>
+        <ResourceTable allowColumnEditing columns={columns} rows={query.data?.rows||[]} total={query.data?.total||0} page={page} pageSize={size} loading={query.loading} onPage={setPage} onPageSize={value=>{setSize(value);setPage(1);}} preferences={`resource-ticket-columns:${currentUser?.id}`} toolbar={<>
             <ResourceSearch value={search} onChange={value=>{setSearch(value);setPage(1);}} label="Search tickets"/>
             <select className="form-control" aria-label="Ticket status" value={status} onChange={event=>{setStatus(event.target.value);setPage(1);}}><option value="">All Statuses</option>{TICKET_STATUSES.map(value=><option key={value}>{value}</option>)}</select>
             <select className="form-control" aria-label="Ticket category" value={category} onChange={event=>{setCategory(event.target.value);setPage(1);}}><option value="">All Categories</option>{TICKET_CATEGORIES.map(value=><option key={value}>{value}</option>)}</select>
@@ -84,7 +84,7 @@ function TicketDetail({client,id}:{client:ResourcesClient;id:string}) {
                     </fieldset>
                 </form>}
             </section>
-            <details className="resources-detail-section" onToggle={event=>setHistoryOpen(event.currentTarget.open)}><summary>History</summary><ResourceErrorState error={history.error} retry={history.refresh}/>{historyOpen&&<ResourceTable<ResourceEvent> columns={[
+            <details className="resources-detail-section" onToggle={event=>setHistoryOpen(event.currentTarget.open)}><summary>History</summary><ResourceErrorState error={history.error} retry={history.refresh}/>{historyOpen&&<ResourceTable<ResourceEvent> allowColumnEditing columns={[
                 {key:'date',label:'Date',locked:true,width:220,render:row=><ResourceText value={resourceDate(row.created_at)}/>},
                 {key:'event',label:'Change',locked:true,width:230,render:row=><ResourceText value={resourceEventLabel(row.event)}/>},
                 {key:'user',label:'Changed By',locked:true,width:220,render:row=><ResourceText value={row.actor_name}/>},

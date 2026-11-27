@@ -1,6 +1,7 @@
 import { adminClient, connectedDrive } from '../_shared/googleDrive.ts';
 import { createResourcesHandler } from '../_shared/resourcesHttp.ts';
 import { createResourcesStorage } from '../_shared/resourcesDrive.ts';
+import { createAwardsGateway } from '../_shared/awardsGateway.ts';
 
 const rpc = async (name: string,args: Record<string,unknown>) => {
   const {data,error} = await adminClient().rpc(name,args);
@@ -13,4 +14,4 @@ const origins=(Deno.env.get('RESOURCE_ALLOWED_ORIGINS') || Deno.env.get('APP_BAS
   return url.origin;
 });
 // Identity is verified by the narrow Resources credential/session bridge, not the anon API key.
-Deno.serve(createResourcesHandler({rpc,origins,storage:createResourcesStorage({rpc,connect:connectedDrive})}));
+Deno.serve(createResourcesHandler({rpc,origins,storage:createResourcesStorage({rpc,connect:connectedDrive}),awards:createAwardsGateway({rpc})}));

@@ -8,7 +8,7 @@ import type { DataScope } from '../../lib/scopedDataFetch';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';
 
 interface Options {
-    storageKey: 'homepage_scope' | 'dashboards_dcf_scope';
+    storageKey: 'homepage_scope' | 'dashboards_dcf_scope' | 'awards_source_scope';
     references: RefFundSource[];
     records?: (FundSourceRecord & { fundingYear?: number; fundYear?: number })[];
     onDataScopeChange?: (scope: Partial<DataScope>) => unknown;
@@ -36,7 +36,7 @@ export function useDashboardScopeFilters({ storageKey, references, records = [],
     const currentYear = String(new Date().getFullYear());
     const key = `${storageKey}_${currentUser?.id || 'anonymous'}_v2`;
     const defaults: DashboardScope = {
-        years: selectedValues([currentYear]), operatingUnits: ownOu === undefined ? allSelection() : selectedValues(ownOu ? [ownOu] : []),
+        years: storageKey==='awards_source_scope'?allSelection():selectedValues([currentYear]), operatingUnits: ownOu === undefined ? allSelection() : selectedValues(ownOu ? [ownOu] : []),
         tiers: selectedValues(['Tier 1']), fundTypes: selectedValues(['Current']), fundSources: allSelection(),
     };
     const normalizeSaved = (value: unknown) => {

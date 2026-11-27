@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 export function createResourcesDriveFixture(){
     const files=new Map(),sessions=new Map(),calls=[];let next=0,loseFinal=false,shared=false;
-    const context={connection:{id:'disposable-drive',google_account_email:'owner@example.test'},accessToken:'fixture-drive-token'};
+    const context={connection:{id:'disposable-drive',google_account_email:'owner@example.test',root_folder_id:'configured-master'},accessToken:'fixture-drive-token'};
+    files.set('configured-master',{id:'configured-master',name:'4KIS Master',mimeType:'application/vnd.google-apps.folder',parents:['inaccessible-my-drive']});
     const metadata=item=>{const {bytes,...value}=item;return value;};
     const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json'}});
     const fetcher=async(value,init={})=>{
@@ -29,15 +30,16 @@ export function createResourcesDriveFixture(){
             return new Response(null,{status:308,headers:session.offset?{range:'bytes=0-'+(session.offset-1)}:{}});
         }
         if(url.pathname==='/drive/v3/files'&&method==='GET'){
-            const key=url.searchParams.get('q')?.match(/value='([^']+)'/)?.[1];return json({files:[...files.values()].filter(item=>item.appProperties?.resourceIdentity===key).map(metadata)});
+            const q=url.searchParams.get('q')||'',key=q.match(/value='([^']+)'/)?.[1];return json({files:[...files.values()].filter(item=>item.appProperties?.resourceIdentity===key&&(!q.includes("'root' in parents")||item.parents?.includes('inaccessible-my-drive'))).map(metadata)});
         }
         if(url.pathname==='/drive/v3/files'&&method==='POST'){
             const item={id:'folder-'+(++next),...JSON.parse(init.body)};files.set(item.id,item);return json(item);
         }
         const id=decodeURIComponent(url.pathname.split('/').pop()),item=files.get(id);if(!item)return json({},404);
+        if(method==='PATCH'){Object.assign(item,JSON.parse(init.body));return json(metadata(item));}
         if(method==='DELETE'){files.delete(id);return new Response(null,{status:204});}
         if(url.searchParams.get('alt')==='media')return new Response(item.bytes,{headers:{'content-length':String(item.bytes.length)}});
         return json(metadata(item));
     };
-    return {connect:async()=>context,fetcher,files,calls,loseNextFinalResponse:()=>{loseFinal=true;},setShared:value=>{shared=value;}};
+    return {context,connect:async()=>context,fetcher,files,calls,loseNextFinalResponse:()=>{loseFinal=true;},setShared:value=>{shared=value;}};
 }

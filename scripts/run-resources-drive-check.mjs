@@ -9,11 +9,13 @@ function fixture({size=RESOURCE_CHUNK_BYTES+13,loseFinalResponse=false,shared=fa
     const bytes=new Uint8Array(size);bytes.set(new TextEncoder().encode(badContent?'<html>':'%PDF-1.7'));
     const row={id:randomUUID(),entry_id:randomUUID(),assignment_id:randomUUID(),file_name:'signed.pdf',mime_type:'application/pdf',file_size:size,sha256:null,storage_state:'Reserved',upload_lease_id:null,uploaded_bytes:0,drive_file_id:null,drive_folder_id:null,connection_id:null,upload_session_secret:null};
     const files=new Map(),folders=new Map(),sessions=new Map(),calls=[];let readyCalls=0,deleted=0,started=0,generated=0;
-    const context={connection:{id:'fixture-connection',google_account_email:'owner@example.test'},accessToken:'server-only-token'};
+    const context={connection:{id:'fixture-connection',google_account_email:'owner@example.test',root_folder_id:'master'},accessToken:'server-only-token'};
+    files.set('master',{id:'master',name:'Master',mimeType:'application/vnd.google-apps.folder',parents:['inaccessible-my-drive']});
     const json=(value,status=200,headers={})=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json',...headers}});
     const rpc=async(name,args)=>{
         assert.equal(name==='resource_folder_lease' || args.p_session==='verified',true);
-        if(name==='resource_folder_lease') {
+        if(name==='resource_storage_context')return {entry_id:row.entry_id,subject:'Signed Report',entry_version:1,year:2026,assignment_ou:'RPMO 1',master_folder_id:row.drive_folder_id?'master':null};
+        if(name==='resource_storage_mapping') {
             const value=folders.get(args.p_key)||{};
             if(args.p_folder_id)value.folder_id=args.p_folder_id;folders.set(args.p_key,value);return {...value};
         }
@@ -84,22 +86,22 @@ await check('resumable chunks use private isolated folders and retain a single o
     const response=await f.request('file_content');assert.deepEqual(new Uint8Array(await response.arrayBuffer()),f.bytes);
     assert.match(response.headers.get('content-disposition'),/attachment/);
     assert.equal(f.calls.filter(call=>call.method==='POST'&&call.url.includes('/permissions')).length,0);
-    const root=f.calls.find(call=>call.method==='POST'&&String(call.body).includes('resources-root:'));
-    assert(!JSON.parse(root.body).parents);
+    const root=f.calls.find(call=>call.method==='POST'&&String(call.body).includes('Documentary Repository'));
+    assert.deepEqual(JSON.parse(root.body).parents,['master']);assert(!f.calls.some(call=>call.url.includes('/inaccessible-my-drive')));
 });
 await check('lost final response is reconciled by preallocated ID without a second upload or original',async()=>{
     const f=fixture({size:64,loseFinalResponse:true});await f.request('upload_begin');
-    await assert.rejects(()=>f.chunk(0,64),/connection lost/);
+    await assert.rejects(()=>f.chunk(0,64),/Drive request interrupted/);
     assert.equal(f.row.storage_state,'Uploading');assert.equal(f.stats().readyCalls,0);
     assert.equal((await f.request('upload_status')).storage_state,'Ready');
     assert.equal(f.stats().started,1);assert.equal(f.stats().generated,1);assert.equal(f.stats().readyCalls,1);
     await f.request('upload_begin');await f.request('upload_cleanup');assert.equal(f.stats().deleted,0);
 });
 await check('Drive ACL changes prevent both uploading and downloading confidential originals',async()=>{
-    const blocked=fixture({size:64,shared:true});await assert.rejects(()=>blocked.request('upload_begin'),/shared outside/);
+    const blocked=fixture({size:64,shared:true});await assert.rejects(()=>blocked.request('upload_begin'),/shares documents/);
     assert.equal(blocked.stats().started,0);
     const f=fixture({size:64});await f.request('upload_begin');await f.chunk(0,64);f.setShared(true);
-    await assert.rejects(()=>f.request('file_content'),/shared outside/);assert.equal(f.stats().deleted,0);
+    await assert.rejects(()=>f.request('file_content'),/shares documents/);assert.equal(f.stats().deleted,0);
 });
 await check('wrong chunk offsets and type-spoofed uploads fail without registering receipts or deleting previous originals',async()=>{
     const f=fixture({size:64,badContent:true});await f.request('upload_begin');

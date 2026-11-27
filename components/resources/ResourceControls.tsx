@@ -86,19 +86,19 @@ export function useResourceSearch(value:string){
     return search;
 }
 
-export interface ResourceColumn<T> {key:string;label:string;render:(row:T)=>React.ReactNode;width?:number;locked?:boolean;default?:boolean;}
-export function ResourceTable<T extends {id:string|number}>({columns,rows,total,page,pageSize,onPage,onPageSize,loading=false,preferences,toolbar,empty='No records found.'}: {
-    columns:ResourceColumn<T>[];rows:T[];total:number;page:number;pageSize:number;onPage:(page:number)=>void;onPageSize:(size:number)=>void;loading?:boolean;preferences:string;toolbar?:React.ReactNode;empty?:string;
+export interface ResourceColumn<T> {key:string;label:string;render:(row:T)=>React.ReactNode;width?:number;locked?:boolean;default?:boolean;header?:React.ReactNode;ariaSort?:React.AriaAttributes['aria-sort'];}
+export function ResourceTable<T extends {id:string|number}>({columns,rows,total,page,pageSize,onPage,onPageSize,loading=false,preferences,toolbar,empty='No records found.',allowColumnEditing=false,compactHeaders=false}: {
+    columns:ResourceColumn<T>[];rows:T[];total:number;page:number;pageSize:number;onPage:(page:number)=>void;onPageSize:(size:number)=>void;loading?:boolean;preferences:string;toolbar?:React.ReactNode;empty?:string;allowColumnEditing?:boolean;compactHeaders?:boolean;
 }) {
     const [stored,setStored]=useLocalStorageState<unknown>(preferences,()=>columns.filter(column=>!column.locked&&column.default).map(column=>column.key));
     const selected=Array.isArray(stored)?stored.filter((key):key is string=>typeof key==='string'&&columns.some(column=>column.key===key&&!column.locked)):[];
-    const visible=columns.filter(column=>column.locked||selected.includes(column.key));
+    const visible=columns.filter(column=>column.locked||(allowColumnEditing?selected.includes(column.key):column.default));
     const pages=Math.max(1,Math.ceil(total/pageSize));
     useEffect(()=>{if(!loading&&page>pages)onPage(pages);},[page,pages,loading,onPage]);
-    return <section className="resources-table-section">
-        <div className="resources-table-toolbar">{toolbar}<EditTableControl label="Edit Table" columns={columns.map(column=>({...column,group:'Columns'}))} selected={selected} onApply={setStored}/></div>
+    return <section className={`resources-table-section${compactHeaders?' repository-table-section':''}`}>
+        {(toolbar||allowColumnEditing)&&<div className="resources-table-toolbar">{toolbar}{allowColumnEditing&&<EditTableControl label="Edit Table" columns={columns.map(column=>({...column,group:'Columns'}))} selected={selected} onApply={setStored}/>}</div>}
         <div className="resources-table-scroll custom-scrollbar" aria-busy={loading} tabIndex={0} aria-label="Table records"><table className="data-table resources-table" style={{width:visible.reduce((sum,column)=>sum+(column.width||130),0)}}><colgroup>{visible.map(column=><col key={column.key} style={{width:column.width||130}}/>)}</colgroup>
-            <thead><tr>{visible.map(column=><th key={column.key} scope="col">{column.label}</th>)}</tr></thead>
+            <thead><tr>{visible.map(column=><th key={column.key} scope="col" aria-sort={column.ariaSort}>{column.header||column.label}</th>)}</tr></thead>
             <tbody>{loading?<tr><td colSpan={visible.length}>Loading...</td></tr>:rows.length?rows.map(row=><tr key={row.id}>{visible.map(column=><td key={column.key}>{column.render(row)}</td>)}</tr>):<tr><td colSpan={visible.length}>{empty}</td></tr>}</tbody>
         </table></div>
         <DataTablePagination currentPage={Math.min(page,pages)} totalPages={pages} totalItems={total} itemsPerPage={pageSize} onPageChange={onPage} onItemsPerPageChange={onPageSize} pageSizeOptions={[10,20,50,100]}/>
