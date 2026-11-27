@@ -9,6 +9,27 @@ export interface ActivityAccomplishmentSnapshot {
     activity: Activity;
     stages: Record<string, Record<ActivityActualStage, ActivityActualStageSnapshot>>;
 }
+export interface ActivityFinancialRow { id: number | string; entity_type: string; parent_id: number; item_id: number | string; [key: string]: unknown; }
+export function reconcileActivityFinancialRows(rows: ActivityFinancialRow[], snapshot: ActivityAccomplishmentSnapshot, stage: ActivityActualStage): ActivityFinancialRow[] {
+    validateActivityAccomplishmentSnapshot(snapshot);
+    const parentId = Number(snapshot.activity.id);
+    const itemIds = new Set(snapshot.activity.expenses.map(row => String(row.id)));
+    const affected = (row: ActivityFinancialRow) => row.entity_type === 'activity_expense' && Number(row.parent_id) === parentId && itemIds.has(String(row.item_id));
+    const previous = new Map(rows.filter(affected).map(row => [String(row.id), row]));
+    const confirmed = snapshot.activity.expenses.flatMap(expense => {
+        const value = snapshot.stages[String(expense.id)][stage];
+        // Legacy entries stay embedded; only confirmed central entries belong in the ledger cache.
+        if (value.source !== 'central') return [];
+        return value.entries.map(entry => {
+            const old = previous.get(String(entry.id));
+            const metadata = old && String(old.item_id) === String(expense.id) ? old : undefined;
+            return { ...metadata, id: metadata?.id ?? (/^\d+$/.test(String(entry.id)) && Number.isSafeInteger(Number(entry.id)) ? Number(entry.id) : entry.id),
+                entity_type: 'activity_expense', parent_id: parentId, item_id: metadata?.item_id ?? String(expense.id),
+                [stage === 'obligation' ? 'obligation_date' : 'disbursement_date']: entry.date, amount: Number(entry.amount), remarks: entry.remarks || '' };
+        });
+    });
+    return [...rows.filter(row => !affected(row)), ...confirmed];
+}
 export interface ActivityAccomplishmentRequest { key?: string; fingerprint?: string; reason?: string; }
 export type ActivityActualRemovals = Record<string, string[]>;
 const fields = ['actualDate', 'actualEndDate', 'actualParticipantsMale', 'actualParticipantsFemale', 'actualPWD', 'actualMuslim', 'actualLGBTQ', 'actualSoloParent', 'actualSenior', 'actualYouth'] as const;

@@ -13,6 +13,7 @@ import References, { ReferenceUacs, ReferenceParticular } from './components/Ref
 import Reports, { ReportTab, ReportsPageState } from './components/Reports';
 import SubprojectDetail from './components/SubprojectDetail';
 import { reconcileSubprojectFinancialRows, type SubprojectAccomplishmentSnapshot } from './lib/subprojectAccomplishmentPersistence';
+import { reconcileActivityFinancialRows, type ActivityAccomplishmentSnapshot } from './lib/activityAccomplishmentPersistence';
 import SubprojectEdit from './components/SubprojectEdit';
 import IPODetail from './components/IPODetail';
 import { ActivityDetail } from './components/ActivityDetail';
@@ -781,7 +782,7 @@ const AppContent: React.FC = () => {
         });
     };
 
-    const handleActivitySaved = (updated: Activity) => {
+    const handleActivitySaved = (updated: Activity, confirmation?: ActivityAccomplishmentSnapshot | { obligations: any[]; disbursements: any[] }) => {
         const previous = activities.find(item => Number(item.id) === Number(updated.id))
             || (selectedActivity?.id === updated.id ? selectedActivity : undefined);
         const affectedIpoIds = new Set([
@@ -795,7 +796,15 @@ const AppContent: React.FC = () => {
         }
         if (selectedIpo && affectedIpoIds.has(Number(selectedIpo.id))) setIpoLinkedDcfState(null);
         setActivityLinkRevision(value => value + 1);
-        if (currentUser) void updateCachedActivity(currentUser.id, updated).catch(error => {
+        let financial: { obligations: any[]; disbursements: any[] } | undefined;
+        if (confirmation) {
+            financial = 'activity' in confirmation ? {
+                obligations: reconcileActivityFinancialRows(financialRowsRef.current.obligations, confirmation, 'obligation'),
+                disbursements: reconcileActivityFinancialRows(financialRowsRef.current.disbursements, confirmation, 'disbursement'),
+            } : confirmation;
+        }
+        if (financial) handleConfirmedDcfFinancial('activities', updated, financial);
+        else if (currentUser) void updateCachedActivity(currentUser.id, updated).catch(error => {
             console.error('Activity saved, but its local cache could not be updated:', error);
         });
     };

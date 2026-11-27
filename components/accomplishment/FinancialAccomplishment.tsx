@@ -35,7 +35,7 @@ interface Props {
  onSubprojectSaved?: (subproject: Subproject, snapshot?: SubprojectAccomplishmentSnapshot) => void;
  activities: Activity[];
  setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
- onActivitySaved?: (activity: Activity) => void;
+ onActivitySaved?: (activity: Activity, confirmation?: ActivityAccomplishmentSnapshot) => void;
  officeReqs: OfficeRequirement[];
  setOfficeReqs: React.Dispatch<React.SetStateAction<OfficeRequirement[]>>;
  onOfficeSaved?: (item: OfficeRequirement, financial?: ProgramManagementState['financial']) => void;
@@ -1225,7 +1225,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
    setItems(previous => previous.map(row => row.uniqueId === item.uniqueId ? confirmedItem : row));
    setOriginalItems(previous => previous.map(row => row.uniqueId !== item.uniqueId ? row : sync === 'both' || reconcilePlan ? confirmedItem : mergeActualRecords(row, sync, sync === 'obligation' ? confirmedItem.obligations : confirmedItem.disbursements)));
    skipNextFinancialReloadRef.current = true;
-   onActivitySaved(saved);
+   onActivitySaved(saved, confirmed);
    return confirmedItem;
  }
  if (item.sourceType === 'Subproject') {

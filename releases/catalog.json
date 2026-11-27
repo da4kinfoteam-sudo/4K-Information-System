@@ -1,8 +1,28 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "repository-awards-lod-refinement",
+  "currentReleaseId": "urgent-delete-activity-confirmation",
   "releases": [
+    {
+      "id": "urgent-delete-activity-confirmation",
+      "version": "1.9.2",
+      "kind": "fix",
+      "title": "Program Management deletion and Activity update display fixes",
+      "releaseDate": "2026-11-27",
+      "pr": null,
+      "sections": {
+        "Fixed": [
+          "Program Management deletion now prevents repeated confirmation while a request is pending, avoiding the misleading save-in-progress error.",
+          "Failed deletions release the controls for a safe retry while retaining the existing confirmation and recovery rules.",
+          "Activity financial updates now refresh the displayed record and its local ledger cache together, preventing older loaded amounts from replacing confirmed saved values."
+        ],
+        "Improved": [
+          "Confirmation dialogs display progress and keep keyboard focus while processing.",
+          "Office Requirements, Staffing Requirements and Other Expenses share consistent pending-write controls without changing permissions or reported transactions."
+        ],
+        "Affected Pages": ["Program Management", "Activities", "Activity Details", "Edit Activity Accomplishment", "Financial Accomplishment", "Physical Accomplishment", "System Information"]
+      }
+    },
     {
       "id": "repository-awards-lod-refinement",
       "version": "1.9.1",

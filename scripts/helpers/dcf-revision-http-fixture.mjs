@@ -74,7 +74,7 @@ function Harness(){
  return <main style={{padding:16,minWidth:0}} key={epoch}>{mode==='physical'?<PhysicalAccomplishment ${acfProps}/>:mode==='financial'?<FinancialAccomplishment ${acfProps}/>:target?<DcfRevisionHistory entityType={target.type} parentId={target.id} currentUser={window.session} permissions={{authorizationKey:String(epoch)}} onRestored={result=>{saved(target.type)(result.record,result.financial);if(window.fixture.callbackFailure)throw Error('Local callback failed')}}/>:null}</main>;
 }createRoot(document.getElementById('root')).render(<Harness/>);`;
 
-const allowedRpcs = new Set(['read_dcf_state','commit_dcf_change','list_dcf_revisions','read_dcf_revision',
+const allowedRpcs = new Set(['read_dcf_state','commit_dcf_change','delete_dcf_record','list_dcf_revisions','read_dcf_revision',
     'preview_dcf_restore','apply_dcf_restore','undo_dcf_restore','dcf_revision_capability','budget_target_schedule_capability',
     'read_activity_accomplishments','save_activity_accomplishment','read_subproject_accomplishments','save_subproject_accomplishment']);
 

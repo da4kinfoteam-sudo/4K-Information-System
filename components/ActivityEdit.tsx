@@ -47,7 +47,7 @@ interface ActivityEditProps {
     activity?: Activity;
     ipos: IPO[];
     onBack: () => void;
-    onUpdateActivity: (updatedActivity: Activity) => void;
+    onUpdateActivity: (updatedActivity: Activity, confirmation?: ActivityAccomplishmentSnapshot) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     referenceActivities?: ReferenceActivity[];
     fundSources?: RefFundSource[];
@@ -750,6 +750,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             }));
         }
 
+        const confirmedAccomplishments = new Map<number, ActivityAccomplishmentSnapshot>();
         if (supabase) {
             const persisted: Activity[] = [];
             try {
@@ -829,6 +830,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                  reason: getLastOverrideReason?.() || '',
                              });
                              accomplishmentBaseline.current = confirmed;
+                             confirmedAccomplishments.set(confirmed.activity.id, confirmed);
                              data = hydrateActivityAccomplishment(confirmed);
                              setFormData(data);
                              setInitialActivity(data);
@@ -860,7 +862,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     }
                 }
             } catch (err: any) {
-                persisted.forEach(onUpdateActivity);
+                persisted.forEach(saved => onUpdateActivity(saved, confirmedAccomplishments.get(saved.id)));
                 alert(persisted.length
                     ? `${persisted.length} activity record(s) saved, but a follow-up operation failed: ${err.message}. Reload before retrying to avoid duplicates.`
                     : "Error saving: " + err.message);
@@ -876,7 +878,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         }
         
         for (const act of activitiesToSave) {
-            onUpdateActivity(act);
+            onUpdateActivity(act, confirmedAccomplishments.get(act.id));
         }
         if (mode === 'create') alert(`Saved ${activitiesToSave.length} activities.`);
         onBack();

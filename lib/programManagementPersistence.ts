@@ -192,6 +192,7 @@ export async function createProgramManagementRecord(args: { entityType: ProgramM
 export function useProgramManagementWriter(entityType: ProgramManagementEntity, currentUser: User, onConfirmed: (record: any) => void) {
     const requests = useRef(new Map<string, ProgramManagementRequest>());
     const inFlight = useRef(false);
+    const [isSaving, setIsSaving] = useState(false);
     const batchIds = useRef(new Map<string, string>());
     const createAttempts = useRef(new Map<string, { proposed: any; request: ProgramManagementRequest; originParentId?: number; actorId: number; intent: string; confirmedId?: number }>());
     const batchId = (key: string) => {
@@ -202,6 +203,7 @@ export function useProgramManagementWriter(entityType: ProgramManagementEntity, 
         if (!currentUser?.id) throw new Error('A signed-in user is required before creating records.');
         if (inFlight.current) throw new Error('A save is already in progress.');
         inFlight.current = true;
+        setIsSaving(true);
         const saved: any[] = [];
         const sourceOccurrences = new Map<number, number>();
         try {
@@ -235,11 +237,12 @@ export function useProgramManagementWriter(entityType: ProgramManagementEntity, 
             for (const key of createAttempts.current.keys()) if (key.startsWith(`${source}:`)) createAttempts.current.delete(key);
             batchIds.current.delete(source);
             return saved;
-        } finally { inFlight.current = false; }
+        } finally { inFlight.current = false; setIsSaving(false); }
     };
     const update = async (parentId: number, changes: any, source: string, reason = '') => {
         if (inFlight.current) throw new Error('A save is already in progress.');
         inFlight.current = true;
+        setIsSaving(true);
         try {
         const base = await readProgramManagementState({ entityType, parentId, currentUser });
         const key = `${source}:${parentId}`;
@@ -248,11 +251,12 @@ export function useProgramManagementWriter(entityType: ProgramManagementEntity, 
         const state = await saveProgramManagementChange({ entityType, base, original: base.record, proposed: { ...base.record, ...changes }, fields: Object.keys(changes), currentUser, source, reason, request });
         onConfirmed(state.record);
         return state.record;
-        } finally { inFlight.current = false; }
+        } finally { inFlight.current = false; setIsSaving(false); }
     };
     const remove = async (records: any[], source: string, reason: string, onRemoved: (record: any) => void) => {
         if (inFlight.current) throw new Error('A save is already in progress.');
         inFlight.current = true;
+        setIsSaving(true);
         try {
             for (const record of records) {
                 const key = `delete:${record.id}`;
@@ -263,9 +267,9 @@ export function useProgramManagementWriter(entityType: ProgramManagementEntity, 
                 requests.current.delete(key);
             }
             batchIds.current.delete(source);
-        } finally { inFlight.current = false; }
+        } finally { inFlight.current = false; setIsSaving(false); }
     };
-    return { createMany, update, remove };
+    return { createMany, update, remove, isSaving };
 }
 
 // Only refresh an idle editor. An open draft owns its baseline until confirmed or discarded.
