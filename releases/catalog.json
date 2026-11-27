@@ -9,7 +9,7 @@
       "kind": "fix",
       "title": "Program Management deletion timeout correction",
       "releaseDate": "2026-11-27",
-      "pr": null,
+      "pr": 108,
       "sections": {
         "Fixed": [
           "Program Management deletion checks the confirmed database record instead of financial display fields, avoiding false conflicts on unchanged entries.",
