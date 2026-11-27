@@ -96,6 +96,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const [uacsDescription, setUacsDescription] = useState('');
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<OtherProgramExpense | null>(null);
+    const [preparedDeleteItems, setPreparedDeleteItems] = useState<OtherProgramExpense[] | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
     const [pendingCloneItems, setPendingCloneItems] = useState<OtherProgramExpense[] | null>(null);
@@ -481,9 +482,17 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         setIsDeleteModalOpen(false); setItemToDelete(null);
     };
 
+    const openMultiDelete = async () => {
+        try {
+            const selected = items.filter(item => selectedIds.includes(item.id));
+            setPreparedDeleteItems(supabase ? await writer.prepareRemove(selected) : selected);
+            setIsMultiDeleteModalOpen(true);
+        } catch (error) { alert('Unable to prepare deletion: ' + (error instanceof Error ? error.message : 'Unknown error')); }
+    };
+
     const handleMultiDelete = async () => {
         if (selectedIds.length === 0) return;
-        const itemsToDelete = items.filter(i => selectedIds.includes(i.id));
+        const itemsToDelete = (preparedDeleteItems || items.filter(i => selectedIds.includes(i.id))).filter(record => items.some(item => item.id === record.id));
         const deletableItems = itemsToDelete.filter(item => getDeleteDecision({
             moduleKey: 'other_program_expenses',
             item,
@@ -923,7 +932,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             {isMultiDeleteModalOpen && <ConfirmDialog busy={writer.isSaving} title={`Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'entry' : 'entries'}?`} description="This action cannot be undone. The selected records will be permanently removed." confirmLabel="Delete" onCancel={() => setIsMultiDeleteModalOpen(false)} onConfirm={handleMultiDelete} />}
             {pendingCloneItems && <FundSourceCloneDialog count={pendingCloneItems.filter(item => fundSourceNeedsCloneSelection(item, fundSources)).length} references={fundSources} onCancel={() => setPendingCloneItems(null)} onConfirm={handleCloneSourceConfirm} />}
             <ColumnFilterDialog open={isColumnFilterOpen} fields={tableFilterFields} filters={columnFilters} onApply={setColumnFilters} onClose={() => setIsColumnFilterOpen(false)} />
-            <MajorTableToolbar searchTerm={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Search other expenses..." activeFilterCount={Object.keys(columnFilters).length} onOpenFilters={() => setIsColumnFilterOpen(true)} actions={isSelectionMode ? <BulkSelectionBar busy={writer.isSaving} intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} /> : <>
+            <MajorTableToolbar searchTerm={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Search other expenses..." activeFilterCount={Object.keys(columnFilters).length} onOpenFilters={() => setIsColumnFilterOpen(true)} actions={isSelectionMode ? <BulkSelectionBar busy={writer.isSaving} intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? openMultiDelete() : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} /> : <>
                 {canEdit && <button onClick={() => { setEditingItem(null); setView('form'); }} className="btn btn-primary"><Plus aria-hidden="true" /> Add New</button>}
                 <button onClick={handleDownloadReport} className="btn btn-secondary"><Download aria-hidden="true" /> Export</button>
                 {canEdit && <><button onClick={handleDownloadTemplate} className="btn btn-secondary"><FileSpreadsheet aria-hidden="true" /> Template</button><label className={`btn btn-secondary ${isUploading ? 'is-disabled' : ''}`}><Upload aria-hidden="true" /> {isUploading ? 'Uploading...' : 'Import'}<input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} /></label><button onClick={() => handleToggleMode('clone')} className="btn btn-secondary" aria-label="Clone multiple expenses"><DuplicateIcon /> Clone</button><button onClick={() => handleToggleMode('delete')} className="btn btn-secondary" aria-label="Delete multiple expenses"><TrashIcon /> Delete</button></>}

@@ -94,6 +94,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     const [view, setView] = useState<'list' | 'form'>('list');
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<OfficeRequirement | null>(null);
+    const [preparedDeleteItems, setPreparedDeleteItems] = useState<OfficeRequirement[] | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
@@ -419,8 +420,16 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         setItemToDelete(null);
     };
 
+    const openMultiDelete = async () => {
+        try {
+            const selected = items.filter(item => selectedIds.includes(item.id));
+            setPreparedDeleteItems(supabase ? await writer.prepareRemove(selected) : selected);
+            setIsMultiDeleteModalOpen(true);
+        } catch (error) { alert('Unable to prepare deletion: ' + (error instanceof Error ? error.message : 'Unknown error')); }
+    };
+
     const handleMultiDelete = async () => {
-        const itemsToDelete = items.filter(i => selectedIds.includes(i.id));
+        const itemsToDelete = (preparedDeleteItems || items.filter(i => selectedIds.includes(i.id))).filter(record => items.some(item => item.id === record.id));
         const deletableItems = itemsToDelete.filter(item => getDeleteDecision({
             moduleKey: 'office_requirements',
             item,
@@ -935,7 +944,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             {isMultiDeleteModalOpen && <ConfirmDialog busy={writer.isSaving} title={`Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'entry' : 'entries'}?`} description="This action cannot be undone. The selected records will be permanently removed." confirmLabel="Delete" onCancel={() => setIsMultiDeleteModalOpen(false)} onConfirm={handleMultiDelete} />}
             {pendingCloneItems && <FundSourceCloneDialog count={pendingCloneItems.filter(item => fundSourceNeedsCloneSelection(item, fundSources)).length} references={fundSources} onCancel={() => setPendingCloneItems(null)} onConfirm={handleCloneSourceConfirm} />}
             <ColumnFilterDialog open={isColumnFilterOpen} fields={tableFilterFields} filters={columnFilters} onApply={setColumnFilters} onClose={() => setIsColumnFilterOpen(false)} />
-            <MajorTableToolbar searchTerm={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Search office requirements..." activeFilterCount={Object.keys(columnFilters).length} onOpenFilters={() => setIsColumnFilterOpen(true)} actions={isSelectionMode ? <BulkSelectionBar busy={writer.isSaving} intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} /> : <>
+            <MajorTableToolbar searchTerm={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Search office requirements..." activeFilterCount={Object.keys(columnFilters).length} onOpenFilters={() => setIsColumnFilterOpen(true)} actions={isSelectionMode ? <BulkSelectionBar busy={writer.isSaving} intent={selectionIntent} count={selectedIds.length} onConfirm={() => selectionIntent === 'delete' ? openMultiDelete() : handleClone()} onClear={() => setSelectedIds([])} onCancel={resetSelection} /> : <>
                 {canEdit && <button onClick={() => setView('form')} className="btn btn-primary"><Plus aria-hidden="true" /> Add New</button>}
                 <button onClick={handleDownloadReport} className="btn btn-secondary"><Download aria-hidden="true" /> Export</button>
                 {canEdit && <><button onClick={handleDownloadTemplate} className="btn btn-secondary"><FileSpreadsheet aria-hidden="true" /> Template</button><label className={`btn btn-secondary ${isUploading ? 'is-disabled' : ''}`}><Upload aria-hidden="true" /> {isUploading ? 'Uploading...' : 'Import'}<input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} /></label><button onClick={() => handleToggleMode('clone')} className="btn btn-secondary" aria-label="Clone multiple office requirements"><DuplicateIcon /> Clone</button><button onClick={() => handleToggleMode('delete')} className="btn btn-secondary" aria-label="Delete multiple office requirements"><TrashIcon /> Delete</button></>}

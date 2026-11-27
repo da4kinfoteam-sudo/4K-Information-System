@@ -1,8 +1,27 @@
 {
   "schemaVersion": 1,
   "product": "4kis",
-  "currentReleaseId": "urgent-delete-activity-confirmation",
+  "currentReleaseId": "program-management-delete-timeout",
   "releases": [
+    {
+      "id": "program-management-delete-timeout",
+      "version": "1.9.3",
+      "kind": "fix",
+      "title": "Program Management deletion timeout correction",
+      "releaseDate": "2026-11-27",
+      "pr": 108,
+      "sections": {
+        "Fixed": [
+          "Program Management deletion checks the confirmed database record instead of financial display fields, avoiding false conflicts on unchanged entries.",
+          "Changed-record conflicts return promptly instead of repeatedly retrying until the request times out.",
+          "Uncertain and partially completed deletions retain safe retry behavior without repeating confirmed removals."
+        ],
+        "Improved": [
+          "Deletion confirmation also detects financial changes made while the confirmation is open, preserving reported amounts until the user reviews the current record."
+        ],
+        "Affected Pages": ["Program Management", "Office Requirements", "Staffing Requirements", "Other Expenses", "System Information"]
+      }
+    },
     {
       "id": "urgent-delete-activity-confirmation",
       "version": "1.9.2",

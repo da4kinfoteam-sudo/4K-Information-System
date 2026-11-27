@@ -83,9 +83,10 @@ export async function deleteDcfRecord(options: Omit<DcfMutationOptions, 'changes
     const payload = { p_entity_type: options.entityType, p_parent_id: options.parentId, p_base: options.base || {}, p_reason: options.reason || '' };
     const request = options.request || {};
     if (request.correlationId) Object.assign(payload, { p_correlation_id: request.correlationId });
-    const { error } = await supabase.rpc('delete_dcf_record', {
+    const { data, error } = await supabase.rpc('delete_dcf_record', {
         ...payload, p_actor_id: options.actor.id, p_actor_password: options.actor.password || '',
         p_request_key: mutationKey(request, { ...payload, actorId: options.actor.id }),
     });
     if (error) throw new DcfMutationError(error);
+    if (data?.deleted !== true || data.revisionId == null) throw new Error('Deletion was not confirmed. Retry to check the original request; do not assume the record was removed.');
 }

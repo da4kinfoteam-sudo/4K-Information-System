@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "test:program-management-delete-ui": "node --experimental-strip-types scripts/run-program-management-delete-ui-check.mjs",
+    "test:dcf-delete-conflict": "node --experimental-strip-types scripts/run-dcf-delete-conflict-check.mjs",
     "test:activity-confirmed-state-ui": "node --experimental-strip-types scripts/run-activity-confirmed-state-ui-check.mjs",
     "test:resources-sql": "node --experimental-strip-types scripts/run-resources-sql-check.mjs",
     "test:repository-table": "node --experimental-strip-types scripts/run-repository-table-check.mjs",
