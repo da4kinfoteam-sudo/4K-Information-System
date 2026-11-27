@@ -9,7 +9,7 @@
       "kind": "fix",
       "title": "Repository, Awards and IPO LOD refinements",
       "releaseDate": "2026-11-27",
-      "pr": null,
+      "pr": 106,
       "sections": {
         "Added": [
           "Awards annual results support configurable cutoffs, retained finalized results, historical versions, restore and undo.",
