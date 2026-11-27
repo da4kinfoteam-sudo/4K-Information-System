@@ -9,7 +9,7 @@
       "kind": "fix",
       "title": "Program Management deletion and Activity update display fixes",
       "releaseDate": "2026-11-27",
-      "pr": null,
+      "pr": 107,
       "sections": {
         "Fixed": [
           "Program Management deletion now prevents repeated confirmation while a request is pending, avoiding the misleading save-in-progress error.",
