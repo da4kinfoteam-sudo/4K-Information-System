@@ -309,6 +309,8 @@ export const DataTablePagination: React.FC<DataTablePaginationProps> = ({
 };
 
 interface ConfirmDialogProps {
+    busy?: boolean;
+    busyLabel?: React.ReactNode;
     secondaryAction?: { label: string; compactLabel?: string; onClick: () => void };
     compactConfirmLabel?: string;
     title: React.ReactNode;
@@ -321,6 +323,8 @@ interface ConfirmDialogProps {
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+    busy = false,
+    busyLabel = 'Processing...',
     secondaryAction,
     compactConfirmLabel,
     title,
@@ -335,6 +339,28 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     const descriptionId = React.useId();
     const dialogRef = React.useRef<HTMLElement>(null);
     const cancelRef = React.useRef<HTMLButtonElement>(null);
+    const confirmationPending = React.useRef(false);
+    const [confirming, setConfirming] = React.useState(false);
+    const isBusy = busy || confirming;
+    const handleCancel = React.useCallback(() => {
+        if (!busy && !confirmationPending.current) onCancel();
+    }, [busy, onCancel]);
+    const handleConfirm = async () => {
+        // Close the same-tick gap before React renders disabled controls.
+        if (busy || confirmationPending.current) return;
+        confirmationPending.current = true;
+        setConfirming(true);
+        try {
+            await onConfirm();
+        } finally {
+            confirmationPending.current = false;
+            setConfirming(false);
+        }
+    };
+
+    React.useEffect(() => {
+        if (isBusy) dialogRef.current?.focus();
+    }, [isBusy]);
 
     React.useEffect(() => {
         const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -342,12 +368,16 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
                 event.preventDefault();
-                onCancel();
+                handleCancel();
                 return;
             }
             if (event.key !== 'Tab' || !dialogRef.current) return;
             const focusable = Array.from(dialogRef.current.querySelectorAll('button:not([disabled])')) as HTMLButtonElement[];
-            if (!focusable.length) return;
+            if (!focusable.length) {
+                event.preventDefault();
+                dialogRef.current.focus();
+                return;
+            }
             const first = focusable[0];
             const last = focusable[focusable.length - 1];
             if (event.shiftKey && document.activeElement === first) {
@@ -364,17 +394,19 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             document.removeEventListener('keydown', handleKeyDown);
             returnFocus?.focus();
         };
-    }, [onCancel]);
+    }, [handleCancel]);
 
     return (
-        <div className="modal-backdrop" role="presentation" onMouseDown={onCancel}>
+        <div className="modal-backdrop" role="presentation" onMouseDown={handleCancel}>
             <section
                 ref={dialogRef}
                 className="modal-card confirm-dialog"
+                tabIndex={-1}
                 role="alertdialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
                 aria-describedby={descriptionId}
+                aria-busy={isBusy}
                 onMouseDown={event => event.stopPropagation()}
             >
                 <div className="confirm-dialog__content">
@@ -385,12 +417,12 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                     </div>
                 </div>
                 <footer className="modal-card__footer confirm-dialog__actions">
-                    <button ref={cancelRef} type="button" className="btn btn-secondary" onClick={onCancel}>{cancelLabel}</button>
-                    {secondaryAction && <button type="button" className="btn btn-secondary" onClick={secondaryAction.onClick} aria-label={secondaryAction.compactLabel ? secondaryAction.label : undefined} title={secondaryAction.compactLabel ? secondaryAction.label : undefined}>
+                    <button ref={cancelRef} type="button" className="btn btn-secondary" disabled={isBusy} onClick={handleCancel}>{cancelLabel}</button>
+                    {secondaryAction && <button type="button" className="btn btn-secondary" disabled={isBusy} onClick={secondaryAction.onClick} aria-label={secondaryAction.compactLabel ? secondaryAction.label : undefined} title={secondaryAction.compactLabel ? secondaryAction.label : undefined}>
                         {secondaryAction.compactLabel ? <><span className="confirm-dialog__label-full">{secondaryAction.label}</span><span className="confirm-dialog__label-compact" aria-hidden="true">{secondaryAction.compactLabel}</span></> : secondaryAction.label}
                     </button>}
-                    <button type="button" className={cn('btn', tone === 'danger' ? 'btn-danger' : 'btn-primary')} onClick={onConfirm} aria-label={compactConfirmLabel && typeof confirmLabel === 'string' ? confirmLabel : undefined} title={compactConfirmLabel && typeof confirmLabel === 'string' ? confirmLabel : undefined}>
-                        {compactConfirmLabel ? <><span className="confirm-dialog__label-full">{confirmLabel}</span><span className="confirm-dialog__label-compact" aria-hidden="true">{compactConfirmLabel}</span></> : confirmLabel}
+                    <button type="button" className={cn('btn', tone === 'danger' ? 'btn-danger' : 'btn-primary')} disabled={isBusy} onClick={handleConfirm} aria-label={!isBusy && compactConfirmLabel && typeof confirmLabel === 'string' ? confirmLabel : undefined} title={!isBusy && compactConfirmLabel && typeof confirmLabel === 'string' ? confirmLabel : undefined}>
+                        {isBusy ? busyLabel : compactConfirmLabel ? <><span className="confirm-dialog__label-full">{confirmLabel}</span><span className="confirm-dialog__label-compact" aria-hidden="true">{compactConfirmLabel}</span></> : confirmLabel}
                     </button>
                 </footer>
             </section>
