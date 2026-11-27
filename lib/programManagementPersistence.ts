@@ -195,6 +195,29 @@ export function useProgramManagementWriter(entityType: ProgramManagementEntity, 
     const [isSaving, setIsSaving] = useState(false);
     const batchIds = useRef(new Map<string, string>());
     const createAttempts = useRef(new Map<string, { proposed: any; request: ProgramManagementRequest; originParentId?: number; actorId: number; intent: string; confirmedId?: number }>());
+    const deleteAttempts = useRef(new Map<string, { base: ProgramManagementState; attempted: boolean; rejected?: DcfMutationError }>());
+    const deleteKey = (id: number) => `delete:${currentUser?.id}:${id}`;
+    const prepareDelete = async (record: any) => {
+        const key = deleteKey(record.id);
+        const pending = deleteAttempts.current.get(key);
+        // An uncertain response must retry its original baseline and receipt,
+        // even if the parent is already gone on the server.
+        if (pending?.attempted && !pending.rejected) return pending.base.record;
+        const base = await readProgramManagementState({ entityType, parentId: record.id, currentUser });
+        if (!base.hash || base.record.uid !== record.uid) throw new Error('The selected record could not be verified. Reload before deleting.');
+        deleteAttempts.current.set(key, { base: structuredClone(base), attempted: false });
+        return base.record;
+    };
+    const prepareRemove = async (records: any[]) => {
+        if (inFlight.current) throw new Error('A save is already in progress.');
+        inFlight.current = true;
+        setIsSaving(true);
+        try {
+            const prepared = [];
+            for (const record of records) prepared.push(await prepareDelete(record));
+            return prepared;
+        } finally { inFlight.current = false; setIsSaving(false); }
+    };
     const batchId = (key: string) => {
         if (!batchIds.current.has(key)) batchIds.current.set(key, crypto.randomUUID());
         return batchIds.current.get(key)!;
@@ -259,17 +282,29 @@ export function useProgramManagementWriter(entityType: ProgramManagementEntity, 
         setIsSaving(true);
         try {
             for (const record of records) {
-                const key = `delete:${record.id}`;
+                const key = deleteKey(record.id);
+                if (!deleteAttempts.current.has(key)) await prepareDelete(record);
+                const attempt = deleteAttempts.current.get(key)!;
+                if (attempt.rejected) throw attempt.rejected;
                 const request = (requests.current.get(key) || { correlationId: batchId(source) }) as DcfMutationRequest;
                 requests.current.set(key, request);
-                await deleteDcfRecord({ entityType, parentId: record.id, base: record, actor: currentUser, request, source, reason });
+                attempt.attempted = true;
+                try {
+                    await deleteDcfRecord({ entityType, parentId: record.id, base: attempt.base, actor: currentUser, request, source, reason });
+                } catch (error) {
+                    // A returned SQL exception confirms rollback. Only a new
+                    // confirmation may refresh that baseline; lost replies may not.
+                    if (error instanceof DcfMutationError && /^[0-9A-Z]{5}$/.test(error.code || '')) attempt.rejected = error;
+                    throw error;
+                }
                 onRemoved(record);
                 requests.current.delete(key);
+                deleteAttempts.current.delete(key);
             }
             batchIds.current.delete(source);
         } finally { inFlight.current = false; setIsSaving(false); }
     };
-    return { createMany, update, remove, isSaving };
+    return { createMany, update, prepareRemove, remove, isSaving };
 }
 
 // Only refresh an idle editor. An open draft owns its baseline until confirmed or discarded.
